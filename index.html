@@ -563,6 +563,16 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
     overflow-y: auto;
   }
 }
+
+/* When admin button visible, bottom nav fits 6 items */
+#bottom-nav button[data-bn="admin"] { display: none; }
+#bottom-nav button[data-bn="admin"][style*="display: "],
+#bottom-nav button[data-bn="admin"]:not([style*="none"]) {
+  display: flex !important;
+}
+#bottom-nav:has(button[data-page="admin"]:not([style*="none"])) button {
+  font-size: 8px;
+}
 </style>
 </head>
 <body>
@@ -581,6 +591,9 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
   </button>
   <button onclick="showPage('profile')" data-bn="profile">
     <span class="bn-icon">👤</span>Me
+  </button>
+  <button onclick="showPage('admin')" data-bn="admin" data-page="admin" style="display:none">
+    <span class="bn-icon">⚙️</span>Admin
   </button>
 </div>
 
