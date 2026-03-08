@@ -8378,14 +8378,20 @@ async function fbInit(cfg){
   } catch(e) {
     console.error('Firebase init failed:', e);
     _fbConnected = false;
-    // 'unavailable' = normal sandbox/offline behaviour — Firestore still works via IndexedDB
+    // 'unavailable' = Firestore offline but Firebase App + Auth still work fine
     if(e.code === 'unavailable' || (e.message||'').includes('network') || (e.message||'').includes('could not reach')){
-      _fbConnected = true; // still "connected" — just offline cache mode
+      _fbConnected = true;
       fbShowPill('saved', 'Offline cache mode');
     } else {
       toast('Firebase: ' + (e.message||e), 'error');
       fbShowPill('error', 'Firebase error');
     }
+    // ✅ ALWAYS init auth — even if Firestore failed
+    // This handles the redirect result after Google sign-in
+    try {
+      _lpSetLoading(true, 'Signing in…');
+      await initAuth();
+    } catch(ae){ console.error('Auth error:', ae); hideLoginPage(); renderDash(); }
     renderAdminSettings();
   }
 }
@@ -8944,21 +8950,43 @@ async function initAuth(){
   try {
     if(!firebase || !firebase.auth) {
       console.warn('Firebase Auth SDK not loaded');
-      return;
+      hideLoginPage(); renderDash(); return;
     }
     _auth = firebase.auth();
     _auth.languageCode = 'en';
-
-    // Show loading while we check auth state
     _lpSetLoading(true, 'Checking sign-in…');
 
-    // ── Single source of truth: onAuthStateChanged ──
-    // This fires automatically after redirect AND on normal page load
-    // It's the most reliable way to detect sign-in on GitHub Pages
+    // ── Step 1: Check redirect result FIRST ──
+    // Must be done before onAuthStateChanged to avoid race condition on GitHub Pages
+    let redirectUser = null;
+    try {
+      const result = await _auth.getRedirectResult();
+      if(result && result.user) redirectUser = result.user;
+    } catch(e){
+      if(e.code !== 'auth/no-auth-event'){
+        _lpShowError(_authErrMsg(e));
+        _lpSetLoading(false);
+        return;
+      }
+    }
+
+    if(redirectUser){
+      // ── Redirect just completed — sign user in immediately ──
+      _currentUser = redirectUser;
+      _lpSetLoading(true, 'Welcome! Setting up…');
+      await _applyGoogleUser(redirectUser);
+      hideLoginPage();
+      refreshAvatarBadges();
+      if(typeof renderDash === 'function') renderDash();
+      if(typeof renderAdminSettings === 'function') renderAdminSettings();
+      _lpSetLoading(false);
+      return;
+    }
+
+    // ── Step 2: Listen for existing session ──
     _auth.onAuthStateChanged(async user => {
       _currentUser = user;
       if(user){
-        // User is signed in — enter the app
         _lpSetLoading(true, 'Welcome back…');
         await _applyGoogleUser(user);
         hideLoginPage();
@@ -8967,18 +8995,6 @@ async function initAuth(){
         if(typeof renderAdminSettings === 'function') renderAdminSettings();
         _lpSetLoading(false);
       } else {
-        // No user — also try getRedirectResult in case we're mid-redirect
-        try {
-          const result = await _auth.getRedirectResult();
-          if(result && result.user){
-            // Redirect just completed — onAuthStateChanged will fire again with user
-            _lpSetLoading(true, 'Signing in…');
-            return;
-          }
-        } catch(e){
-          _lpShowError(_authErrMsg(e));
-        }
-        // Genuinely not signed in — show login
         _lpSetLoading(false);
         showLoginPage();
       }
