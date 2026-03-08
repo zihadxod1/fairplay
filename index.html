@@ -104,163 +104,70 @@ table { width: 100%; border-collapse: collapse; }
   display: none;
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  height: 60px;
-  background: var(--surface, #0d1f0f);
-  border-top: 1px solid rgba(255,255,255,.08);
+  height: 62px;
+  background: #080f09;
+  border-top: 1px solid rgba(74,222,128,.12);
   z-index: 999;
-  align-items: center;
-  justify-content: space-around;
-  padding: 0 4px;
+  padding: 0;
   padding-bottom: env(safe-area-inset-bottom);
+  box-shadow: 0 -4px 24px rgba(0,0,0,.5);
 }
+#bottom-nav-scroll {
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  height: 100%;
+  padding: 0 4px;
+}
+#bottom-nav-scroll::-webkit-scrollbar { display: none; }
 #bottom-nav button {
-  flex: 1;
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 3px;
   background: none;
   border: none;
-  color: rgba(255,255,255,.45);
-  font-size: 9px;
+  color: rgba(255,255,255,.38);
+  font-size: 9.5px;
   font-weight: 600;
-  letter-spacing: .5px;
-  padding: 4px 2px;
+  letter-spacing: .4px;
+  padding: 6px 14px;
   cursor: pointer;
-  transition: color .2s;
-  min-width: 0;
+  transition: color .18s;
+  min-width: 58px;
+  scroll-snap-align: start;
+  font-family: Outfit, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  position: relative;
 }
-#bottom-nav button .bn-icon { font-size: 20px; line-height: 1; }
+#bottom-nav button .bn-icon { font-size: 21px; line-height: 1; }
 #bottom-nav button.active { color: #00c853; }
+#bottom-nav button.active::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 25%; right: 25%;
+  height: 2px;
+  background: #00c853;
+  border-radius: 2px 2px 0 0;
+}
 #bottom-nav button:hover { color: #4ade80; }
 
-/* ════════════════════════════════
-   TABLET  600px – 1024px
-════════════════════════════════ */
-@media (max-width: 1024px) {
-  .pw { padding: 16px var(--side-pad); }
-  .g3 { grid-template-columns: 1fr 1fr; }
-  .db-stats-row { grid-template-columns: repeat(3, 1fr) !important; }
-  .db-main-grid { grid-template-columns: 1fr !important; }
-  .nav-name { display: none !important; }
-  .nav-signout-btn { display: none !important; }
+/* Fade edge hint so user knows it scrolls */
+#bottom-nav::after {
+  content: '';
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 28px;
+  background: linear-gradient(to left, #080f09 0%, transparent 100%);
+  pointer-events: none;
 }
 
-/* ════════════════════════════════
-   MOBILE  ≤ 768px
-════════════════════════════════ */
-@media (max-width: 768px) {
-  :root { --nh: 52px; }
-  body { padding-bottom: 64px; } /* space for bottom nav */
-
-  /* Show bottom nav, hide top nav links */
-  #bottom-nav { display: flex !important; }
-  .nav-links-wrap { display: none !important; }
-  .nav-ham { display: none !important; }
-
-  /* Nav: logo + right side only */
-  #main-nav { padding: 0 10px; justify-content: space-between; }
-  .nav-logo { font-size: 15px; letter-spacing: 1.5px; }
-  .nav-right { gap: 6px; }
-  .nav-bal { font-size: 11px; }
-
-  /* Pages */
-  .pw { padding: 12px 10px 8px; }
-  .g2 { grid-template-columns: 1fr !important; }
-  .g3 { grid-template-columns: 1fr !important; }
-  .box, .psec { padding: 14px 12px; border-radius: 12px; }
-
-  /* Dashboard */
-  .db-hero-content { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .db-hero-av { width: 54px !important; height: 54px !important; }
-  .db-stats-row { grid-template-columns: repeat(3, 1fr) !important; gap: 6px; }
-  .db-action-grid { grid-template-columns: 1fr 1fr !important; }
-  .db-stat-val { font-size: 20px !important; }
-
-  /* Profile */
-  .prof-hero { flex-direction: column !important; align-items: center !important; gap: 14px; }
-  .profav-wrap { align-self: center; }
-  .pstats { justify-content: center !important; flex-wrap: wrap; }
-  .pstat { min-width: 60px; }
-
-  /* Tournaments */
-  .vtm-match-card { grid-template-columns: 1fr !important; }
-  .vtm-vs-col { flex-direction: row !important; border: none !important; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 6px 12px; }
-  .at-create-grid { grid-template-columns: 1fr !important; }
-
-  /* Modals */
-  #modal-root .mbox { padding: 18px 14px !important; border-radius: 16px !important; }
-
-  /* Store */
-  .store-grid { grid-template-columns: 1fr 1fr !important; }
-  .store-cats { flex-wrap: nowrap; overflow-x: auto; }
-
-  /* Teams/Guilds */
-  .team-card, .guild-card { padding: 12px !important; }
-  .sg-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)) !important; }
-
-  /* Admin */
-  .admin-tabs { gap: 3px; flex-wrap: wrap; }
-  .atab { padding: 6px 10px !important; font-size: 9px !important; }
-  .at-create-grid { grid-template-columns: 1fr !important; }
-  #ap-store .g2, #ap-settings .g2, #ap-badges .g2, #ap-payment .g2, #ap-notify .g2 { grid-template-columns: 1fr !important; }
-
-  /* Leaderboard */
-  .lb-row { font-size: 11px; }
-  .lb-name { max-width: 100px; }
-
-  /* Wallet */
-  .wh { padding: 14px !important; }
-}
-
-/* ════════════════════════════════
-   SMALL MOBILE  ≤ 480px
-════════════════════════════════ */
-@media (max-width: 480px) {
-  :root { --nh: 50px; }
-  .pw { padding: 10px 8px; }
-  .nav-logo { font-size: 14px; letter-spacing: 1px; }
-  .nav-bal { display: none !important; }
-
-  .db-stats-row { grid-template-columns: repeat(2, 1fr) !important; }
-  .db-action-grid { grid-template-columns: 1fr 1fr !important; }
-  .store-grid { grid-template-columns: 1fr !important; }
-
-  /* Typography */
-  .ptitle { font-size: clamp(18px, 7vw, 28px) !important; }
-  .psn { font-size: clamp(15px, 5vw, 20px) !important; }
-  .box { border-radius: 10px; }
-
-  /* Modals full-screen on tiny phones */
-  #modal-root .mbox { 
-    width: 100vw !important; 
-    max-height: 95vh !important;
-    border-radius: 20px 20px 0 0 !important;
-    margin-bottom: 0 !important;
-  }
-  #modal-root {
-    align-items: flex-end !important;
-    padding: 0 !important;
-  }
-}
-
-/* ════════════════════════════════
-   LARGE SCREENS  ≥ 1280px
-════════════════════════════════ */
-@media (min-width: 1280px) {
-  .pw { padding: 28px 32px; }
-  .g2 { gap: 18px; }
-  .g3 { gap: 16px; }
-  .box { padding: 22px; }
-  .nav-name { display: inline !important; }
-  .store-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
-}
-@media (min-width: 1600px) {
-  .pw { max-width: 1560px; padding: 32px 40px; }
-}
-
-/* ── Touch targets ── */
 @media (hover: none) {
   .btn, .nl, .atab, .sc-buy-btn { min-height: 44px; }
   #bottom-nav button { min-height: 52px; }
@@ -447,7 +354,7 @@ input, select, textarea {
     padding-bottom: max(8px, env(safe-area-inset-bottom));
     height: calc(60px + env(safe-area-inset-bottom));
   }
-  body { padding-bottom: calc(64px + env(safe-area-inset-bottom)); }
+  body { padding-bottom: calc(70px + env(safe-area-inset-bottom)); }
 }
 
 /* ── Smooth page content ── */
@@ -574,7 +481,7 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
   font-size: 8px;
 }
 
-/* ── More Menu ── */
+/* ── More Menu (Full Nav Panel) ── */
 #bn-more-menu {
   position: fixed;
   inset: 0;
@@ -583,96 +490,134 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
 #bn-more-backdrop {
   position: absolute;
   inset: 0;
-  background: rgba(0,0,0,.6);
-  backdrop-filter: blur(3px);
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(4px);
 }
 #bn-more-panel {
   position: absolute;
   bottom: 68px;
-  left: 12px;
-  right: 12px;
-  background: #0d1f0f;
-  border: 1px solid rgba(74,222,128,.2);
-  border-radius: 20px;
-  padding: 18px 16px 20px;
-  box-shadow: 0 -8px 40px rgba(0,0,0,.6);
-  animation: slideUpPanel .2s ease;
+  left: 10px;
+  right: 10px;
+  background: #0b1a0d;
+  border: 1px solid rgba(74,222,128,.25);
+  border-radius: 22px;
+  padding: 16px 14px 18px;
+  box-shadow: 0 -12px 50px rgba(0,0,0,.7);
+  animation: slideUpPanel .22s cubic-bezier(.25,.8,.25,1);
+  max-height: calc(100vh - 120px);
+  overflow-y: auto;
 }
 @keyframes slideUpPanel {
-  from { transform: translateY(20px); opacity: 0; }
+  from { transform: translateY(24px); opacity: 0; }
   to   { transform: translateY(0);    opacity: 1; }
+}
+.bnm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding: 0 2px;
 }
 .bnm-title {
   font-size: 10px;
   font-weight: 700;
   letter-spacing: 1.5px;
-  color: rgba(74,222,128,.5);
-  margin-bottom: 14px;
+  color: rgba(74,222,128,.55);
   text-transform: uppercase;
+}
+.bnm-close {
+  background: rgba(255,255,255,.07);
+  border: none;
+  color: rgba(255,255,255,.5);
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
 }
 .bnm-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 9px;
 }
 .bnm-btn {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   background: rgba(255,255,255,.04);
   border: 1px solid rgba(255,255,255,.07);
-  border-radius: 14px;
-  padding: 14px 8px;
+  border-radius: 16px;
+  padding: 16px 6px 12px;
   color: rgba(255,255,255,.8);
-  font-size: 11px;
+  font-size: 10.5px;
   font-weight: 600;
+  letter-spacing: .3px;
   cursor: pointer;
-  transition: background .15s, border-color .15s, color .15s;
+  transition: background .15s, border-color .15s, color .15s, transform .1s;
   font-family: Outfit, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
+.bnm-btn:active { transform: scale(.95); }
 .bnm-btn:hover, .bnm-btn:active {
-  background: rgba(0,200,83,.12);
-  border-color: rgba(0,200,83,.3);
+  background: rgba(0,200,83,.13);
+  border-color: rgba(0,200,83,.35);
   color: #4ade80;
 }
-.bnm-icon { font-size: 24px; line-height: 1; }
+.bnm-btn.active-page {
+  background: rgba(0,200,83,.18);
+  border-color: rgba(0,200,83,.5);
+  color: #4ade80;
+}
+.bnm-icon { font-size: 26px; line-height: 1; }
+.bnm-admin {
+  background: rgba(251,191,36,.06);
+  border-color: rgba(251,191,36,.15);
+  color: rgba(251,191,36,.8);
+}
+.bnm-admin:hover, .bnm-admin:active {
+  background: rgba(251,191,36,.14);
+  border-color: rgba(251,191,36,.4);
+  color: #fbbf24;
+}
 </style>
 </head>
 <body>
 <div id="bottom-nav">
-  <button onclick="showPage('dashboard')" data-bn="dashboard">
-    <span class="bn-icon">🏠</span>Home
-  </button>
-  <button onclick="showPage('tournaments')" data-bn="tournaments">
-    <span class="bn-icon">🏆</span>Play
-  </button>
-  <button onclick="showPage('leaderboard')" data-bn="leaderboard">
-    <span class="bn-icon">🥇</span>Ranks
-  </button>
-  <button onclick="showPage('profile')" data-bn="profile">
-    <span class="bn-icon">👤</span>Me
-  </button>
-  <button onclick="_toggleMoreMenu()" id="bn-more-btn" data-bn="more">
-    <span class="bn-icon">⋯</span>More
-  </button>
-</div>
-
-<!-- More menu popup -->
-<div id="bn-more-menu" style="display:none">
-  <div id="bn-more-backdrop" onclick="_closeMoreMenu()"></div>
-  <div id="bn-more-panel">
-    <div class="bnm-title">Navigate</div>
-    <div class="bnm-grid">
-      <button class="bnm-btn" onclick="_bnGo('teams')"><span class="bnm-icon">👥</span>Teams</button>
-      <button class="bnm-btn" onclick="_bnGo('guilds')"><span class="bnm-icon">🏰</span>Guilds</button>
-      <button class="bnm-btn" onclick="_bnGo('search')"><span class="bnm-icon">🔍</span>Search</button>
-      <button class="bnm-btn" onclick="_bnGo('store')"><span class="bnm-icon">🛒</span>Store</button>
-      <button class="bnm-btn" onclick="_bnGo('wallet')"><span class="bnm-icon">💰</span>Wallet</button>
-      <button class="bnm-btn bnm-admin-btn" data-page="admin" style="display:none" onclick="_bnGo('admin')"><span class="bnm-icon">⚙️</span>Admin</button>
-    </div>
+  <div id="bottom-nav-scroll">
+    <button onclick="showPage('dashboard')" data-bn="dashboard">
+      <span class="bn-icon">🏠</span>Home
+    </button>
+    <button onclick="showPage('tournaments')" data-bn="tournaments">
+      <span class="bn-icon">🏆</span>Play
+    </button>
+    <button onclick="showPage('teams')" data-bn="teams">
+      <span class="bn-icon">👥</span>Teams
+    </button>
+    <button onclick="showPage('guilds')" data-bn="guilds">
+      <span class="bn-icon">🏰</span>Guilds
+    </button>
+    <button onclick="showPage('leaderboard')" data-bn="leaderboard">
+      <span class="bn-icon">🥇</span>Ranks
+    </button>
+    <button onclick="showPage('search')" data-bn="search">
+      <span class="bn-icon">🔍</span>Search
+    </button>
+    <button onclick="showPage('store')" data-bn="store">
+      <span class="bn-icon">🛒</span>Store
+    </button>
+    <button onclick="showPage('wallet')" data-bn="wallet">
+      <span class="bn-icon">💰</span>Wallet
+    </button>
+    <button onclick="showPage('profile')" data-bn="profile">
+      <span class="bn-icon">👤</span>Me
+    </button>
+    <button onclick="showPage('admin')" data-bn="admin" data-page="admin" style="display:none">
+      <span class="bn-icon">⚙️</span>Admin
+    </button>
   </div>
 </div>
+
 
 <div id="curtain"></div>
 
@@ -2038,17 +1983,15 @@ function showPage(page){
     toast('⛔ Admin access only','error');
     return;
   }
-  // Close more menu if open
-  _closeMoreMenu && _closeMoreMenu();
-  // Update bottom nav active state
-  const bottomPages = ['dashboard','tournaments','leaderboard','profile'];
+  // Update bottom nav active state + scroll active button into view
   document.querySelectorAll('#bottom-nav button[data-bn]').forEach(b=>{
-    b.classList.toggle('active', b.dataset.bn === page);
+    const isActive = b.dataset.bn === page;
+    b.classList.toggle('active', isActive);
+    if(isActive){
+      // Scroll active tab into center view
+      setTimeout(()=>{ b.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'}); }, 50);
+    }
   });
-  // Highlight More button if current page is in the more menu
-  const morePages = ['teams','guilds','search','store','wallet','admin'];
-  const moreBtn = document.getElementById('bn-more-btn');
-  if(moreBtn) moreBtn.classList.toggle('active', morePages.includes(page));
   if(typeof drawerOpen!=='undefined'&&drawerOpen){drawerOpen=false;var d=document.getElementById('nav-drawer'),h=document.getElementById('nav-ham');if(d)d.classList.remove('open');if(h)h.classList.remove('open');}
   const c=$('curtain');c.className='in';
   setTimeout(()=>{
@@ -6475,11 +6418,11 @@ function hideLoginPage(){
   if(drawer) drawer.style.display = '';
   const activePage = document.getElementById('page-' + currentPage);
   if(activePage) activePage.style.display = 'block';
-  // Show bottom nav
+  // Show bottom nav (only on mobile via CSS)
   const bn = document.getElementById('bottom-nav');
   if(bn) bn.style.display = '';
   // Set initial bottom nav active
-  document.querySelectorAll('#bottom-nav button').forEach(b=>{
+  document.querySelectorAll('#bottom-nav button[data-bn]').forEach(b=>{
     b.classList.toggle('active', b.dataset.bn === currentPage);
   });
 }
@@ -6826,24 +6769,7 @@ function _applyGoogleUser(){ /* handled by _enterRestApp */ }
 async function _ensureAuth(){ return true; }
 async function _enterApp(){ /* handled by _enterRestApp */ }
 
-function _toggleMoreMenu(){
-  const m = document.getElementById('bn-more-menu');
-  const btn = document.getElementById('bn-more-btn');
-  if(!m) return;
-  const open = m.style.display !== 'none';
-  m.style.display = open ? 'none' : 'block';
-  btn.classList.toggle('active', !open);
-}
-function _closeMoreMenu(){
-  const m = document.getElementById('bn-more-menu');
-  if(m) m.style.display = 'none';
-  const btn = document.getElementById('bn-more-btn');
-  if(btn) btn.classList.remove('active');
-}
-function _bnGo(page){
-  _closeMoreMenu();
-  showPage(page);
-}
+
 </script>
 
 <!-- ═══════════════════════════ STORE PAGE ═══════════════════════════ -->
