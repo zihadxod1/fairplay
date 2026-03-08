@@ -3304,17 +3304,22 @@ function showAvatarPicker(targetPid){
   </div>`);
 }
 function _applyAvatarToPlayer(pid, fields){
-  const player=DB.players.find(x=>x.id===pid); if(!player) return;
+  // Find player by id='u1' OR by real Firebase UID (after fbLoadAll replaces ids)
+  let player = DB.players.find(x=>x.id===pid);
+  if(!player && pid==='u1' && _fbUid) player = DB.players.find(x=>x.id===_fbUid||x.uid===_fbUid);
+  // If still not found, use DB.me directly for self
+  if(!player && pid==='u1'){ Object.assign(DB.me, fields); player = DB.me; }
+  if(!player) return;
   Object.assign(player, fields);
   if(pid==='u1') Object.assign(DB.me, fields);
-  const url=getAvatar(player);
+  const url=getAvatar(DB.me);
   if(pid==='u1'){ 
     const nav=document.getElementById('nav-av-img'); if(nav)nav.src=url; 
     _refreshLogoPanel(); 
     refreshAvatarBadges();
   }
   if(typeof renderAdminPlayers==='function') renderAdminPlayers();
-  fbAutoSync(); // sync after any avatar change
+  fbAutoSync();
 }
 function _buildLogoInner(p){
   if(p.avatarCustom) return `<img src="${p.avatarCustom}" style="width:100%;height:100%;object-fit:cover;">`;
@@ -6475,6 +6480,7 @@ function fbShowPill(state, label, autohide=true){
 
 // ── Auto-sync on any action ──
 function fbAutoSync(){
+  _myPlayer(); // sync DB.me → DB.players[0] before saving
   lsSave();
   if(!_fbConnected || !_fbToken) return;
   clearTimeout(_syncTimer);
@@ -6535,8 +6541,11 @@ async function fbLoadAll(){
       fbShowPill('syncing','Uploading…',false);
       _doCloudSync(); // push local → cloud in background
       // Still update the other players list from Firestore
-      const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
-      if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
+      const real = playerDocs.filter(p=>p._docId!==_fbUid&&p.id!==_fbUid&&p.id!=='u1');
+      if(real.length) DB.players = [
+        {...DB.me, id:'u1'}, // always keep current user at index 0 as 'u1'
+        ...real.map(p=>({...p,id:p._docId||p.id}))
+      ];
       fbShowPill('saved','In sync ✓');
     } else {
       // ── Firestore is NEWER or first time — apply Firestore data ──
@@ -6646,6 +6655,18 @@ function lsSave(){
 // ── Helper: get local save timestamp ──
 function _lsGetTs(){
   try{const r=localStorage.getItem(LS_DB_KEY);if(!r)return 0;return JSON.parse(r)._savedAt||0;}catch(e){return 0;}
+}
+// ── Helper: get my player object (always DB.me, synced to players[0]) ──
+function _myPlayer(){
+  // Keep DB.players[0] in sync with DB.me
+  const p0 = DB.players.find(x=>x.id==='u1');
+  if(p0) Object.assign(p0, {
+    name:DB.me.name, balance:DB.me.balance, wins:DB.me.wins, losses:DB.me.losses,
+    tournaments:DB.me.tournaments, avatarCustom:DB.me.avatarCustom,
+    _emojiIdx:DB.me._emojiIdx, _svgIdx:DB.me._svgIdx, badges:DB.me.badges,
+    gameProfiles:DB.me.gameProfiles, teamIds:DB.me.teamIds, guildId:DB.me.guildId
+  });
+  return DB.me;
 }
 function lsLoad(uid){
   try {
