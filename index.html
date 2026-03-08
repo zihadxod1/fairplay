@@ -6497,7 +6497,19 @@ async function _doCloudSync(){
     // Save current user profile with timestamp
     if(_fbUid && DB.me){
       const meData = JSON.parse(JSON.stringify(DB.me));
-      await _fsSet('players', _fbUid, {...meData, id:_fbUid, _savedAt:_ts});
+      // Split out avatarCustom (base64) — save separately to avoid 1MB doc limit
+      const avatarCustom = meData.avatarCustom;
+      delete meData.avatarCustom;
+      await _fsSet('players', _fbUid, {...meData, id:_fbUid, _savedAt:_ts,
+        _emojiIdx: DB.me._emojiIdx !== undefined ? DB.me._emojiIdx : null,
+        _svgIdx:   DB.me._svgIdx   !== undefined ? DB.me._svgIdx   : null,
+      });
+      // Save custom photo separately if present (base64 can be large)
+      if(avatarCustom){
+        // Store first 900KB max to stay under Firestore limits
+        const safe = avatarCustom.length > 900000 ? null : avatarCustom;
+        if(safe) await _fsSet('avatars', _fbUid, {uid:_fbUid, avatarCustom:safe, _ts:_ts}).catch(()=>{});
+      }
     }
     // ALL users save ALL shared collections
     const writes = [];
@@ -6527,10 +6539,15 @@ async function fbLoadAll(){
   fbShowPill('syncing','Syncing…',false);
   try {
     const COLS = ['tournaments','teams','guilds','badges','storeItems','games'];
-    const [playerDocs, ...colDocs] = await Promise.all([
+    const [playerDocs, avatarDoc, ...colDocs] = await Promise.all([
       _fsList('players'),
+      _fsGet('avatars', _fbUid).catch(()=>null),
       ...COLS.map(c=>_fsList(c).catch(()=>[]))
     ]);
+    // Restore custom avatar if saved separately
+    if(avatarDoc && avatarDoc.avatarCustom){
+      DB.me.avatarCustom = avatarDoc.avatarCustom;
+    }
     // Get local save timestamp to compare
     const localTs = _lsGetTs();
     // Get Firestore save timestamp from our own player doc
@@ -6558,8 +6575,22 @@ async function fbLoadAll(){
         // Protect: never let Firestore overwrite with seed "Player One"
         if((!DB.me.name || DB.me.name==='Player One') && _realName) DB.me.name = _realName;
       }
-      const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
-      if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
+      // Load all avatars collection and apply to players
+      const _allAvDocs = await _fsList('avatars').catch(()=>[]);
+      const _avMap = {};
+      _allAvDocs.forEach(a=>{ if(a._docId||a.uid) _avMap[a._docId||a.uid]=a.avatarCustom||null; });
+      // Apply my own avatar from avatars collection if not in player doc
+      if(_avMap[_fbUid] && !DB.me.avatarCustom) DB.me.avatarCustom = _avMap[_fbUid];
+      const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1'&&p._docId!==_fbUid&&p.id!==_fbUid);
+      if(real.length) DB.players = [
+        {...DB.me, id:'u1'},
+        ...real.map(p=>{
+          const pid = p._docId||p.id;
+          return {...p, id:pid, avatarCustom: _avMap[pid]||p.avatarCustom||null,
+            _emojiIdx: p._emojiIdx !== null ? p._emojiIdx : undefined,
+            _svgIdx:   p._svgIdx   !== null ? p._svgIdx   : undefined};
+        })
+      ];
       COLS.forEach((col,i)=>{ if(colDocs[i].length) DB[col]=colDocs[i]; });
       fbShowPill('saved','Loaded ✓');
       lsSave();
