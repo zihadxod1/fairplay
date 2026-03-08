@@ -2430,6 +2430,7 @@ function _applyAvatarToPlayer(pid, fields){
   const url=getAvatar(player);
   if(pid==='u1'){ const nav=document.getElementById('nav-av'); if(nav)nav.src=url; _refreshLogoPanel(); }
   if(typeof renderAdminPlayers==='function') renderAdminPlayers();
+  fbAutoSync(); // sync after any avatar change
 }
 function _buildLogoInner(p){
   if(p.avatarCustom) return `<img src="${p.avatarCustom}" style="width:100%;height:100%;object-fit:cover;">`;
@@ -5488,11 +5489,21 @@ async function fbLoadAll(){
       }
       const data = docs.map(d => ({...d.data(), _fbId: d.id}));
       if(c === 'players'){
-        DB.players = data;
-        // Load by real UID if logged in, else fall back to 'u1'
+        // Don't overwrite player list with hardcoded defaults — keep real Firestore data
+        // Filter out fake default players (uid '100000000') unless no real data exists
+        const realPlayers = data.filter(p => p.uid && p.uid !== '100000000');
+        DB.players = realPlayers.length ? realPlayers : data;
+        // Load current user's profile
         const myUid = DB.me.uid && DB.me.uid !== '100000000' ? DB.me.uid : null;
-        const me = data.find(p => p.id === myUid) || data.find(p => p.id === 'u1');
-        if(me) Object.assign(DB.me, me);
+        const me = (myUid && data.find(p => p.id === myUid || p.uid === myUid)) || data.find(p => p.id === 'u1');
+        if(me){ 
+          Object.assign(DB.me, me); 
+          DB.me.id = 'u1'; 
+          // Ensure current user is in players list as first entry
+          const existing = DB.players.find(p => p.uid === DB.me.uid);
+          if(existing) Object.assign(existing, DB.me);
+          else DB.players.unshift({...DB.me});
+        }
       } else {
         DB[c] = data;
       }
@@ -5690,36 +5701,57 @@ async function fbSyncAll(){
   _unsavedChanges = false;
   fbShowPill('syncing', 'Saving…', false);
   try {
-    const ALL = {
-      players:     DB.players     || [],
-      tournaments: DB.tournaments || [],
-      teams:       DB.teams       || [],
-      guilds:      DB.guilds      || [],
-      badges:      DB.badges      || [],
-      storeItems:  DB.storeItems  || [],
-      games:       DB.games       || [],
-    };
-
-    // Also make sure current user doc is in players list under BOTH uid and 'u1'
+    // Always sync DB.me as source of truth for current user
     if(DB.me && DB.me.uid){
-      const meClean = _stripFbMeta({...DB.me});
-      // Write under real uid
-      const uidRef = _db.collection('players').doc(DB.me.uid);
-      await uidRef.set(meClean, {merge:true});
-      // Write under 'u1' for backwards compat
-      const u1Ref = _db.collection('players').doc('u1');
-      await u1Ref.set(meClean, {merge:true});
+      const meData = _stripFbMeta({...DB.me});
+      await _db.collection('players').doc(DB.me.uid).set({...meData, id:DB.me.uid}, {merge:true});
+      await _db.collection('players').doc('u1').set({...meData, id:'u1'}, {merge:true});
+      DB.players[0] = {...DB.me};
+    }
+    const isAdmin = DB.me.role === 'admin';
+
+    // 1. Always save current user's profile (source of truth)
+    if(DB.me && DB.me.uid){
+      const meClean = _stripFbMeta({...DB.me, id: DB.me.uid});
+      await _db.collection('players').doc(DB.me.uid).set(meClean, {merge:true});
+      await _db.collection('players').doc('u1').set({...meClean, id:'u1'}, {merge:true});
     }
 
-    for(const [col, items] of Object.entries(ALL)){
-      const valid = items.filter(x => x && x.id);
-      if(!valid.length) continue;
-      for(let i = 0; i < valid.length; i += 490){
-        const batch = _db.batch();
-        valid.slice(i, i+490).forEach(item => {
-          batch.set(_db.collection(col).doc(item.id), _stripFbMeta(item), {merge:true});
-        });
-        await batch.commit();
+    // 2. Save platform data - admin saves everything, users save only their participation
+    if(isAdmin){
+      // Admin: save all collections
+      const ALL = {
+        tournaments: DB.tournaments || [],
+        teams:       DB.teams       || [],
+        guilds:      DB.guilds      || [],
+        badges:      DB.badges      || [],
+        storeItems:  DB.storeItems  || [],
+        games:       DB.games       || [],
+      };
+      for(const [col, items] of Object.entries(ALL)){
+        const valid = items.filter(x => x && x.id);
+        if(!valid.length) continue;
+        for(let i = 0; i < valid.length; i += 490){
+          const batch = _db.batch();
+          valid.slice(i, i+490).forEach(item => {
+            batch.set(_db.collection(col).doc(String(item.id)), _stripFbMeta(item), {merge:true});
+          });
+          await batch.commit();
+        }
+      }
+    } else {
+      // Regular user: only save tournaments/teams/guilds they actually joined
+      const joined = (DB.tournaments||[]).filter(t => t && t.id && (t.players||[]).includes('u1'));
+      for(const t of joined){
+        await _db.collection('tournaments').doc(String(t.id)).set(_stripFbMeta(t), {merge:true}).catch(()=>{});
+      }
+      const myTeams = (DB.teams||[]).filter(t => t && t.id && (t.memberIds||[]).includes('u1'));
+      for(const t of myTeams){
+        await _db.collection('teams').doc(String(t.id)).set(_stripFbMeta(t), {merge:true}).catch(()=>{});
+      }
+      if(DB.me.guildId){
+        const g = (DB.guilds||[]).find(x => x.id === DB.me.guildId);
+        if(g) await _db.collection('guilds').doc(String(g.id)).set(_stripFbMeta(g), {merge:true}).catch(()=>{});
       }
     }
     fbShowPill('saved','Saved ✓');
@@ -5999,12 +6031,11 @@ async function _applyGoogleUser(user){
   DB.me.email          = user.email;
   DB.me.role           = isAdmin ? 'admin' : 'player';
   DB.me.googlePhotoUrl = user.photoURL || null;
-  // Update player in DB.players - use UID as id for real users
-  const myId = user.uid && user.uid !== '100000000' ? user.uid : 'u1';
-  DB.me.id = myId;
-  const p = DB.players.find(x => x.id === myId) || DB.players.find(x => x.id === 'u1');
-  if(p){ Object.assign(p, { id:myId, name:DB.me.name, email:DB.me.email, role:DB.me.role, uid:DB.me.uid }); }
-  else { DB.players.push({...DB.me}); }
+  // Always keep id='u1' internally so all existing functions work
+  DB.me.id = 'u1';
+  const p = DB.players.find(x => x.id === 'u1');
+  if(p){ Object.assign(p, { name:DB.me.name, email:DB.me.email, role:DB.me.role, uid:DB.me.uid }); }
+  else { DB.players[0] = {...DB.me}; }
   if(_db){
     try {
       // Try uid-based doc first (new format), fallback to 'u1' (legacy)
@@ -6022,14 +6053,14 @@ async function _applyGoogleUser(user){
       if(doc && doc.exists){
         const d = doc.data();
         Object.assign(DB.me, d, {
-          id:'u1', uid:user.uid, email:user.email,
+          id: 'u1',
+          uid: user.uid,
+          email: user.email,
           role: isAdmin ? 'admin' : (d.role || 'player'),
           googlePhotoUrl: user.photoURL || d.googlePhotoUrl || null,
         });
-        // Also update players array
-        const pi = DB.players.findIndex(p => p.uid === user.uid || p.id === 'u1');
-        if(pi >= 0) Object.assign(DB.players[pi], DB.me);
-        else DB.players.push({...DB.me});
+        // Sync into players[0]
+        DB.players[0] = {...DB.me};
       } else {
         const profile = {
           id:user.uid, uid:user.uid, name:DB.me.name, email:user.email,
