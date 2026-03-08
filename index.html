@@ -2449,6 +2449,19 @@ img,video,canvas,svg{max-width:100%;}
 }
 .lp-google-btn svg{flex-shrink:0;}
 
+
+/* Avatar + corner badge wrapper in tournament player list */
+.vtm-av-wrap{position:relative;flex-shrink:0;width:38px;height:38px;}
+.vtm-av-wrap .vtm-member-av{width:38px;height:38px;border-radius:10px;object-fit:cover;display:block;}
+.vtm-av-badge{
+  position:absolute;top:-5px;right:-5px;
+  width:20px;height:20px;border-radius:50%;
+  background:var(--panel);border:1.5px solid var(--border2);
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;line-height:1;z-index:2;
+  box-shadow:0 2px 6px rgba(0,0,0,.5);
+}
+
 </style>
 
 </head>
@@ -2524,7 +2537,7 @@ img,video,canvas,svg{max-width:100%;}
     <button class="nl" data-page="store"              onclick="showPage('store')">🛒 Store</button>
     <button class="nl" data-page="wallet"             onclick="showPage('wallet')">Wallet</button>
     <button class="nl" data-page="profile"            onclick="showPage('profile')">Profile</button>
-    <button class="nl" data-page="admin"              onclick="showPage('admin')">⚙ Admin</button>
+    <button class="nl" data-page="admin" id="nav-admin-btn" style="display:none" onclick="showPage('admin')">⚙ Admin</button>
   </div></div>
   <div class="nav-right" id="nav-right">
     <button class="notif-bell" id="notif-bell" onclick="toggleNotifPanel()" title="Notifications">
@@ -2553,7 +2566,8 @@ img,video,canvas,svg{max-width:100%;}
   <button class="nl" data-page="store"       onclick="showPage('store');toggleDrawer()">🛒 Store</button>
   <button class="nl" data-page="wallet"      onclick="showPage('wallet');toggleDrawer()">💰 Wallet</button>
   <button class="nl" data-page="profile"     onclick="showPage('profile');toggleDrawer()">👤 Profile</button>
-  <button class="nl" data-page="admin"       onclick="showPage('admin');toggleDrawer()">⚙ Admin</button>
+  <button class="nl" data-page="admin" id="drawer-admin-btn" style="display:none" onclick="showPage('admin');toggleDrawer()">⚙ Admin</button>
+  
   <div class="drawer-bal">
     <span style="color:var(--dim);font-size:11px">Balance</span>
     <span style="color:var(--g1);font-family:'Outfit',sans-serif;font-weight:800">💰 <span id="drawer-bal">1200</span> AC</span>
@@ -3832,6 +3846,11 @@ function refreshAvatarBadges(){
 // -----------------------------------
 function showPage(page){
   if(page===currentPage)return;
+  // Block admin page access for non-admins
+  if(page==='admin' && DB.me.role !== 'admin'){
+    toast('⛔ Admin access only','error');
+    return;
+  }
   // close mobile drawer if open
   if(typeof drawerOpen!=='undefined'&&drawerOpen){drawerOpen=false;var d=document.getElementById('nav-drawer'),h=document.getElementById('nav-ham');if(d)d.classList.remove('open');if(h)h.classList.remove('open');}
   const c=$('curtain');c.className='in';
@@ -4193,12 +4212,14 @@ function viewT(tid){
         const wr=p.wins+p.losses>0?Math.round(p.wins/(p.wins+p.losses)*100):0;
         const av=getAvatar(p);
         return `<div class="vtm-member${isMe?' vtm-me':''}" onclick="closeModal();setTimeout(()=>viewPlayerModal('${p.id}'),260)">
-          <img src="${av}" class="vtm-member-av">
+          <div class="vtm-av-wrap">
+            <img src="${av}" class="vtm-member-av">
+            ${p.badges&&p.badges[0]?`<div class="vtm-av-badge">${badgeIcon(p.badges[0],13)}</div>`:''}
+          </div>
           <div class="vtm-member-info">
             <div class="vtm-member-name">${p.name}${isMe?'<span class="pl-you" style="margin-left:4px">YOU</span>':''}</div>
             <div class="vtm-member-stat">${p.wins}W · ${wr}%</div>
           </div>
-          ${p.badges&&p.badges[0]?`<div class="vtm-member-badge">${badgeIcon(p.badges[0],12)}</div>`:''}
         </div>`;
       };
 
@@ -4263,12 +4284,14 @@ function viewT(tid){
           const isMe=p.id==='u1';
           return `<div class="vtm-solo-row${isMe?' vtm-me':''}" onclick="closeModal();setTimeout(()=>viewPlayerModal('${p.id}'),260)">
             <span class="vtm-solo-rank">${String(i+1).padStart(2,'0')}</span>
-            <img src="${getAvatar(p)}" class="vtm-member-av">
+            <div class="vtm-av-wrap">
+              <img src="${getAvatar(p)}" class="vtm-member-av">
+              ${p.badges&&p.badges[0]?`<div class="vtm-av-badge">${badgeIcon(p.badges[0],13)}</div>`:''}
+            </div>
             <div class="vtm-member-info">
               <div class="vtm-member-name">${p.name}${isMe?'<span class="pl-you" style="margin-left:4px">YOU</span>':''}</div>
               <div class="vtm-member-stat">${p.wins}W · ${wr}%</div>
             </div>
-            ${p.badges&&p.badges[0]?`<div class="vtm-member-badge">${badgeIcon(p.badges[0],12)}</div>`:''}
           </div>`;
         }).join('')}
       </div>`;
@@ -5603,7 +5626,8 @@ function viewPlayerModal(uid){
 // -----------------------------------
 //  ADMIN
 // -----------------------------------
-function renderAdmin(){renderAdminTx();renderAdminBadges();renderAdminT();renderAdminGames();populateTournamentSelect();renderAdminPlayers();renderAdminPayment();renderAdminNotify();renderAdminSettings();renderAdminStore();}
+function renderAdmin(){
+  if(DB.me.role !== 'admin'){ showPage('dashboard'); return; }renderAdminTx();renderAdminBadges();renderAdminT();renderAdminGames();populateTournamentSelect();renderAdminPlayers();renderAdminPayment();renderAdminNotify();renderAdminSettings();renderAdminStore();}
 
 
 // -------------------------------------------------------
@@ -8880,10 +8904,14 @@ async function _applyGoogleUser(user){
     fbAutoSync(); // sync updated profile
   }
 
-  // Show admin nav only for admin
+  // Show/hide admin nav for all admin buttons (desktop + mobile drawer)
   document.querySelectorAll('[data-page="admin"]').forEach(btn => {
     btn.style.display = isAdmin ? '' : 'none';
   });
+  // Also show/hide admin page itself if currently on it
+  if(!isAdmin && currentPage === 'admin'){
+    showPage('dashboard');
+  }
 }
 
 // ── Init Firebase Auth + handle redirect result ──
@@ -8899,11 +8927,12 @@ async function initAuth(){
       '2. Open it in Chrome or Firefox<br>' +
       '3. Sign in with Google normally'
     );
-    // Add a "Preview as Player" bypass button
     const btn = document.getElementById('lp-signin-btn');
     if(btn){
       btn.innerHTML = '👤 Continue as Guest (Preview)';
       btn.onclick = function(){
+        DB.me.role = 'player';
+        document.querySelectorAll('[data-page="admin"]').forEach(b => b.style.display='none');
         hideLoginPage();
         refreshAvatarBadges();
         renderDash();
@@ -8920,44 +8949,45 @@ async function initAuth(){
     _auth = firebase.auth();
     _auth.languageCode = 'en';
 
-    // ── Handle redirect result (fires after Google redirect back) ──
-    _lpSetLoading(true, 'Completing sign-in…');
-    try {
-      const result = await _auth.getRedirectResult();
-      if(result && result.user){
-        _currentUser = result.user;
-        await _applyGoogleUser(result.user);
-        hideLoginPage();
-        refreshAvatarBadges();
-        renderDash();
-        _lpSetLoading(false);
-        return;
-      }
-    } catch(e){
-      _lpSetLoading(false);
-      _lpShowError(_authErrMsg(e));
-    }
-    _lpSetLoading(false);
+    // Show loading while we check auth state
+    _lpSetLoading(true, 'Checking sign-in…');
 
-    // ── Listen for auth state changes ──
+    // ── Single source of truth: onAuthStateChanged ──
+    // This fires automatically after redirect AND on normal page load
+    // It's the most reliable way to detect sign-in on GitHub Pages
     _auth.onAuthStateChanged(async user => {
       _currentUser = user;
       if(user){
+        // User is signed in — enter the app
+        _lpSetLoading(true, 'Welcome back…');
         await _applyGoogleUser(user);
         hideLoginPage();
         refreshAvatarBadges();
         if(typeof renderDash === 'function') renderDash();
         if(typeof renderAdminSettings === 'function') renderAdminSettings();
-      } else {
-        showLoginPage();
         _lpSetLoading(false);
+      } else {
+        // No user — also try getRedirectResult in case we're mid-redirect
+        try {
+          const result = await _auth.getRedirectResult();
+          if(result && result.user){
+            // Redirect just completed — onAuthStateChanged will fire again with user
+            _lpSetLoading(true, 'Signing in…');
+            return;
+          }
+        } catch(e){
+          _lpShowError(_authErrMsg(e));
+        }
+        // Genuinely not signed in — show login
+        _lpSetLoading(false);
+        showLoginPage();
       }
     });
 
   } catch(e){
     console.error('Auth init error:', e);
     _lpSetLoading(false);
-    hideLoginPage(); // fail open
+    hideLoginPage();
     refreshAvatarBadges();
     renderDash();
   }
