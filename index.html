@@ -573,6 +573,70 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
 #bottom-nav:has(button[data-page="admin"]:not([style*="none"])) button {
   font-size: 8px;
 }
+
+/* ── More Menu ── */
+#bn-more-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+}
+#bn-more-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(3px);
+}
+#bn-more-panel {
+  position: absolute;
+  bottom: 68px;
+  left: 12px;
+  right: 12px;
+  background: #0d1f0f;
+  border: 1px solid rgba(74,222,128,.2);
+  border-radius: 20px;
+  padding: 18px 16px 20px;
+  box-shadow: 0 -8px 40px rgba(0,0,0,.6);
+  animation: slideUpPanel .2s ease;
+}
+@keyframes slideUpPanel {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+.bnm-title {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  color: rgba(74,222,128,.5);
+  margin-bottom: 14px;
+  text-transform: uppercase;
+}
+.bnm-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.bnm-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 14px;
+  padding: 14px 8px;
+  color: rgba(255,255,255,.8);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  font-family: Outfit, sans-serif;
+}
+.bnm-btn:hover, .bnm-btn:active {
+  background: rgba(0,200,83,.12);
+  border-color: rgba(0,200,83,.3);
+  color: #4ade80;
+}
+.bnm-icon { font-size: 24px; line-height: 1; }
 </style>
 </head>
 <body>
@@ -586,15 +650,28 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
   <button onclick="showPage('leaderboard')" data-bn="leaderboard">
     <span class="bn-icon">🥇</span>Ranks
   </button>
-  <button onclick="showPage('store')" data-bn="store">
-    <span class="bn-icon">🛒</span>Store
-  </button>
   <button onclick="showPage('profile')" data-bn="profile">
     <span class="bn-icon">👤</span>Me
   </button>
-  <button onclick="showPage('admin')" data-bn="admin" data-page="admin" style="display:none">
-    <span class="bn-icon">⚙️</span>Admin
+  <button onclick="_toggleMoreMenu()" id="bn-more-btn" data-bn="more">
+    <span class="bn-icon">⋯</span>More
   </button>
+</div>
+
+<!-- More menu popup -->
+<div id="bn-more-menu" style="display:none">
+  <div id="bn-more-backdrop" onclick="_closeMoreMenu()"></div>
+  <div id="bn-more-panel">
+    <div class="bnm-title">Navigate</div>
+    <div class="bnm-grid">
+      <button class="bnm-btn" onclick="_bnGo('teams')"><span class="bnm-icon">👥</span>Teams</button>
+      <button class="bnm-btn" onclick="_bnGo('guilds')"><span class="bnm-icon">🏰</span>Guilds</button>
+      <button class="bnm-btn" onclick="_bnGo('search')"><span class="bnm-icon">🔍</span>Search</button>
+      <button class="bnm-btn" onclick="_bnGo('store')"><span class="bnm-icon">🛒</span>Store</button>
+      <button class="bnm-btn" onclick="_bnGo('wallet')"><span class="bnm-icon">💰</span>Wallet</button>
+      <button class="bnm-btn bnm-admin-btn" data-page="admin" style="display:none" onclick="_bnGo('admin')"><span class="bnm-icon">⚙️</span>Admin</button>
+    </div>
+  </div>
 </div>
 
 <div id="curtain"></div>
@@ -1961,10 +2038,17 @@ function showPage(page){
     toast('⛔ Admin access only','error');
     return;
   }
+  // Close more menu if open
+  _closeMoreMenu && _closeMoreMenu();
   // Update bottom nav active state
-  document.querySelectorAll('#bottom-nav button').forEach(b=>{
+  const bottomPages = ['dashboard','tournaments','leaderboard','profile'];
+  document.querySelectorAll('#bottom-nav button[data-bn]').forEach(b=>{
     b.classList.toggle('active', b.dataset.bn === page);
   });
+  // Highlight More button if current page is in the more menu
+  const morePages = ['teams','guilds','search','store','wallet','admin'];
+  const moreBtn = document.getElementById('bn-more-btn');
+  if(moreBtn) moreBtn.classList.toggle('active', morePages.includes(page));
   if(typeof drawerOpen!=='undefined'&&drawerOpen){drawerOpen=false;var d=document.getElementById('nav-drawer'),h=document.getElementById('nav-ham');if(d)d.classList.remove('open');if(h)h.classList.remove('open');}
   const c=$('curtain');c.className='in';
   setTimeout(()=>{
@@ -6741,6 +6825,25 @@ function initAuth(){ /* handled by fbCheckOnLoad */ }
 function _applyGoogleUser(){ /* handled by _enterRestApp */ }
 async function _ensureAuth(){ return true; }
 async function _enterApp(){ /* handled by _enterRestApp */ }
+
+function _toggleMoreMenu(){
+  const m = document.getElementById('bn-more-menu');
+  const btn = document.getElementById('bn-more-btn');
+  if(!m) return;
+  const open = m.style.display !== 'none';
+  m.style.display = open ? 'none' : 'block';
+  btn.classList.toggle('active', !open);
+}
+function _closeMoreMenu(){
+  const m = document.getElementById('bn-more-menu');
+  if(m) m.style.display = 'none';
+  const btn = document.getElementById('bn-more-btn');
+  if(btn) btn.classList.remove('active');
+}
+function _bnGo(page){
+  _closeMoreMenu();
+  showPage(page);
+}
 </script>
 
 <!-- ═══════════════════════════ STORE PAGE ═══════════════════════════ -->
