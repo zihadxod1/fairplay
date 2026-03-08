@@ -5417,7 +5417,12 @@ async function _fsSet(collection, docId, data){
   });
   if(!res.ok){
     const err = await res.json().catch(()=>({error:{message:res.statusText}}));
-    throw new Error(err.error?.message || res.statusText);
+    const msg = err.error?.message || res.statusText;
+    if(msg.includes('PERMISSION_DENIED') && !window._rulesShown){
+      window._rulesShown = true;
+      setTimeout(_showFirestoreRulesModal, 300);
+    }
+    throw new Error(msg);
   }
   return true;
 }
@@ -5433,7 +5438,16 @@ async function _fsGet(collection, docId){
 // ── List all docs in a collection ──
 async function _fsList(collection){
   const res = await fetch(`${FS_BASE}/${collection}?pageSize=300`, {headers: _authHeaders()});
-  if(!res.ok) throw new Error(`LIST ${collection}: ${res.statusText}`);
+  if(res.status === 401 || res.status === 403){
+    const body = await res.json().catch(()=>({}));
+    const msg = body.error?.message || res.statusText;
+    if(msg.includes('PERMISSION_DENIED') && !window._rulesShown){
+      window._rulesShown = true;
+      setTimeout(_showFirestoreRulesModal, 500);
+    }
+    return [];
+  }
+  if(!res.ok) return [];
   const data = await res.json();
   return (data.documents || []).map(_fromFsDoc).filter(Boolean);
 }
@@ -5466,7 +5480,15 @@ async function fbSignUp(email, password, displayName){
     body: JSON.stringify({email, password, returnSecureToken:true})
   });
   const data = await res.json();
-  if(data.error) throw {code:'auth/'+data.error.message.toLowerCase().replace(/[^a-z-]/g,'-'), message:data.error.message};
+  if(data.error){
+    const msg = data.error.message || '';
+    let code = 'auth/error';
+    if(msg.includes('EMAIL_EXISTS')) code = 'auth/email-already-in-use';
+    else if(msg.includes('INVALID_EMAIL')) code = 'auth/invalid-email';
+    else if(msg.includes('WEAK_PASSWORD')) code = 'auth/weak-password';
+    else if(msg.includes('TOO_MANY_ATTEMPTS')) code = 'auth/too-many-requests';
+    throw {code, message: msg};
+  }
   _fbToken = data.idToken;
   _fbUid   = data.localId;
   // Update display name
@@ -5490,7 +5512,15 @@ async function fbSignIn(email, password){
     body: JSON.stringify({email, password, returnSecureToken:true})
   });
   const data = await res.json();
-  if(data.error) throw {code:'auth/'+data.error.message.toLowerCase().replace(/[^a-z-]/g,'-'), message:data.error.message};
+  if(data.error){
+    const msg = data.error.message || '';
+    let code = 'auth/error';
+    if(msg.includes('EMAIL_NOT_FOUND') || msg.includes('USER_NOT_FOUND')) code = 'auth/user-not-found';
+    else if(msg.includes('INVALID_PASSWORD') || msg.includes('INVALID_LOGIN_CREDENTIALS')) code = 'auth/wrong-password';
+    else if(msg.includes('TOO_MANY_ATTEMPTS')) code = 'auth/too-many-requests';
+    else if(msg.includes('INVALID_EMAIL')) code = 'auth/invalid-email';
+    throw {code, message: msg};
+  }
   _fbToken = data.idToken;
   _fbUid   = data.localId;
   localStorage.setItem('fb_token', data.idToken);
@@ -5757,6 +5787,7 @@ async function fbCheckOnLoad(){
     }
   }
   // No saved session — show login
+  _lpSetLoading(false);
   showLoginPage();
   lpSwitch('signup');
 }
@@ -5791,11 +5822,14 @@ function hideLoginPage(){
   if(activePage) activePage.style.display = 'block';
 }
 function _lpSetLoading(yes, msg){
+  ['lp-signin-btn','lp-signup-btn'].forEach(id=>{
+    const b = document.getElementById(id);
+    if(b) b.disabled = !!yes;
+  });
   const btn = document.getElementById('lp-signin-btn');
   const statusEl = document.getElementById('lp-status');
   const statusTxt = document.getElementById('lp-status-text');
   if(yes){
-    if(btn){ btn.disabled = true; }
     if(statusEl) statusEl.style.display = 'flex';
     if(statusTxt) statusTxt.textContent = msg || 'Signing in…';
   } else {
