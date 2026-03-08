@@ -1324,8 +1324,7 @@ const modeTag=m=>{const map={solo:'mode-solo',duo:'mode-duo',squad:'mode-squad',
 function toast(msg,type='info'){
   // Auto-save on ANY toast that means data changed (not errors)
   if(type !== 'error'){
-    if(typeof lsSave === 'function') lsSave(); // localStorage always
-    if((type==='success' || type==='gold') && typeof fbAutoSync === 'function') fbAutoSync();
+    if(typeof fbAutoSync === 'function') fbAutoSync(); // cloud + localStorage on every change
   }
   const icons={success:'✓',error:'✕',info:'●',gold:'★'};
   const t=document.createElement('div');t.className=`toast ${type}`;
@@ -5397,41 +5396,72 @@ function fbDisconnect(){
 }
 async function fbInit(cfg){
   try {
-    if(_fbApp) return;
-    _fbApp = firebase.initializeApp(cfg);
-    const firestoreSettings = {
-      cacheSizeBytes: firebase.firestore.CACHE_SIZE_UNLIMITED,
-      experimentalForceLongPolling: true,
-      useFetchStreams: false,
-    };
+    // Step 1: Load SDK if not loaded yet
+    await _loadFirebaseSDK();
+
+    // Step 2: Init app (guard against double-init)
+    if(!_fbApp){
+      _fbApp = firebase.initializeApp(cfg);
+    }
+
+    // Step 3: Init Firestore
     _db = firebase.firestore();
-    try { _db.settings(firestoreSettings); } catch(e){}
-    await _db.enablePersistence({ synchronizeTabs: true }).catch(e => {
-      // both are non-fatal — offline cache just won't work
-    });
-    _fbConnected = true;
-    fbShowPill('saved','Firebase connected ✓');
-    toast('🔥 Firebase connected!','success');
-    await fbLoadAll();
-    fbStartListeners();
-    _lpSetLoading(true, 'Loading…');
+    try {
+      _db.settings({
+        experimentalForceLongPolling: true,
+        useFetchStreams: false,
+        merge: true,
+      });
+    } catch(e){}
+
+    // Step 4: Enable offline persistence (non-fatal if fails)
+    try {
+      await _db.enablePersistence({ synchronizeTabs: true });
+    } catch(e){
+      // failed-precondition = multiple tabs, unimplemented = unsupported — both OK
+    }
+
+    // Step 5: Test write access before marking connected
+    _fbConnected = false;
+    fbShowPill('syncing', 'Testing connection…', false);
+    try {
+      await _db.collection('_test').doc('ping').set({ t: Date.now() });
+      await _db.collection('_test').doc('ping').delete();
+      _fbConnected = true;
+      fbShowPill('saved', 'Firebase connected ✓');
+    } catch(testErr){
+      const isRules = (testErr.code||'').includes('permission') || (testErr.message||'').includes('permission');
+      if(isRules){
+        fbShowPill('error', 'Rules not set');
+        _showFirestoreRulesModal();
+      } else {
+        _fbConnected = true; // Network issue — still try
+        fbShowPill('saved', 'Firebase connected ✓');
+      }
+    }
+
+    // Step 6: Init Auth first so user is known before loading data
     await initAuth();
     renderAdminSettings();
+
+    // Step 7: Load all collections and start listeners
+    await fbLoadAll();
+    fbStartListeners();
+
   } catch(e) {
-    console.error('Firebase init failed:', e);
-    _fbConnected = false;
-    // 'unavailable' = Firestore offline but Firebase App + Auth still work fine
-    if(e.code === 'unavailable' || (e.message||'').includes('network') || (e.message||'').includes('could not reach')){
-      _fbConnected = true;
-      fbShowPill('saved', 'Offline cache mode');
+    console.error('Firebase init error:', e.code, e.message);
+    const offline = (e.code||'').includes('unavailable') ||
+                    (e.message||'').includes('network') ||
+                    (e.message||'').includes('offline');
+    if(offline){
+      _fbConnected = true; // Auth still works offline
     } else {
-      toast('Firebase: ' + (e.message||e), 'error');
+      _fbConnected = false;
       fbShowPill('error', 'Firebase error');
+      console.error('Firebase error details:', e);
     }
-    try {
-      _lpSetLoading(true, 'Signing in…');
-      await initAuth();
-    } catch(ae){ console.error('Auth error:', ae); hideLoginPage(); renderDash(); }
+    // Always init auth regardless of Firestore errors
+    try { await initAuth(); } catch(ae){}
     renderAdminSettings();
   }
 }
@@ -5646,8 +5676,10 @@ function lsClear(){
 
 // ── Combined auto-save: localStorage always + Firestore if connected ──
 function fbAutoSync(){
-  lsSave(); // Always save to localStorage immediately
-  if(!_fbConnected) return; // Firestore optional
+  lsSave(); // Backup to localStorage immediately
+  if(!_db) return; // Firebase never loaded at all — skip
+  // Always attempt cloud sync (even after previous errors)
+  _fbConnected = true; // Re-enable in case it was disabled by error
   _unsavedChanges = true;
   fbShowPill('syncing','Saving…', false);
   clearTimeout(_syncTimer);
