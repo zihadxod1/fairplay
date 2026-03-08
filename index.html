@@ -3253,28 +3253,31 @@ const _CHAR_NAMES = ['Swordsman','Mage','Ninja','Archer','Tank','Scout','Brawler
 const _PAL_NAMES  = ['🟢 Green','🟣 Purple','🟠 Orange','🔵 Blue','🟡 Yellow','🔴 Red','🩵 Teal','💜 Violet'];
 let _avPickerShape = 0, _avPickerPal = 0;
 function showAvatarPicker(targetPid){
+  // For self, always use 'u1' as the canonical id
   const pid = targetPid || null;
   const me = pid ? DB.players.find(x=>x.id===pid) : DB.me;
   if(!me) return;
+  // Ensure me.id is 'u1' for current user so pickSvg/pickEmoji find correct player
+  const effectivePid = (!pid || pid==='u1' || pid===_fbUid) ? 'u1' : pid;
   const isEmoji=typeof me._emojiIdx==='number';
   const isSvg=typeof me._svgIdx==='number';
   const isCustom=!!me.avatarCustom;
   const NAMES=['Swordsman','Mage','Ninja','Archer','Tank','Scout','Brawler','Commander'];
   const svgOpts=Array.from({length:8},(_,i)=>{
     const sel=!isEmoji&&isSvg&&me._svgIdx===i;
-    return`<div class="av-opt${sel?' selected':''}" onclick="pickSvg(${i},'${me.id}')" title="${NAMES[i]}">
+    return`<div class="av-opt${sel?' selected':''}" onclick="pickSvg(${i},'${effectivePid}')" title="${NAMES[i]}">
       <img src="${makeSvgAvatar(i)}" alt="${NAMES[i]}">
       <div class="av-check">✓</div>
     </div>`;
   }).join('');
   const emojiOpts=EMOJI_AVATARS.map((ea,i)=>{
     const sel=isEmoji&&me._emojiIdx===i;
-    return`<div class="av-opt${sel?' selected':''}" onclick="pickEmoji(${i},'${me.id}')" title="${ea.n}">
+    return`<div class="av-opt${sel?' selected':''}" onclick="pickEmoji(${i},'${effectivePid}')" title="${ea.n}">
       <div class="av-emoji-cell" style="background:#${ea.bg}">${ea.e}</div>
       <div class="av-check">✓</div>
     </div>`;
   }).join('');
-  const adminBadge = pid ? `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.22);border-radius:5px;padding:6px 10px;margin-bottom:12px;font-size:11px;color:var(--gold)">⚙️ Editing <strong>${me.name}</strong>'s avatar</div>` : '';
+  const adminBadge = (pid && pid!=='u1' && pid!==_fbUid) ? `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.22);border-radius:5px;padding:6px 10px;margin-bottom:12px;font-size:11px;color:var(--gold)">⚙️ Editing <strong>${me.name}</strong>'s avatar</div>` : '';
   openModal(`<div class="mbox" style="max-width:480px">
     <button class="mclose" onclick="closeModal()">✕</button>
     <div class="mtitle">🖼️ ${pid?'Edit Player Avatar':'Choose Avatar'}</div>
@@ -3288,16 +3291,16 @@ function showAvatarPicker(targetPid){
 
     <div class="av-section-lbl">// Custom Photo</div>
     <div class="av-upload-zone">
-      <input type="file" id="av-file" accept="image/*" onchange="pickCustom(this,'${me.id}')">
+      <input type="file" id="av-file" accept="image/*" onchange="pickCustom(this,'${effectivePid}')">
       <div style="font-size:22px;margin-bottom:5px">${isCustom?'🖼️':'📷'}</div>
       <div style="font-size:12px;font-weight:600;color:var(--dim)">${isCustom?'Custom active — tap to replace':'Tap to upload · PNG · JPG · max 3MB'}</div>
       ${isCustom?`<img src="${me.avatarCustom}" style="width:48px;height:48px;border-radius:8px;border:2px solid var(--g1);object-fit:cover;display:block;margin:8px auto 0">`:''}
     </div>
 
     ${isCustom||isEmoji||isSvg?`<div style="display:flex;gap:7px;margin-top:8px">
-      ${isCustom?`<button class="btn btn-d sm" style="flex:1" onclick="clearCustomAvatar('${me.id}')">✕ Remove Photo</button>`:''}
-      ${isEmoji?`<button class="btn btn-d sm" style="flex:1" onclick="clearEmojiAvatar('${me.id}')">✕ Remove Emoji</button>`:''}
-      ${isSvg?`<button class="btn btn-d sm" style="flex:1" onclick="clearSvgAvatar('${me.id}')">✕ Reset to Default</button>`:''}
+      ${isCustom?`<button class="btn btn-d sm" style="flex:1" onclick="clearCustomAvatar('${effectivePid}')">✕ Remove Photo</button>`:''}
+      ${isEmoji?`<button class="btn btn-d sm" style="flex:1" onclick="clearEmojiAvatar('${effectivePid}')">✕ Remove Emoji</button>`:''}
+      ${isSvg?`<button class="btn btn-d sm" style="flex:1" onclick="clearSvgAvatar('${effectivePid}')">✕ Reset to Default</button>`:''}
     </div>`:''}
 
     <button class="btn btn-g" style="width:100%;margin-top:10px" onclick="closeModal()">Done</button>
@@ -3339,8 +3342,8 @@ function _refreshLogoPanel(){
 function pickSvg(i, pid){
   pid=pid||'u1';
   _applyAvatarToPlayer(pid,{_svgIdx:i,_emojiIdx:undefined,avatarCustom:null});
-  closeModal();toast('Avatar updated!','success');
-  if(pid==='u1') renderProfile(); else toast('Updated '+DB.players.find(x=>x.id===pid)?.name,'success');
+  closeModal();fbAutoSync();toast('Avatar updated!','success');
+  if(pid==='u1') renderProfile();
 }
 function pickEmoji(i, pid){
   pid=pid||'u1';
@@ -3362,13 +3365,13 @@ function pickCustom(input, pid){
 function clearCustomAvatar(pid){
   pid=pid||'u1';
   _applyAvatarToPlayer(pid,{avatarCustom:null});
-  closeModal();toast('Custom photo removed','info');
+  closeModal();fbAutoSync();toast('Custom photo removed','info');
   if(pid==='u1') renderProfile(); else showAvatarPicker(pid);
 }
 function clearEmojiAvatar(pid){
   pid=pid||'u1';
   _applyAvatarToPlayer(pid,{_emojiIdx:undefined});
-  closeModal();toast('Emoji removed','info');
+  closeModal();fbAutoSync();toast('Emoji removed','info');
   if(pid==='u1') renderProfile(); else showAvatarPicker(pid);
 }
 function clearSvgAvatar(pid){
