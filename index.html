@@ -31,7 +31,6 @@
 .lp-forgot:hover{color:#4ade80}
 
 </style>
-
 </head>
 <body>
 <div id="curtain"></div>
@@ -5351,462 +5350,318 @@ function adminResetNameCooldown(pid){
     _ce(...args);
   };
 })();
-const FB_CFG_KEY = 'fp_firebase_config';
-let _db = null, _fbApp = null;
+let _db = null;
+let _fbApp = null;
+// ═══════════════════════════════════════════════════════
+// FIREBASE REST API — No SDK, no CDN, just fetch()
+// ═══════════════════════════════════════════════════════
+const FB_PROJECT = 'ff-booyah-eb33c';
+const FB_API_KEY = 'AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw';
+const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
+const AUTH_BASE = `https://identitytoolkit.googleapis.com/v1/accounts`;
+
+let _fbToken = null;      // Firebase ID token for authenticated requests
+let _fbUid   = null;      // Current user UID
 let _fbConnected = false;
-let _syncTimer = null;
+let _syncTimer   = null;
 let _unsavedChanges = false;
+const FB_CFG_KEY = 'fb_cfg_v2';
+
+// ── Convert JS value → Firestore REST field value ──
+function _toFsValue(v){
+  if(v === null || v === undefined) return {nullValue: null};
+  if(typeof v === 'boolean') return {booleanValue: v};
+  if(typeof v === 'number')  return Number.isInteger(v) ? {integerValue: String(v)} : {doubleValue: v};
+  if(typeof v === 'string')  return {stringValue: v};
+  if(Array.isArray(v))       return {arrayValue: {values: v.map(_toFsValue)}};
+  if(typeof v === 'object')  return {mapValue: {fields: Object.fromEntries(Object.entries(v).map(([k,val])=>[k,_toFsValue(val)]))}};
+  return {stringValue: String(v)};
+}
+
+// ── Convert Firestore REST document → plain JS object ──
+function _fromFsDoc(doc){
+  if(!doc || !doc.fields) return null;
+  function parseVal(v){
+    if('nullValue'    in v) return null;
+    if('booleanValue' in v) return v.booleanValue;
+    if('integerValue' in v) return parseInt(v.integerValue);
+    if('doubleValue'  in v) return v.doubleValue;
+    if('stringValue'  in v) return v.stringValue;
+    if('arrayValue'   in v) return (v.arrayValue.values || []).map(parseVal);
+    if('mapValue'     in v) return Object.fromEntries(Object.entries(v.mapValue.fields||{}).map(([k,val])=>[k,parseVal(val)]));
+    return null;
+  }
+  const obj = Object.fromEntries(Object.entries(doc.fields).map(([k,v])=>[k,parseVal(v)]));
+  // Extract doc ID from name field
+  if(doc.name) obj._docId = doc.name.split('/').pop();
+  return obj;
+}
+
+// ── Auth headers ──
+function _authHeaders(){
+  const h = {'Content-Type':'application/json'};
+  if(_fbToken) h['Authorization'] = `Bearer ${_fbToken}`;
+  return h;
+}
+
+// ── Write a document ──
+async function _fsSet(collection, docId, data){
+  const url = `${FS_BASE}/${collection}/${docId}?updateMask.fieldPaths=${Object.keys(data).join('&updateMask.fieldPaths=')}`;
+  // Use PATCH with document fields
+  const fields = {};
+  Object.entries(data).forEach(([k,v]) => { fields[k] = _toFsValue(v); });
+  const res = await fetch(`${FS_BASE}/${collection}/${docId}`, {
+    method: 'PATCH',
+    headers: _authHeaders(),
+    body: JSON.stringify({fields})
+  });
+  if(!res.ok){
+    const err = await res.json().catch(()=>({error:{message:res.statusText}}));
+    throw new Error(err.error?.message || res.statusText);
+  }
+  return true;
+}
+
+// ── Read a document ──
+async function _fsGet(collection, docId){
+  const res = await fetch(`${FS_BASE}/${collection}/${docId}`, {headers: _authHeaders()});
+  if(res.status === 404) return null;
+  if(!res.ok) throw new Error(`GET ${collection}/${docId}: ${res.statusText}`);
+  return _fromFsDoc(await res.json());
+}
+
+// ── List all docs in a collection ──
+async function _fsList(collection){
+  const res = await fetch(`${FS_BASE}/${collection}?pageSize=300`, {headers: _authHeaders()});
+  if(!res.ok) throw new Error(`LIST ${collection}: ${res.statusText}`);
+  const data = await res.json();
+  return (data.documents || []).map(_fromFsDoc).filter(Boolean);
+}
+
+// ── Batch write (up to 500 docs) ──
+async function _fsBatch(writes){
+  // writes: [{collection, id, data}]
+  const batchUrl = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents:batchWrite`;
+  const CHUNK = 490;
+  for(let i = 0; i < writes.length; i += CHUNK){
+    const chunk = writes.slice(i, i+CHUNK);
+    const body = {writes: chunk.map(w => ({
+      update: {
+        name: `projects/${FB_PROJECT}/databases/(default)/documents/${w.collection}/${w.id}`,
+        fields: Object.fromEntries(Object.entries(w.data).map(([k,v])=>[k,_toFsValue(v)]))
+      }
+    }))};
+    const res = await fetch(batchUrl, {method:'POST', headers:_authHeaders(), body:JSON.stringify(body)});
+    if(!res.ok){
+      const err = await res.json().catch(()=>({error:{message:res.statusText}}));
+      throw new Error(err.error?.message || res.statusText);
+    }
+  }
+}
+
+// ── Firebase Auth REST ──
+async function fbSignUp(email, password, displayName){
+  const res = await fetch(`${AUTH_BASE}:signUp?key=${FB_API_KEY}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email, password, returnSecureToken:true})
+  });
+  const data = await res.json();
+  if(data.error) throw {code:'auth/'+data.error.message.toLowerCase().replace(/[^a-z-]/g,'-'), message:data.error.message};
+  _fbToken = data.idToken;
+  _fbUid   = data.localId;
+  // Update display name
+  if(displayName){
+    await fetch(`${AUTH_BASE}:update?key=${FB_API_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({idToken:_fbToken, displayName, returnSecureToken:false})
+    }).catch(()=>{});
+  }
+  localStorage.setItem('fb_token', data.idToken);
+  localStorage.setItem('fb_uid', data.localId);
+  localStorage.setItem('fb_refresh', data.refreshToken);
+  localStorage.setItem('fb_email', email);
+  localStorage.setItem('fb_name', displayName||'');
+  return {uid:data.localId, email, displayName: displayName||email.split('@')[0], idToken:data.idToken};
+}
+
+async function fbSignIn(email, password){
+  const res = await fetch(`${AUTH_BASE}:signInWithPassword?key=${FB_API_KEY}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({email, password, returnSecureToken:true})
+  });
+  const data = await res.json();
+  if(data.error) throw {code:'auth/'+data.error.message.toLowerCase().replace(/[^a-z-]/g,'-'), message:data.error.message};
+  _fbToken = data.idToken;
+  _fbUid   = data.localId;
+  localStorage.setItem('fb_token', data.idToken);
+  localStorage.setItem('fb_uid', data.localId);
+  localStorage.setItem('fb_refresh', data.refreshToken);
+  localStorage.setItem('fb_email', email);
+  localStorage.setItem('fb_name', data.displayName||'');
+  return {uid:data.localId, email, displayName:data.displayName||email.split('@')[0], idToken:data.idToken};
+}
+
+async function fbRefreshToken(){
+  const refresh = localStorage.getItem('fb_refresh');
+  if(!refresh) return false;
+  try {
+    const res = await fetch(`https://securetoken.googleapis.com/v1/token?key=${FB_API_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:`grant_type=refresh_token&refresh_token=${refresh}`
+    });
+    const data = await res.json();
+    if(data.id_token){
+      _fbToken = data.id_token;
+      _fbUid   = data.user_id;
+      localStorage.setItem('fb_token', data.id_token);
+      localStorage.setItem('fb_uid', data.user_id);
+      localStorage.setItem('fb_refresh', data.refresh_token);
+      return true;
+    }
+  } catch(e){}
+  return false;
+}
+
+async function fbSendPasswordReset(email){
+  const res = await fetch(`${AUTH_BASE}:sendOobCode?key=${FB_API_KEY}`, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({requestType:'PASSWORD_RESET', email})
+  });
+  const data = await res.json();
+  if(data.error) throw {code:'auth/error', message:data.error.message};
+}
+
+function fbSignOut(){
+  _fbToken = null; _fbUid = null;
+  ['fb_token','fb_uid','fb_refresh','fb_email','fb_name'].forEach(k=>localStorage.removeItem(k));
+}
+
+// ── fbShowPill ──
 function fbShowPill(state, label, autohide=true){
   const pill = document.getElementById('fb-sync-pill');
-  const dot  = pill?.querySelector('.fb-dot');
-  const lbl  = document.getElementById('fb-sync-label');
   if(!pill) return;
-  pill.className = 'show ' + state;
-  if(dot) dot.className = 'fb-dot' + (state==='syncing'?' pulse':'');
-  if(lbl) lbl.textContent = label;
-  if(autohide && state!=='syncing') setTimeout(()=>{ pill.classList.remove('show'); }, 3000);
-}
-async function fbConnect(){
-  try{ await _loadFirebaseSDK(); }catch(e){ toast('Firebase SDK failed to load — check internet connection','error'); return; }
-  const cfg = {
-    apiKey:      document.getElementById('fb-apiKey')?.value.trim(),
-    authDomain:  document.getElementById('fb-authDomain')?.value.trim(),
-    projectId:   document.getElementById('fb-projectId')?.value.trim(),
-    appId:       document.getElementById('fb-appId')?.value.trim(),
-  };
-  if(!cfg.apiKey || !cfg.projectId){
-    toast('Enter API Key and Project ID at minimum','error'); return;
-  }
-  cfg.storageBucket = cfg.projectId + '.appspot.com';
-  cfg.messagingSenderId = '';
-  localStorage.setItem(FB_CFG_KEY, JSON.stringify(cfg));
-  document.getElementById('fb-setup-overlay').style.display='none';
-  fbInit(cfg);
-}
-function fbSkip(){
-  localStorage.setItem(FB_CFG_KEY, 'skip');
-  document.getElementById('fb-setup-overlay').style.display='none';
-  toast('Running in local-only mode','info');
-}
-function fbDisconnect(){
-  localStorage.removeItem(FB_CFG_KEY);
-  _fbConnected = false;
-  _db = null;
-  toast('Firebase disconnected. Reload to reconnect.','info');
-  renderAdminSettings();
-}
-async function fbInit(cfg){
-  try {
-    // Step 1: Load SDK if not loaded yet
-    await _loadFirebaseSDK();
-
-    // Step 2: Init app (guard against double-init)
-    if(!_fbApp){
-      _fbApp = firebase.initializeApp(cfg);
-    }
-
-    // Step 3: Init Firestore
-    _db = firebase.firestore();
-    try {
-      _db.settings({
-        experimentalForceLongPolling: true,
-        useFetchStreams: false,
-        merge: true,
-      });
-    } catch(e){}
-
-    // Step 4: Enable offline persistence (non-fatal if fails)
-    try {
-      await _db.enablePersistence({ synchronizeTabs: true });
-    } catch(e){
-      // failed-precondition = multiple tabs, unimplemented = unsupported — both OK
-    }
-
-    // Step 5: Test write access before marking connected
-    _fbConnected = false;
-    fbShowPill('syncing', 'Testing connection…', false);
-    try {
-      await _db.collection('_test').doc('ping').set({ t: Date.now() });
-      await _db.collection('_test').doc('ping').delete();
-      _fbConnected = true;
-      fbShowPill('saved', 'Firebase connected ✓');
-    } catch(testErr){
-      const isRules = (testErr.code||'').includes('permission') || (testErr.message||'').includes('permission');
-      if(isRules){
-        fbShowPill('error', 'Rules not set');
-        _showFirestoreRulesModal();
-      } else {
-        _fbConnected = true; // Network issue — still try
-        fbShowPill('saved', 'Firebase connected ✓');
-      }
-    }
-
-    // Step 6: Init Auth first so user is known before loading data
-    await initAuth();
-    renderAdminSettings();
-
-    // Step 7: Load all collections and start listeners
-    await fbLoadAll();
-    fbStartListeners();
-
-  } catch(e) {
-    console.error('Firebase init error:', e.code, e.message);
-    const offline = (e.code||'').includes('unavailable') ||
-                    (e.message||'').includes('network') ||
-                    (e.message||'').includes('offline');
-    if(offline){
-      _fbConnected = true; // Auth still works offline
-    } else {
-      _fbConnected = false;
-      fbShowPill('error', 'Firebase error');
-      console.error('Firebase error details:', e);
-    }
-    // Always init auth regardless of Firestore errors
-    try { await initAuth(); } catch(ae){}
-    renderAdminSettings();
-  }
-}
-async function fbLoadAll(){
-  if(!_db) return;
-  fbShowPill('syncing','Loading database…', false);
-  try {
-    const COLLS = ['players','tournaments','teams','guilds','badges','storeItems','games'];
-    const metaDoc = await _db.collection('_meta').doc('init').get().catch(()=>null);
-    const isFirstRun = !metaDoc || !metaDoc.exists;
-    if(isFirstRun){
-      await fbSeedAll();
-      return;
-    }
-    const results = await Promise.allSettled(COLLS.map(c => _db.collection(c).get()));
-    let anyLoaded = false;
-    for(let i = 0; i < COLLS.length; i++){
-      const c = COLLS[i];
-      if(results[i].status !== 'fulfilled'){ console.warn('Could not load collection:', c); continue; }
-      const docs = results[i].value.docs;
-      if(docs.length === 0){
-        await fbSeedCollection(c);
-        continue;
-      }
-      const data = docs.map(d => ({...d.data(), _fbId: d.id}));
-      if(c === 'players'){
-        // Don't overwrite player list with hardcoded defaults — keep real Firestore data
-        // Filter out fake default players (uid '100000000') unless no real data exists
-        const realPlayers = data.filter(p => p.uid && p.uid !== '100000000');
-        DB.players = realPlayers.length ? realPlayers : data;
-        // Load current user's profile
-        const myUid = DB.me.uid && DB.me.uid !== '100000000' ? DB.me.uid : null;
-        const me = (myUid && data.find(p => p.id === myUid || p.uid === myUid)) || data.find(p => p.id === 'u1');
-        if(me){ 
-          Object.assign(DB.me, me); 
-          DB.me.id = 'u1'; 
-          // Ensure current user is in players list as first entry
-          const existing = DB.players.find(p => p.uid === DB.me.uid);
-          if(existing) Object.assign(existing, DB.me);
-          else DB.players.unshift({...DB.me});
-        }
-      } else {
-        DB[c] = data;
-      }
-      anyLoaded = true;
-    }
-    fbShowPill('saved', anyLoaded ? 'Data loaded ✓' : 'Database ready ✓');
-    _reRenderPage();
-  } catch(e){
-    console.error('Firebase load error:', e);
-    fbShowPill('error', 'Load error');
-  }
-}
-function _reRenderPage(){
-  const R = {
-    dashboard:renderDash, tournaments:renderT, teams:renderTeams,
-    guilds:renderGuilds, leaderboard:renderLB, store:renderStore,
-    wallet:renderWallet, profile:renderProfile, admin:renderAdmin,
-  };
-  if(typeof R[currentPage] === 'function') R[currentPage]();
-  if(typeof refreshAvatarBadges === 'function') refreshAvatarBadges();
-}
-async function fbSeedAll(){
-  if(!_db) return;
-  fbShowPill('syncing','Creating database…', false);
-  toast('🔥 Setting up your database…','info');
-  const SEED_DATA = {
-    players:     DB.players     || [],
-    tournaments: DB.tournaments || [],
-    teams:       DB.teams       || [],
-    guilds:      DB.guilds      || [],
-    badges:      DB.badges      || [],
-    storeItems:  DB.storeItems  || [],
-    games:       DB.games       || [],
-  };
-  for(const [col, items] of Object.entries(SEED_DATA)){
-    await fbSeedCollection(col, items);
-  }
-  await _db.collection('_meta').doc('init').set({
-    createdAt:   new Date().toISOString(),
-    version:     1,
-    seededBy:    DB.me.email || 'unknown',
-    collections: Object.keys(SEED_DATA),
-  });
-  fbShowPill('saved','Database created ✓');
-  toast('✅ Database created with all default data!','success');
-  _reRenderPage();
-}
-async function fbSeedCollection(col, items){
-  if(!_db) return;
-  const data = items !== undefined ? items : (DB[col] || []);
-  if(!data.length) return;
-  const CHUNK = 490;
-  for(let i = 0; i < data.length; i += CHUNK){
-    const batch = _db.batch();
-    data.slice(i, i+CHUNK).forEach(item => {
-      if(!item) return;
-      const docId = item.id || ('doc_' + Date.now() + '_' + Math.random().toString(36).slice(2));
-      batch.set(_db.collection(col).doc(docId), _stripFbMeta(item), {merge:true});
-    });
-    await batch.commit();
-  }
-}
-function _stripFbMeta(obj){
-  if(!obj || typeof obj !== 'object') return obj;
-  const out = {...obj};
-  delete out._fbId;
-  for(const k of Object.keys(out)){
-    if(Array.isArray(out[k])){
-      out[k] = out[k].map(i => typeof i === 'object' && i !== null ? _stripFbMeta(i) : i);
-    } else if(out[k] && typeof out[k] === 'object'){
-      out[k] = _stripFbMeta(out[k]);
-    }
-  }
-  return out;
-}
-function fbStartListeners(){
-  if(!_db) return;
-  function _snap(col, onUpdate){
-    try {
-      return _db.collection(col).onSnapshot(snap => {
-        snap.docChanges().forEach(ch => {
-          const d = {...ch.doc.data(), _fbId: ch.doc.id};
-          if(ch.type === 'added' || ch.type === 'modified'){
-            const arr = DB[col];
-            if(!Array.isArray(arr)){ DB[col] = [d]; return; }
-            const i = arr.findIndex(x => x.id === d.id);
-            if(i >= 0) arr[i] = d; else arr.push(d);
-          } else if(ch.type === 'removed'){
-            if(Array.isArray(DB[col])) DB[col] = DB[col].filter(x => x.id !== ch.doc.data().id);
-          }
-        });
-        if(typeof onUpdate === 'function') onUpdate();
-      }, e => {  });
-    } catch(e){  }
-  }
-  _snap('tournaments', ()=>{
-    if(currentPage==='tournaments') renderT();
-    if(currentPage==='admin') renderAdminT();
-  });
-  _snap('teams', ()=>{ if(currentPage==='teams') renderTeams(); });
-  _snap('guilds', ()=>{ if(currentPage==='guilds') renderGuilds(); });
-  _snap('storeItems', ()=>{ if(currentPage==='store') renderStore(); });
-  _snap('badges', ()=>{
-    if(currentPage==='profile') renderProfile();
-    if(currentPage==='admin') renderAdmin();
-  });
-  // Listen to current user's own player doc
-  const uid = DB.me.uid;
-  const docId = (uid && uid !== '100000000') ? uid : 'u1';
-  try {
-    _db.collection('players').doc(docId).onSnapshot(snap => {
-      if(snap.exists){
-        const d = snap.data();
-        Object.assign(DB.me, d);
-        const i = DB.players.findIndex(p => p.id === 'u1');
-        if(i >= 0) DB.players[i] = {...DB.players[i], ...d};
-        refreshAvatarBadges();
-        if(currentPage==='profile') renderProfile();
-        if(currentPage==='dashboard') renderDash();
-      }
-    }, ()=>{});
-  } catch(e){}
-}
-async function fbSet(collection, id, data){
-  if(!_db) return;
-  try {
-    await _db.collection(collection).doc(id).set(_stripFbMeta(data), {merge: true});
-  } catch(e) {
-    console.error('fbSet error:', e);
-  }
-}
-async function fbDelete(collection, id){
-  if(!_db) return;
-  try {
-    await _db.collection(collection).doc(id).delete();
-  } catch(e) { console.error('fbDelete error:', e); }
-}
-// ── localStorage persistence (primary — always works offline) ──
-const LS_DB_KEY = 'fairplay_db_v1';
-
-function lsSave(){
-  try {
-    const snap = {
-      me: DB.me,
-      players: DB.players,
-      tournaments: DB.tournaments,
-      teams: DB.teams,
-      guilds: DB.guilds,
-      badges: DB.badges,
-      storeItems: DB.storeItems,
-      games: DB.games,
-      _savedAt: Date.now(),
-      _uid: DB.me.uid || null,
-    };
-    localStorage.setItem(LS_DB_KEY, JSON.stringify(snap));
-  } catch(e){ /* storage full — ignore */ }
+  const dot = pill.querySelector('.fp-dot');
+  const txt = pill.querySelector('.fp-txt');
+  pill.className = 'fb-pill ' + state;
+  if(dot) dot.className = 'fp-dot ' + state;
+  if(txt) txt.textContent = label;
+  pill.style.display = 'flex';
+  if(autohide) setTimeout(()=>{ pill.style.display='none'; }, 3000);
 }
 
-function lsLoad(uid){
-  try {
-    const raw = localStorage.getItem(LS_DB_KEY);
-    if(!raw) return false;
-    const snap = JSON.parse(raw);
-    // Only restore if saved by same user (or no user set yet)
-    if(snap._uid && uid && snap._uid !== uid) return false;
-    if(snap.me)          Object.assign(DB.me, snap.me);
-    if(snap.players)     DB.players     = snap.players;
-    if(snap.tournaments) DB.tournaments = snap.tournaments;
-    if(snap.teams)       DB.teams       = snap.teams;
-    if(snap.guilds)      DB.guilds      = snap.guilds;
-    if(snap.badges)      DB.badges      = snap.badges;
-    if(snap.storeItems)  DB.storeItems  = snap.storeItems;
-    if(snap.games)       DB.games       = snap.games;
-    return true;
-  } catch(e){ return false; }
-}
-
-function lsClear(){
-  try { localStorage.removeItem(LS_DB_KEY); } catch(e){}
-}
-
-// ── Combined auto-save: localStorage always + Firestore if connected ──
+// ── Auto-sync on any action ──
 function fbAutoSync(){
-  lsSave(); // Backup to localStorage immediately
-  if(!_db) return; // Firebase never loaded at all — skip
-  // Always attempt cloud sync (even after previous errors)
-  _fbConnected = true; // Re-enable in case it was disabled by error
-  _unsavedChanges = true;
-  fbShowPill('syncing','Saving…', false);
+  lsSave();
+  if(!_fbConnected || !_fbToken) return;
   clearTimeout(_syncTimer);
-  _syncTimer = setTimeout(fbSyncAll, 1500);
+  fbShowPill('syncing','Saving…',false);
+  _syncTimer = setTimeout(_doCloudSync, 800);
 }
-async function fbSyncAll(){
-  if(!_db || !_unsavedChanges) return;
-  _unsavedChanges = false;
-  fbShowPill('syncing', 'Saving…', false);
+
+async function _doCloudSync(){
   try {
-    // Always sync DB.me as source of truth for current user
-    if(DB.me && DB.me.uid){
-      const meData = _stripFbMeta({...DB.me});
-      await _db.collection('players').doc(DB.me.uid).set({...meData, id:DB.me.uid}, {merge:true});
-      await _db.collection('players').doc('u1').set({...meData, id:'u1'}, {merge:true});
-      DB.players[0] = {...DB.me};
+    // Always save current user profile
+    if(_fbUid && DB.me){
+      const meData = JSON.parse(JSON.stringify(DB.me));
+      await _fsSet('players', _fbUid, {...meData, id:_fbUid});
     }
-    const isAdmin = DB.me.role === 'admin';
-
-    // 1. Always save current user's profile (source of truth)
-    if(DB.me && DB.me.uid){
-      const meClean = _stripFbMeta({...DB.me, id: DB.me.uid});
-      await _db.collection('players').doc(DB.me.uid).set(meClean, {merge:true});
-      await _db.collection('players').doc('u1').set({...meClean, id:'u1'}, {merge:true});
-    }
-
-    // 2. Save platform data - admin saves everything, users save only their participation
-    if(isAdmin){
-      // Admin: save all collections
-      const ALL = {
-        tournaments: DB.tournaments || [],
-        teams:       DB.teams       || [],
-        guilds:      DB.guilds      || [],
-        badges:      DB.badges      || [],
-        storeItems:  DB.storeItems  || [],
-        games:       DB.games       || [],
-      };
-      for(const [col, items] of Object.entries(ALL)){
-        const valid = items.filter(x => x && x.id);
-        if(!valid.length) continue;
-        for(let i = 0; i < valid.length; i += 490){
-          const batch = _db.batch();
-          valid.slice(i, i+490).forEach(item => {
-            batch.set(_db.collection(col).doc(String(item.id)), _stripFbMeta(item), {merge:true});
-          });
-          await batch.commit();
-        }
+    // Admin saves everything
+    if(DB.me.role === 'admin'){
+      const writes = [];
+      const cols = {tournaments:DB.tournaments,teams:DB.teams,guilds:DB.guilds,
+                    badges:DB.badges,storeItems:DB.storeItems,games:DB.games};
+      for(const [col,items] of Object.entries(cols)){
+        (items||[]).filter(x=>x&&x.id).forEach(item=>{
+          writes.push({collection:col, id:String(item.id), data:JSON.parse(JSON.stringify(item))});
+        });
       }
+      if(writes.length) await _fsBatch(writes);
     } else {
-      // Regular user: only save tournaments/teams/guilds they actually joined
-      const joined = (DB.tournaments||[]).filter(t => t && t.id && (t.players||[]).includes('u1'));
-      for(const t of joined){
-        await _db.collection('tournaments').doc(String(t.id)).set(_stripFbMeta(t), {merge:true}).catch(()=>{});
-      }
-      const myTeams = (DB.teams||[]).filter(t => t && t.id && (t.memberIds||[]).includes('u1'));
-      for(const t of myTeams){
-        await _db.collection('teams').doc(String(t.id)).set(_stripFbMeta(t), {merge:true}).catch(()=>{});
-      }
-      if(DB.me.guildId){
-        const g = (DB.guilds||[]).find(x => x.id === DB.me.guildId);
-        if(g) await _db.collection('guilds').doc(String(g.id)).set(_stripFbMeta(g), {merge:true}).catch(()=>{});
+      // Player: save only joined tournaments
+      for(const t of (DB.tournaments||[]).filter(t=>t&&t.id&&(t.players||[]).includes('u1'))){
+        await _fsSet('tournaments', String(t.id), JSON.parse(JSON.stringify(t))).catch(()=>{});
       }
     }
+    lsSave();
     fbShowPill('saved','Saved ✓');
   } catch(e){
-    lsSave(); // Always keep localStorage in sync as backup
-    _unsavedChanges = true;
-    const code = e.code || '';
-    const msg  = e.message || '';
-    const isRules = code.includes('permission') || msg.includes('permission') || msg.includes('Missing or insufficient');
-    const isOffline = code.includes('unavailable') || msg.includes('offline') || msg.includes('network');
-
-    if(isRules){
-      // Firestore rules blocking — show setup guide once
-      _fbConnected = false;
-      fbShowPill('error', 'Rules not set');
-      if(!window._rulesWarned){
-        window._rulesWarned = true;
-        _showFirestoreRulesModal();
-      }
-    } else if(isOffline){
-      // Offline — retry quietly
-      fbShowPill('saved', 'Saved locally ✓');
-      _syncTimer = setTimeout(fbSyncAll, 5000);
-    } else {
-      // Other error — retry
-      fbShowPill('error', 'Retrying…');
-      console.error('Firestore sync:', code, msg);
-      _syncTimer = setTimeout(fbSyncAll, 5000);
+    console.warn('Sync error:', e.message);
+    fbShowPill('saved','Saved locally ✓');
+    if(e.message && e.message.includes('PERMISSION_DENIED')){
+      if(!window._rulesShown){ window._rulesShown=true; _showFirestoreRulesModal(); }
     }
   }
 }
 
-// ── Show Firestore rules setup modal ──
+// ── Load all data for current user ──
+async function fbLoadAll(){
+  if(!_fbToken) return;
+  fbShowPill('syncing','Loading…',false);
+  try {
+    const COLS = ['tournaments','teams','guilds','badges','storeItems','games'];
+    const [playerDocs, ...colDocs] = await Promise.all([
+      _fsList('players'),
+      ...COLS.map(c=>_fsList(c).catch(()=>[]))
+    ]);
+    // Load current user
+    const myDoc = playerDocs.find(p=>p.id===_fbUid||p._docId===_fbUid);
+    if(myDoc){ Object.assign(DB.me, myDoc); DB.me.id='u1'; }
+    // Real players only
+    const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
+    if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
+    // Collections
+    COLS.forEach((col,i)=>{ if(colDocs[i].length) DB[col]=colDocs[i]; });
+    fbShowPill('saved','Loaded ✓');
+    lsSave();
+    _reRenderPage();
+  } catch(e){
+    console.warn('Load error:',e.message);
+    fbShowPill('saved','Using local data');
+  }
+}
+
+// ── Seed initial data ──
+async function fbSeedAll(){
+  if(!_fbToken) return;
+  fbShowPill('syncing','Setting up…',false);
+  try {
+    const writes = [];
+    const cols = {tournaments:DB.tournaments,teams:DB.teams,guilds:DB.guilds,
+                  badges:DB.badges,storeItems:DB.storeItems,games:DB.games};
+    for(const [col,items] of Object.entries(cols)){
+      (items||[]).filter(x=>x&&x.id).forEach(item=>{
+        writes.push({collection:col,id:String(item.id),data:JSON.parse(JSON.stringify(item))});
+      });
+    }
+    if(writes.length) await _fsBatch(writes);
+    await _fsSet('_meta','init',{createdAt:new Date().toISOString(),version:1});
+    fbShowPill('saved','Database ready ✓');
+  } catch(e){
+    console.warn('Seed error:',e.message);
+    if(e.message&&e.message.includes('PERMISSION_DENIED')){
+      if(!window._rulesShown){ window._rulesShown=true; _showFirestoreRulesModal(); }
+    }
+  }
+}
+
 function _showFirestoreRulesModal(){
   if(document.getElementById('rules-modal')) return;
-  const m = document.createElement('div');
-  m.id = 'rules-modal';
-  m.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px';
-  m.innerHTML = `
-    <div style="background:#0f1f11;border:1px solid rgba(74,222,128,.3);border-radius:20px;padding:32px;max-width:460px;width:100%;font-family:Outfit,sans-serif">
-      <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">⚠️ One-time Setup Needed</div>
-      <div style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:24px;line-height:1.6">
-        Firestore rules are blocking saves. Fix it in 30 seconds:
-      </div>
-      <div style="background:rgba(0,0,0,.4);border-radius:12px;padding:16px;margin-bottom:16px">
-        <div style="color:#4ade80;font-weight:700;font-size:12px;margin-bottom:10px">STEP 1 — Open Firebase Console Rules:</div>
-        <a href="https://console.firebase.google.com/project/ff-booyah-eb33c/firestore/rules"
-           target="_blank"
-           style="display:block;background:#1a3a1e;border:1px solid rgba(74,222,128,.4);border-radius:8px;padding:10px 14px;color:#4ade80;text-decoration:none;font-size:13px;font-weight:600;text-align:center">
-          👉 Click here → Firebase Firestore Rules
-        </a>
-      </div>
-      <div style="background:rgba(0,0,0,.4);border-radius:12px;padding:16px;margin-bottom:24px">
-        <div style="color:#4ade80;font-weight:700;font-size:12px;margin-bottom:10px">STEP 2 — Replace ALL rules with this and click Publish:</div>
-        <pre style="background:#000;border-radius:8px;padding:12px;color:#86efac;font-size:11px;overflow:auto;margin:0;line-height:1.6">rules_version = '2';
+  const m=document.createElement('div');
+  m.id='rules-modal';
+  m.style.cssText='position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.88);display:flex;align-items:center;justify-content:center;padding:20px;font-family:Outfit,sans-serif';
+  m.innerHTML=`<div style="background:#0f1f11;border:1px solid rgba(74,222,128,.3);border-radius:20px;padding:28px;max-width:460px;width:100%">
+    <div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:8px">⚠️ One-time Firebase Setup</div>
+    <div style="font-size:13px;color:rgba(255,255,255,.55);margin-bottom:20px;line-height:1.6">Firestore rules are blocking saves. Fix it once and it works forever.</div>
+    <div style="background:rgba(0,0,0,.4);border-radius:12px;padding:14px;margin-bottom:14px">
+      <div style="color:#4ade80;font-size:11px;font-weight:700;margin-bottom:8px">STEP 1 — Open Rules:</div>
+      <a href="https://console.firebase.google.com/project/ff-booyah-eb33c/firestore/rules" target="_blank"
+         style="display:block;background:#1a3a1e;border:1px solid rgba(74,222,128,.35);border-radius:8px;padding:10px;color:#4ade80;text-decoration:none;font-size:13px;font-weight:600;text-align:center">
+        👉 Firebase Firestore Rules
+      </a>
+    </div>
+    <div style="background:rgba(0,0,0,.4);border-radius:12px;padding:14px;margin-bottom:20px">
+      <div style="color:#4ade80;font-size:11px;font-weight:700;margin-bottom:8px">STEP 2 — Replace everything with this, then click Publish:</div>
+      <pre style="background:#000;border-radius:8px;padding:10px;color:#86efac;font-size:11px;margin:0;overflow:auto;line-height:1.6;user-select:all">rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
@@ -5814,152 +5669,100 @@ service cloud.firestore {
     }
   }
 }</pre>
-      </div>
-      <div style="display:flex;gap:10px">
-        <button onclick="document.getElementById('rules-modal').remove(); window._rulesWarned=false; window._fbFailCount=0; _fbConnected=true; fbAutoSync();"
-          style="flex:1;padding:12px;background:#00c853;color:#000;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer">
-          ✓ Done — Try Again
-        </button>
-        <button onclick="document.getElementById('rules-modal').remove();"
-          style="padding:12px 16px;background:rgba(255,255,255,.08);color:#fff;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">
-          Later
-        </button>
-      </div>
     </div>
-  `;
+    <div style="display:flex;gap:10px">
+      <button onclick="window._rulesShown=false;document.getElementById('rules-modal').remove();_doCloudSync();"
+        style="flex:1;padding:12px;background:#00c853;color:#000;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer">✓ Done — Retry Save</button>
+      <button onclick="document.getElementById('rules-modal').remove();"
+        style="padding:12px 16px;background:rgba(255,255,255,.08);color:#fff;border:none;border-radius:10px;font-size:14px;cursor:pointer">Later</button>
+    </div>
+  </div>`;
   document.body.appendChild(m);
 }
-async function fbSyncItem(collection, id){
-  if(!_db) return;
-  const map = {
-    players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
-    guilds:DB.guilds, badges:DB.badges, storeItems:DB.storeItems, games:DB.games,
-  };
-  const item = (map[collection]||[]).find(x=>x.id===id);
-  if(item) await fbSet(collection, id, item);
+
+function _reRenderPage(){
+  const R={dashboard:renderDash,tournaments:renderT,teams:renderTeams,guilds:renderGuilds,
+           leaderboard:renderLB,store:renderStore,wallet:renderWallet,profile:renderProfile,admin:renderAdmin};
+  if(typeof R[currentPage]==='function') R[currentPage]();
+  if(typeof refreshAvatarBadges==='function') refreshAvatarBadges();
 }
-const _origToast = toast;
-// We'll call fbAutoSync from key mutating functions instead (less noisy)
-const FB_RULES_TEMPLATE = `rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if true;
-    }
-  }
-}`;
-function fbShowSetupGuide(){
-  openModal('<div class="mbox" style="max-width:520px">' +
-    '<button class="mclose" onclick="closeModal()">✕</button>' +
-    '<div class="mtitle">🔥 Firebase Setup Guide</div>' +
-    '<div style="font-size:12px;color:var(--dim);line-height:1.9">' +
-    '<strong style="color:var(--g5)">Step 1:</strong> Go to <a href="https://console.firebase.google.com" target="_blank" style="color:var(--g2)">console.firebase.google.com</a><br>' +
-    '<strong style="color:var(--g5)">Step 2:</strong> Create a new project (free Spark plan)<br>' +
-    '<strong style="color:var(--g5)">Step 3:</strong> Build → Firestore Database → Create database → Start in test mode<br>' +
-    '<strong style="color:var(--g5)">Step 4:</strong> Project Settings (⚙️) → Add app → Web → Copy config<br>' +
-    '<strong style="color:var(--g5)">Step 5:</strong> Paste config values below and connect<br>' +
-    '</div>' +
-    '<div style="margin:14px 0;background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px;font-size:10px;font-family:monospace;color:var(--g4);white-space:pre-wrap">' + FB_RULES_TEMPLATE.replace(/</g,'&lt;') + '</div>' +
-    '<p style="font-size:11px;color:var(--dim)">Paste these rules in Firestore → Rules tab for anonymous auth access.</p>' +
-    '<div style="display:flex;gap:8px;margin-top:16px">' +
-    '<button class="btn btn-s" style="flex:1" onclick="closeModal()">Close</button>' +
-    '<button class="btn btn-p" style="flex:1" onclick="closeModal();localStorage.removeItem(\'fp_firebase_config\');location.reload()">🔧 Reconnect</button>' +
-    '</div>' +
-    '</div>');
-}
-function _renderFbStatus(){
-  const el = document.getElementById('fb-admin-status');
-  if(!el) return;
-  if(_fbConnected){
-    const cfg = localStorage.getItem(FB_CFG_KEY);
-    let proj = '';
-    try { proj = JSON.parse(cfg).projectId || ''; } catch(e){}
-    el.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px;width:100%">' +
-      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">' +
-      '<span class="fb-status-badge connected">🔥 Firebase Active</span>' +
-      (proj ? '<span style="font-size:11px;color:var(--dim)">' + proj + '</span>' : '') +
-      '<button class="btn btn-s sm" onclick="fbShowSetupGuide()" style="font-size:10px">📖 Guide</button>' +
-      '<button class="btn btn-d sm" onclick="fbDisconnect()" style="font-size:10px">Disconnect</button>' +
-      '</div>' +
-      '<div style="font-size:11px;color:var(--dim);line-height:1.6">' +
-      '💡 If running inside claude.ai preview, Firestore uses <strong style="color:var(--g4)">offline cache</strong> — data is synced when opened in a real browser.' +
-      '</div></div>';
-  } else {
-    el.innerHTML = '<span class="fb-status-badge disconnected">⬛ Local Only</span> ' +
-      '<button class="btn btn-p sm" onclick="fbReconnect()" style="font-size:10px">🔥 Connect Firebase</button>';
-  }
-}
-function fbReconnect(){ localStorage.removeItem('fp_firebase_config'); location.reload(); }
-function _loadScript(url){ return new Promise((res,rej)=>{ const s=document.createElement('script'); s.src=url; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
-async function _loadScriptWithFallback(urls){
-  for(const url of urls){
-    try{ await _loadScript(url); return; }catch(e){ console.warn('CDN failed:',url); }
-  }
-  throw new Error('All CDN sources failed');
-}
-const FB_CDNS = {
-  app: [
-    'https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-app-compat.min.js',
-    'https://unpkg.com/firebase@10.12.2/firebase-app-compat.js'
-  ],
-  auth: [
-    'https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-auth-compat.min.js',
-    'https://unpkg.com/firebase@10.12.2/firebase-auth-compat.js'
-  ],
-  firestore: [
-    'https://cdn.jsdelivr.net/npm/firebase@10.12.2/firebase-firestore-compat.min.js',
-    'https://unpkg.com/firebase@10.12.2/firebase-firestore-compat.js'
-  ]
-};
-async function _loadFirebaseSDK(){
-  if(typeof firebase !== 'undefined' && firebase.firestore && firebase.auth) return;
-  await _loadScriptWithFallback(FB_CDNS.app);
-  await _loadScriptWithFallback(FB_CDNS.auth);
-  await _loadScriptWithFallback(FB_CDNS.firestore);
-}
-async function fbCheckOnLoad(){
-  const stale = localStorage.getItem(FB_CFG_KEY);
-  if(stale && stale !== 'skip'){
-    try {
-      const old = JSON.parse(stale);
-      if(old.apiKey && old.apiKey !== "AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw"){
-        localStorage.removeItem(FB_CFG_KEY);
-      }
-    } catch(e){ localStorage.removeItem(FB_CFG_KEY); }
-  }
-  const saved = localStorage.getItem(FB_CFG_KEY);
-  if(saved === 'skip') return;
+
+// ── localStorage backup ──
+const LS_DB_KEY = 'fairplay_db_v1';
+function lsSave(){
   try {
-    await _loadFirebaseSDK();
-  } catch(e) {
-    console.warn('Firebase SDK failed to load:', e);
-    toast('Firebase SDK failed to load — check your internet connection','error');
-    return;
-  }
-  if(!saved){
-    const autoCfg = {
-      apiKey:            "AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw",
-      authDomain:        "ff-booyah-eb33c.firebaseapp.com",
-      projectId:         "ff-booyah-eb33c",
-      storageBucket:     "ff-booyah-eb33c.firebasestorage.app",
-      messagingSenderId: "430808460387",
-      appId:             "1:430808460387:web:5840d82862f2afa2ec5c56",
-      measurementId:     "G-3B2V7RGD60"
-    };
-    localStorage.setItem(FB_CFG_KEY, JSON.stringify(autoCfg));
-    await fbInit(autoCfg);
-  } else {
-    try {
-      const cfg = JSON.parse(saved);
-      fbInit(cfg);
-    } catch(e) {
-      localStorage.removeItem(FB_CFG_KEY);
+    localStorage.setItem(LS_DB_KEY, JSON.stringify({
+      me:DB.me,players:DB.players,tournaments:DB.tournaments,teams:DB.teams,
+      guilds:DB.guilds,badges:DB.badges,storeItems:DB.storeItems,games:DB.games,
+      _uid:_fbUid,_t:Date.now()
+    }));
+  } catch(e){}
+}
+function lsLoad(uid){
+  try {
+    const raw=localStorage.getItem(LS_DB_KEY);
+    if(!raw) return false;
+    const s=JSON.parse(raw);
+    if(s._uid&&uid&&s._uid!==uid) return false;
+    if(s.me)          Object.assign(DB.me,s.me);
+    if(s.players)     DB.players=s.players;
+    if(s.tournaments) DB.tournaments=s.tournaments;
+    if(s.teams)       DB.teams=s.teams;
+    if(s.guilds)      DB.guilds=s.guilds;
+    if(s.badges)      DB.badges=s.badges;
+    if(s.storeItems)  DB.storeItems=s.storeItems;
+    if(s.games)       DB.games=s.games;
+    return true;
+  } catch(e){ return false; }
+}
+function lsClear(){ try{ localStorage.removeItem(LS_DB_KEY); }catch(e){} }
+
+// ── Main init: check for saved session, restore, connect ──
+async function fbCheckOnLoad(){
+  // Try to restore previous session from localStorage
+  const savedToken   = localStorage.getItem('fb_token');
+  const savedUid     = localStorage.getItem('fb_uid');
+  const savedEmail   = localStorage.getItem('fb_email');
+  const savedName    = localStorage.getItem('fb_name');
+
+  if(savedToken && savedUid){
+    _fbToken = savedToken;
+    _fbUid   = savedUid;
+    // Refresh token to make sure it's valid
+    const ok = await fbRefreshToken();
+    if(ok){
+      _fbConnected = true;
+      fbShowPill('saved','Connected ✓');
+      // Restore localStorage data immediately
+      lsLoad(savedUid);
+      // Apply user to DB
+      DB.me.uid   = savedUid;
+      DB.me.email = savedEmail || DB.me.email;
+      DB.me.name  = savedName  || DB.me.name;
+      DB.me.role  = (savedEmail === ADMIN_EMAIL) ? 'admin' : 'player';
+      DB.me.id    = 'u1';
+      // Show app
+      hideLoginPage();
+      refreshAvatarBadges();
+      renderDash();
+      // Apply admin UI
+      const isAdmin = DB.me.role==='admin';
+      document.querySelectorAll('[data-page="admin"]').forEach(b=>b.style.display=isAdmin?'':'none');
+      // Load fresh data from Firestore in background
+      fbLoadAll().then(()=>{
+        const meta = _fsGet('_meta','init').catch(()=>null);
+        meta.then(m=>{ if(!m) fbSeedAll(); });
+      });
+      return;
     }
   }
+  // No saved session — show login
+  showLoginPage();
+  lpSwitch('signup');
 }
+
+
 const ADMIN_EMAIL = 'zihadmoon8@gmail.com';
-let _auth = null;
-let _currentUser = null;
 function _isSandboxed(){
   try {
     return window.self !== window.top;
@@ -6019,152 +5822,6 @@ function _lpHideError(){
   const el = document.getElementById('lp-error');
   if(el) el.style.display = 'none';
 }
-async function _applyGoogleUser(user){
-  // Handle extra fields from signup
-  if(user._extraName) user.displayName = user._extraName;
-  const isAdmin = user.email === ADMIN_EMAIL;
-  // Restore this user's localStorage data first (instant)
-  lsLoad(user.uid);
-  DB.me.id             = 'u1';
-  DB.me.uid            = user.uid;
-  DB.me.name           = user.displayName || user.email.split('@')[0];
-  DB.me.email          = user.email;
-  DB.me.role           = isAdmin ? 'admin' : 'player';
-  DB.me.googlePhotoUrl = user.photoURL || null;
-  // Always keep id='u1' internally so all existing functions work
-  DB.me.id = 'u1';
-  const p = DB.players.find(x => x.id === 'u1');
-  if(p){ Object.assign(p, { name:DB.me.name, email:DB.me.email, role:DB.me.role, uid:DB.me.uid }); }
-  else { DB.players[0] = {...DB.me}; }
-  if(_db){
-    try {
-      // Try uid-based doc first (new format), fallback to 'u1' (legacy)
-      const docRef = _db.collection('players').doc(user.uid);
-      let doc = await docRef.get().catch(()=>null);
-      if(!doc || !doc.exists){
-        const legacyRef = _db.collection('players').doc('u1');
-        const legacyDoc = await legacyRef.get().catch(()=>null);
-        if(legacyDoc && legacyDoc.exists && legacyDoc.data().uid === user.uid){
-          doc = legacyDoc;
-          // Migrate to uid-based doc
-          await docRef.set(legacyDoc.data(), {merge:true}).catch(()=>{});
-        }
-      }
-      if(doc && doc.exists){
-        const d = doc.data();
-        Object.assign(DB.me, d, {
-          id: 'u1',
-          uid: user.uid,
-          email: user.email,
-          role: isAdmin ? 'admin' : (d.role || 'player'),
-          googlePhotoUrl: user.photoURL || d.googlePhotoUrl || null,
-        });
-        // Sync into players[0]
-        DB.players[0] = {...DB.me};
-      } else {
-        const profile = {
-          id:user.uid, uid:user.uid, name:DB.me.name, email:user.email,
-          role: isAdmin ? 'admin' : 'player', balance:1200,
-          wins:0, losses:0, tournaments:0, badges:[], gameProfiles:[],
-          teamIds:[], guildId:null,
-          joinedDate:new Date().toISOString().split('T')[0],
-          googlePhotoUrl: user.photoURL || null,
-          phone: user._extraPhone || user.phoneNumber || null,
-        };
-        Object.assign(DB.me, profile);
-        await docRef.set(profile).catch(()=>{});
-        // Also write to 'u1' for compat
-        await _db.collection('players').doc('u1').set(profile, {merge:true}).catch(()=>{});
-      }
-    } catch(e){  }
-    fbAutoSync();
-  }
-  document.querySelectorAll('[data-page="admin"]').forEach(btn => {
-    btn.style.display = isAdmin ? '' : 'none';
-  });
-  if(!isAdmin && currentPage === 'admin'){
-    showPage('dashboard');
-  }
-}
-async function initAuth(){
-  if(_isSandboxed()){
-    _lpShowError(
-      '<strong>📱 Preview mode</strong><br>' +
-      'Google Sign-In works when the file is opened directly in your browser.<br><br>' +
-      '<strong>How to use:</strong><br>' +
-      '1. Download the HTML file<br>' +
-      '2. Open it in Chrome or Firefox<br>' +
-      '3. Sign in with Google normally'
-    );
-    const btn = document.getElementById('lp-signin-btn');
-    if(btn){
-      btn.innerHTML = '👤 Continue as Guest (Preview)';
-      btn.onclick = function(){
-        DB.me.role = 'player';
-        document.querySelectorAll('[data-page="admin"]').forEach(b => b.style.display='none');
-        hideLoginPage();
-        refreshAvatarBadges();
-        renderDash();
-      };
-    }
-    return;
-  }
-  try {
-    if(!firebase || !firebase.auth) {
-      console.warn('Firebase Auth SDK not loaded');
-      hideLoginPage(); renderDash(); return;
-    }
-    _auth = firebase.auth();
-    _auth.languageCode = 'en';
-    _lpSetLoading(true, 'Checking sign-in…');
-    let redirectUser = null;
-    try {
-      const result = await _auth.getRedirectResult();
-      if(result && result.user) redirectUser = result.user;
-    } catch(e){
-      if(e.code !== 'auth/no-auth-event'){
-        _lpShowError(_authErrMsg(e));
-        _lpSetLoading(false);
-        return;
-      }
-    }
-    if(redirectUser){
-      _currentUser = redirectUser;
-      _lpSetLoading(true, 'Welcome! Setting up…');
-      await _applyGoogleUser(redirectUser);
-      hideLoginPage();
-      refreshAvatarBadges();
-      if(typeof renderDash === 'function') renderDash();
-      if(typeof renderAdminSettings === 'function') renderAdminSettings();
-      _lpSetLoading(false);
-      return;
-    }
-    _auth.onAuthStateChanged(async user => {
-      _currentUser = user;
-      if(user){
-        // Returning user — enter app directly
-        _lpSetLoading(true, 'Welcome back…');
-        await _applyGoogleUser(user);
-        hideLoginPage();
-        refreshAvatarBadges();
-        if(typeof renderDash==='function') renderDash();
-        if(typeof renderAdminSettings==='function') renderAdminSettings();
-        _lpSetLoading(false);
-      } else {
-        _lpSetLoading(false);
-        showLoginPage();
-        // Default to signup tab
-        lpSwitch('signup');
-      }
-    });
-  } catch(e){
-    console.error('Auth init error:', e);
-    _lpSetLoading(false);
-    hideLoginPage();
-    refreshAvatarBadges();
-    renderDash();
-  }
-}
 // ── Tab switcher ──
 function lpSwitch(tab){
   const isSignup = tab === 'signup';
@@ -6176,29 +5833,43 @@ function lpSwitch(tab){
 }
 
 // ── Ensure Firebase Auth is ready ──
-async function _ensureAuth(){
-  if(_auth) return true;
-  if(!_fbApp){
-    const saved = localStorage.getItem(FB_CFG_KEY);
-    if(saved && saved !== 'skip') await fbInit(JSON.parse(saved));
-    else { _lpShowError('Firebase not configured.'); return false; }
-  }
-  _auth = firebase.auth && firebase.auth();
-  return !!_auth;
-}
 
 // ── Enter app after successful auth ──
-async function _enterApp(user){
-  _lpSetLoading(true, 'Loading your profile…');
-  await _applyGoogleUser(user);
-  hideLoginPage();
-  refreshAvatarBadges();
-  if(typeof renderDash==='function') renderDash();
-  if(typeof renderAdminSettings==='function') renderAdminSettings();
-  _lpSetLoading(false);
-}
 
 // ── Sign Up with Email/Password ──
+async function _enterRestApp(user, phone){
+  _lpSetLoading(true,'Loading your profile…');
+  _fbConnected = true;
+  const isAdmin = user.email === ADMIN_EMAIL;
+  DB.me.uid   = user.uid;
+  DB.me.email = user.email;
+  DB.me.name  = user.displayName || user.email.split('@')[0];
+  DB.me.role  = isAdmin ? 'admin' : 'player';
+  DB.me.id    = 'u1';
+  if(phone) DB.me.phone = phone;
+  lsLoad(user.uid);
+  try {
+    const myDoc = await _fsGet('players', user.uid);
+    if(myDoc){ Object.assign(DB.me, myDoc); DB.me.id='u1'; DB.me.uid=user.uid; DB.me.role=isAdmin?'admin':DB.me.role; }
+    else {
+      await _fsSet('players', user.uid, {...DB.me, id:user.uid, phone:phone||null,
+        balance:1200, wins:0, losses:0, tournaments:0, badges:[], gameProfiles:[],
+        teamIds:[], guildId:null, joinedDate:new Date().toISOString().split('T')[0]}).catch(()=>{});
+      const meta = await _fsGet('_meta','init').catch(()=>null);
+      if(!meta) await fbSeedAll();
+    }
+    await fbLoadAll();
+  } catch(e){ console.warn('Profile load:', e.message); }
+  document.querySelectorAll('[data-page="admin"]').forEach(b=>b.style.display=isAdmin?'':'none');
+  hideLoginPage();
+  refreshAvatarBadges();
+  renderDash();
+  if(typeof renderAdminSettings==='function') renderAdminSettings();
+  _lpSetLoading(false);
+  lsSave();
+}
+
+
 async function lpSignUp(){
   _lpHideError();
   const name  = (document.getElementById('lp-su-name').value||'').trim();
@@ -6215,15 +5886,9 @@ async function lpSignUp(){
 
   _lpSetLoading(true, 'Creating your account…');
   document.getElementById('lp-signup-btn').disabled = true;
-
   try {
-    if(!await _ensureAuth()) { _lpSetLoading(false); document.getElementById('lp-signup-btn').disabled=false; return; }
-    const cred = await _auth.createUserWithEmailAndPassword(email, pw);
-    await cred.user.updateProfile({ displayName: name });
-    // Store extra fields (phone) in Firestore via _applyGoogleUser
-    cred.user._extraPhone = phone;
-    cred.user._extraName  = name;
-    await _enterApp(cred.user);
+    const user = await fbSignUp(email, pw, name);
+    await _enterRestApp(user, phone);
   } catch(e){
     _lpSetLoading(false);
     document.getElementById('lp-signup-btn').disabled = false;
@@ -6242,11 +5907,9 @@ async function lpSignIn(){
 
   _lpSetLoading(true, 'Signing in…');
   document.getElementById('lp-signin-btn').disabled = true;
-
   try {
-    if(!await _ensureAuth()) { _lpSetLoading(false); document.getElementById('lp-signin-btn').disabled=false; return; }
-    const cred = await _auth.signInWithEmailAndPassword(email, pw);
-    await _enterApp(cred.user);
+    const user = await fbSignIn(email, pw);
+    await _enterRestApp(user, null);
   } catch(e){
     _lpSetLoading(false);
     document.getElementById('lp-signin-btn').disabled = false;
@@ -6258,15 +5921,13 @@ async function lpSignIn(){
 async function lpForgotPw(){
   const email = (document.getElementById('lp-si-email').value||'').trim();
   if(!email) return _lpShowError('Enter your email above first, then click Forgot password.');
-  if(!await _ensureAuth()) return;
   try {
-    await _auth.sendPasswordResetEmail(email);
+    await fbSendPasswordReset(email);
     _lpHideError();
-    document.getElementById('lp-error').style.display='block';
-    document.getElementById('lp-error').style.background='rgba(74,222,128,.08)';
-    document.getElementById('lp-error').style.borderColor='rgba(74,222,128,.2)';
-    document.getElementById('lp-error').style.color='#4ade80';
-    document.getElementById('lp-error').textContent='✅ Reset email sent! Check your inbox.';
+    const el = document.getElementById('lp-error');
+    el.style.display='block'; el.style.background='rgba(74,222,128,.08)';
+    el.style.borderColor='rgba(74,222,128,.2)'; el.style.color='#4ade80';
+    el.textContent='✅ Reset email sent! Check your inbox.';
   } catch(e){ _lpShowError(_authErrMsg(e)); }
 }
 
@@ -6305,16 +5966,11 @@ function _authErrMsg(e){
   return e.message || 'Sign-in failed. Please try again.';
 }
 function signOut(){
-  lsClear(); // Clear saved data on sign out
-  if(_auth){
-    _auth.signOut().then(()=>{
-      _currentUser = null;
-      showLoginPage();
-      toast('Signed out successfully','info');
-    }).catch(e => console.error('Sign out error:', e));
-  } else {
-    showLoginPage();
-  }
+  fbSignOut();
+  lsClear();
+  showLoginPage();
+  lpSwitch('signup');
+  toast('Signed out successfully','info');
 }
 (function(){
   // Restore from localStorage immediately on load (before Firebase)
@@ -6467,6 +6123,12 @@ window.addEventListener('appinstalled', () => {
   _pwaPrompt = null;
   toast('🎮 Fair Play installed successfully!', 'success');
 });
+
+// Legacy auth stubs (replaced by REST API)
+function initAuth(){ /* handled by fbCheckOnLoad */ }
+function _applyGoogleUser(){ /* handled by _enterRestApp */ }
+async function _ensureAuth(){ return true; }
+async function _enterApp(){ /* handled by _enterRestApp */ }
 </script>
 
 <!-- ═══════════════════════════ STORE PAGE ═══════════════════════════ -->
