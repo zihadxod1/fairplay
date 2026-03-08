@@ -872,6 +872,11 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
   .db-hero-bal-wrap{min-width:95px;padding:8px 10px}
   .db-hero-uid{max-width:110px}
 }
+
+.db-hero-uid-row{display:flex;align-items:center;gap:5px;flex-wrap:nowrap}
+.db-copy-uid-btn{background:rgba(74,222,128,.12);border:1px solid rgba(74,222,128,.25);border-radius:5px;color:var(--g3);font-size:11px;padding:1px 6px;cursor:pointer;transition:all .15s;flex-shrink:0;line-height:1.4}
+.db-copy-uid-btn:hover{background:rgba(74,222,128,.25);color:var(--g1)}
+.db-copy-uid-btn.copied{background:rgba(74,222,128,.3);color:var(--g1);border-color:var(--g2)}
 </style>
 </head>
 <body>
@@ -1029,7 +1034,10 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
             <div class="db-hero-greeting" id="db-hero-greeting">WELCOME BACK</div>
             <div class="db-hero-name" id="db-hero-name">Player One</div>
             <div class="db-hero-meta" id="db-hero-meta">
-              <span class="db-hero-uid" id="db-hero-uid">UID: 100000000</span>
+              <span class="db-hero-uid-row">
+                <span class="db-hero-uid" id="db-hero-uid">UID: 100000000</span>
+                <button class="db-copy-uid-btn" id="db-copy-uid-btn" onclick="copyUID()" title="Copy UID">⎘</button>
+              </span>
               <span class="db-hero-tag" id="db-hero-role-tag"></span>
             </div>
           </div>
