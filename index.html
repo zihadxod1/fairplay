@@ -2203,15 +2203,17 @@ function revealRight(el){el.style.cssText+=';opacity:0;transform:translateX(14px
 function revealScale(el){el.style.cssText+=';opacity:0;transform:scale(.88);transition:opacity .35s ease,transform .35s cubic-bezier(.34,1.56,.64,1)';requestAnimationFrame(()=>requestAnimationFrame(()=>{el.style.opacity='1';el.style.transform='scale(1)';}));}
 function updateBalance(){['nav-bal','db-bal','w-bal','drawer-bal'].forEach(id=>{const el=$(id);if(el)countUp(el,DB.me.balance);});}
 function refreshAvatarBadges(){
+  // ALWAYS sync nav name from DB.me.name
+  const navNm = document.getElementById('nav-name');
+  if(navNm && DB.me.name) navNm.textContent = DB.me.name;
+
   if(DB.me.googlePhotoUrl && !DB.me.avatarCustom){
     const navImg = document.getElementById('nav-av-img');
     if(navImg){ navImg.src = DB.me.googlePhotoUrl; navImg.style.display=''; }
-    const navNm = document.getElementById('nav-name');
-    if(navNm) navNm.textContent = DB.me.name;
     return;
   }
   const p0=DB.players.find(x=>x.id==='u1');
-  if(p0) DB.me.badges=p0.badges||[];
+  if(p0){ DB.me.badges=p0.badges||[]; }
   const badges=Array.isArray(DB.me.badges)?DB.me.badges:[];
   const firstBadge=badges.length?badges[0]:null;
   const navBadge=document.getElementById('nav-av-badge');
@@ -3306,7 +3308,11 @@ function _applyAvatarToPlayer(pid, fields){
   Object.assign(player, fields);
   if(pid==='u1') Object.assign(DB.me, fields);
   const url=getAvatar(player);
-  if(pid==='u1'){ const nav=document.getElementById('nav-av'); if(nav)nav.src=url; _refreshLogoPanel(); }
+  if(pid==='u1'){ 
+    const nav=document.getElementById('nav-av-img'); if(nav)nav.src=url; 
+    _refreshLogoPanel(); 
+    refreshAvatarBadges();
+  }
   if(typeof renderAdminPlayers==='function') renderAdminPlayers();
   fbAutoSync(); // sync after any avatar change
 }
@@ -3619,7 +3625,9 @@ function saveName(){
   const today = new Date().toISOString().slice(0,10);
   DB.me.name=newName;DB.players[0].name=newName;fbAutoSync();
   DB.me.lastNameChange=today;DB.players[0].lastNameChange=today;
+  // Update nav name + persist to fb_name key
   $('nav-name').textContent=newName;
+  localStorage.setItem('fb_name', newName);
   $('prof-name-input').setAttribute('readonly','');
   $('name-edit-btn').style.display='inline-flex';
   $('name-save-btn').style.display='none';
@@ -6519,6 +6527,8 @@ async function fbLoadAll(){
     // Get Firestore save timestamp from our own player doc
     const myDoc = playerDocs.find(p=>p.id===_fbUid||p._docId===_fbUid);
     const fsTs = myDoc?._savedAt || 0;
+    // Keep the real name before any overwrite
+    const _realName = (DB.me.name && DB.me.name !== 'Player One') ? DB.me.name : null;
 
     if(localTs > 0 && localTs >= fsTs){
       // ── Local data is NEWER than Firestore — push our data UP ──
@@ -6530,7 +6540,12 @@ async function fbLoadAll(){
       fbShowPill('saved','In sync ✓');
     } else {
       // ── Firestore is NEWER or first time — apply Firestore data ──
-      if(myDoc){ Object.assign(DB.me, myDoc); DB.me.id='u1'; }
+      if(myDoc){ 
+        Object.assign(DB.me, myDoc); 
+        DB.me.id='u1'; 
+        // Protect: never let Firestore overwrite with seed "Player One"
+        if((!DB.me.name || DB.me.name==='Player One') && _realName) DB.me.name = _realName;
+      }
       const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
       if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
       COLS.forEach((col,i)=>{ if(colDocs[i].length) DB[col]=colDocs[i]; });
@@ -6550,6 +6565,7 @@ async function fbSeedAll(){
   fbShowPill('syncing','Setting up…',false);
   try {
     const writes = [];
+    // Seed collections ONLY — never seed the current user's player doc
     const cols = {tournaments:DB.tournaments,teams:DB.teams,guilds:DB.guilds,
                   badges:DB.badges,storeItems:DB.storeItems,games:DB.games};
     for(const [col,items] of Object.entries(cols)){
@@ -6609,6 +6625,10 @@ function _reRenderPage(){
            leaderboard:renderLB,store:renderStore,wallet:renderWallet,profile:renderProfile,admin:renderAdmin};
   if(typeof R[currentPage]==='function') R[currentPage]();
   if(typeof refreshAvatarBadges==='function') refreshAvatarBadges();
+  // Always sync nav name after any re-render
+  const _nn=document.getElementById('nav-name');
+  if(_nn && DB.me && DB.me.name && DB.me.name!=='Player One') _nn.textContent=DB.me.name;
+  updateBalance();
 }
 
 // ── localStorage backup ──
@@ -6662,12 +6682,14 @@ async function fbCheckOnLoad(){
     if(ok){
       _fbConnected = true;
       fbShowPill('saved','Connected ✓');
-      // Restore localStorage data immediately
+      // Restore localStorage data immediately (contains real saved name/avatar)
       lsLoad(savedUid);
-      // Apply user to DB
+      // Apply user identity — use DB.me.name from lsLoad (user may have changed it)
+      // Only fall back to savedName if lsLoad gave nothing
       DB.me.uid   = savedUid;
       DB.me.email = savedEmail || DB.me.email;
-      DB.me.name  = savedName  || DB.me.name;
+      // Don't overwrite name from lsLoad — it has the real current name
+      if(!DB.me.name || DB.me.name === 'Player One') DB.me.name = savedName || 'Player One';
       DB.me.role  = (savedEmail === ADMIN_EMAIL) ? 'admin' : 'player';
       DB.me.id    = 'u1';
       // Show app
@@ -6781,34 +6803,63 @@ async function _enterRestApp(user, phone){
   _lpSetLoading(true,'Loading your profile…');
   _fbConnected = true;
   const isAdmin = user.email === ADMIN_EMAIL;
+
+  // Step 1: Set identity from auth
+  const authName = user.displayName || user.email.split('@')[0];
   DB.me.uid   = user.uid;
   DB.me.email = user.email;
-  DB.me.name  = user.displayName || user.email.split('@')[0];
+  DB.me.name  = authName;
   DB.me.role  = isAdmin ? 'admin' : 'player';
   DB.me.id    = 'u1';
   if(phone) DB.me.phone = phone;
-  lsLoad(user.uid);
+
+  // Step 2: Load localStorage (may have newer saved name/avatar)
+  const hadLocalData = lsLoad(user.uid);
+  const localTs = _lsGetTs();
+
+  // Step 3: Load from Firestore
   try {
-    const myDoc = await _fsGet('players', user.uid);
-    if(myDoc){ Object.assign(DB.me, myDoc); DB.me.id='u1'; DB.me.uid=user.uid; DB.me.role=isAdmin?'admin':DB.me.role; }
-    else {
-      await _fsSet('players', user.uid, {...DB.me, id:user.uid, phone:phone||null,
-        balance:1200, wins:0, losses:0, tournaments:0, badges:[], gameProfiles:[],
-        teamIds:[], guildId:null, joinedDate:new Date().toISOString().split('T')[0]}).catch(()=>{});
+    const myDoc = await _fsGet('players', user.uid).catch(()=>null);
+    if(myDoc){
+      const fsTs = myDoc._savedAt || 0;
+      // Only apply Firestore data if it's NEWER than local data
+      if(!hadLocalData || fsTs > localTs){
+        Object.assign(DB.me, myDoc);
+      }
+      // Always enforce identity fields
+      DB.me.id   = 'u1';
+      DB.me.uid  = user.uid;
+      DB.me.role = isAdmin ? 'admin' : (DB.me.role || 'player');
+      // Protect name: if DB still has seed "Player One", use auth name
+      if(!DB.me.name || DB.me.name === 'Player One') DB.me.name = authName;
+    } else {
+      // New user — create Firestore doc
+      await _fsSet('players', user.uid, {
+        ...DB.me, id:user.uid, phone:phone||null,
+        balance:1200, wins:0, losses:0, tournaments:0, badges:['owner'],
+        gameProfiles:[], teamIds:[], guildId:null,
+        joinedDate:new Date().toISOString().split('T')[0],
+        _savedAt: Date.now()
+      }).catch(()=>{});
       const meta = await _fsGet('_meta','init').catch(()=>null);
       if(!meta) await fbSeedAll();
     }
+    // Load all collections
     await fbLoadAll();
   } catch(e){ console.warn('Profile load:', e.message); }
+
+  // Ensure name is never "Player One" after all loading
+  if(!DB.me.name || DB.me.name === 'Player One') DB.me.name = authName;
+  if(DB.players[0]) DB.players[0].name = DB.me.name;
+
+  // Show app
   document.querySelectorAll('[data-page="admin"]').forEach(b=>b.style.display=isAdmin?'':'none');
   hideLoginPage();
-  refreshAvatarBadges();
+  refreshAvatarBadges(); // updates nav name + avatar
   renderDash();
   if(typeof renderAdminSettings==='function') renderAdminSettings();
   _lpSetLoading(false);
-  lsSave(); // save with fresh timestamp so local is authoritative
-  // Start background sync
-  setTimeout(()=>fbLoadAll(), 1500);
+  lsSave(); // save with fresh timestamp
 }
 
 
