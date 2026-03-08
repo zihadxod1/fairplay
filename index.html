@@ -2476,7 +2476,7 @@ function joinTWithTeam(tid,teamId){
   DB.me.balance-=t.entryFee;DB.me.tournaments++;
   DB.players[0].balance=DB.me.balance;
   t.teams.push({name:tm.name,captain:DB.me.uid,members:tm.memberIds,icon:tm.icon,tag:tm.tag});
-  updateBalance();toast(`"${tm.name}" registered for "${t.name}"!`,'gold');closeModal();renderT();}
+  fbAutoSync();updateBalance();toast(`"${tm.name}" registered for "${t.name}"!`,'gold');closeModal();renderT();}
 function registerTeamToTournament(tid, teamId){
   const t=DB.tournaments.find(x=>x.id===tid),tm=DB.teams.find(x=>x.id===teamId);if(!t||!tm)return;
   if(!t.teams)t.teams=[];
@@ -2791,7 +2791,7 @@ function createTeam(){
   const code=(tag+Math.floor(1000+Math.random()*9000));
   const newTeam={id:'tm'+Date.now(),name,tag,icon,leaderId:'u1',memberIds:['u1'],code,wins:0,losses:0,tournaments:0,description:desc,createdDate:new Date().toISOString().slice(0,10)};
   DB.teams.push(newTeam);DB.me.teamIds.push(newTeam.id);DB.players[0].teamIds=[...DB.me.teamIds];
-  closeModal();toast(`Team "${name}" created!`,'success');renderTeams();}
+  closeModal();fbAutoSync();toast(`Team "${name}" created!`,'success');renderTeams();}
 function showJoinTeam(){
   openModal(`<div class="mbox">
     <button class="mclose" onclick="closeModal()">✕</button>
@@ -2829,6 +2829,7 @@ function joinTeamById(tid){
   DB.me.teamIds=[tid];
   DB.players[0].teamIds=[tid];
   closeModal();
+  fbAutoSync();
   toast(`Joined "${t.name}"!`,'success');
   renderTeams();
   if(typeof currentPage!=='undefined'&&currentPage==='profile') renderProfile();}
@@ -2842,7 +2843,7 @@ function leaveTeam(tid){
     t.memberIds=t.memberIds.filter(id=>id!=='u1');
     toast(`Left "${t.name}".`,'info');}
   DB.me.teamIds=DB.me.teamIds.filter(id=>id!==tid);
-  DB.players[0].teamIds=DB.me.teamIds;renderTeams();}
+  DB.players[0].teamIds=DB.me.teamIds;fbAutoSync();renderTeams();}
 function viewTeamDetail(tid){
   const t=DB.teams.find(x=>x.id===tid);if(!t)return;
   const leader=DB.players.find(p=>p.id===t.leaderId);
@@ -2977,7 +2978,7 @@ function createGuild(){
   const code=(tag+Math.floor(1000+Math.random()*9000));
   const newGuild={id:'gld'+Date.now(),name,tag,icon,leaderId:'u1',memberIds:['u1'],code,wins:0,losses:0,tournaments:0,description:desc,level:1,xp:0,createdDate:new Date().toISOString().slice(0,10)};
   DB.guilds.push(newGuild);DB.me.guildId=newGuild.id;DB.players[0].guildId=newGuild.id;
-  closeModal();toast(`Guild "${name}" founded!`,'gold');renderGuilds();}
+  closeModal();fbAutoSync();toast(`Guild "${name}" founded!`,'gold');renderGuilds();}
 function showJoinGuild(){
   openModal(`<div class="mbox">
     <button class="mclose" onclick="closeModal()">✕</button>
@@ -3006,7 +3007,7 @@ function joinGuildById(gid){
   const g=DB.guilds.find(x=>x.id===gid);if(!g)return;
   if(g.memberIds.includes('u1')){toast('Already a member!','info');return;}
   g.memberIds.push('u1');DB.me.guildId=gid;DB.players[0].guildId=gid;
-  toast(`Joined "${g.name}"!`,'gold');renderGuilds();}
+  fbAutoSync();toast(`Joined "${g.name}"!`,'gold');renderGuilds();}
 function leaveGuild(){
   const g=DB.guilds.find(x=>x.id===DB.me.guildId);if(!g)return;
   if(g.leaderId==='u1'){
@@ -3017,7 +3018,7 @@ function leaveGuild(){
   } else {
     g.memberIds=g.memberIds.filter(id=>id!=='u1');
     toast(`Left "${g.name}".`,'info');}
-  DB.me.guildId=null;DB.players[0].guildId=null;renderGuilds();}
+  DB.me.guildId=null;DB.players[0].guildId=null;fbAutoSync();renderGuilds();}
 function viewGuildDetail(gid){
   const g=DB.guilds.find(x=>x.id===gid);if(!g)return;
   const creator=DB.players.find(p=>p.id===g.leaderId);
@@ -3175,6 +3176,7 @@ function submitTopup(){
   });
   pushNotif('u1','tournament',`Top-Up Submitted — ${g.name}`,
     `Your ${p.label} top-up for ${g.name} (ID: ${gameid}) is being processed. We'll notify you when it's delivered.`);
+  fbAutoSync();
   updateBalance();
   toast(`${p.label} top-up submitted!`,'success');
   _tuPkg=null;
@@ -3236,7 +3238,7 @@ function submitDeposit(){
   if(!ref){toast('Enter reference ID','error');return;}
   DB.transactions.unshift({id:'tx'+Date.now(),uid:'u1',uname:DB.me.name,type:'deposit',amount:amt,method,ref,phone,status:'pending',date:new Date().toISOString().slice(0,10)});
   $('dep-amt').value='';$('dep-ref').value='';$('dep-phone').value='';
-  toast(`Deposit request for ${amt} AC submitted!`,'success');renderWallet();}
+  fbAutoSync();toast(`Deposit request for ${amt} AC submitted!`,'success');renderWallet();}
 function submitWithdraw(){
   const amt=parseInt($('wd-amt').value),acc=$('wd-acc').value.trim(),method=$('wd-method').value;
   if(!amt||amt<200){toast('Min. 200 AC','error');return;}
@@ -3244,7 +3246,7 @@ function submitWithdraw(){
   if(!acc){toast('Enter account number','error');return;}
   DB.transactions.unshift({id:'tx'+Date.now(),uid:'u1',uname:DB.me.name,type:'withdraw',amount:amt,method,account:acc,status:'pending',date:new Date().toISOString().slice(0,10)});
   $('wd-amt').value='';$('wd-acc').value='';
-  toast(`Withdrawal request for ${amt} AC submitted!`,'success');renderWallet();}
+  fbAutoSync();toast(`Withdrawal request for ${amt} AC submitted!`,'success');renderWallet();}
 const _CHAR_NAMES = ['Swordsman','Mage','Ninja','Archer','Tank','Scout','Brawler','Commander'];
 const _PAL_NAMES  = ['🟢 Green','🟣 Purple','🟠 Orange','🔵 Blue','🟡 Yellow','🔴 Red','🩵 Teal','💜 Violet'];
 let _avPickerShape = 0, _avPickerPal = 0;
@@ -3332,7 +3334,7 @@ function pickSvg(i, pid){
 function pickEmoji(i, pid){
   pid=pid||'u1';
   _applyAvatarToPlayer(pid,{_emojiIdx:i,_svgIdx:undefined,avatarCustom:null});
-  closeModal();toast(EMOJI_AVATARS[i].e+' '+EMOJI_AVATARS[i].n+' set!','success');
+  closeModal();fbAutoSync();toast(EMOJI_AVATARS[i].e+' '+EMOJI_AVATARS[i].n+' set!','success');
   if(pid==='u1') renderProfile();
 }
 function pickCustom(input, pid){
@@ -3342,7 +3344,7 @@ function pickCustom(input, pid){
   const r=new FileReader();
   r.onload=e=>{
     _applyAvatarToPlayer(pid,{avatarCustom:e.target.result,_svgIdx:undefined,_emojiIdx:undefined});
-    closeModal();toast('Custom avatar set!','success');
+    closeModal();fbAutoSync();toast('Custom avatar set!','success');
     if(pid==='u1') renderProfile();
   };r.readAsDataURL(f);
 }
@@ -3739,10 +3741,10 @@ function addGP(){
   const isImg=customImg?true:false;
   DB.me.gameProfiles.push({game,username:user,gameUid,icon,isImg});
   DB.players[0].gameProfiles=[...DB.me.gameProfiles];
-  closeModal();toast('Game profile added!','success');renderProfile();}
+  closeModal();fbAutoSync();toast('Game profile added!','success');renderProfile();}
 function removeGP(i){
   DB.me.gameProfiles.splice(i,1);DB.players[0].gameProfiles=DB.me.gameProfiles;
-  toast('Removed','info');renderProfile();}
+  fbAutoSync();toast('Removed','info');renderProfile();}
 function _sgCard(p){
   const guild=p.guildId?DB.guilds.find(g=>g.id===p.guildId):null;
   const wr=p.wins+p.losses>0?Math.round(p.wins/(p.wins+p.losses)*100):0;
@@ -4151,6 +4153,7 @@ function createCustomBadge(){
 function adminToggleBan(pid){
   const p=DB.players.find(x=>x.id===pid);if(!p)return;
   p.banned=!p.banned;
+  fbAutoSync();
   toast(`${p.name} ${p.banned?'banned':'unbanned'}`,p.banned?'error':'success');
   renderAdminPlayers();
 }
@@ -4169,7 +4172,7 @@ function adminPromote(pid){
 function doPromote(pid){
   const p=DB.players.find(x=>x.id===pid);if(!p)return;
   p.role='admin';
-  closeModal();toast(`${p.name} promoted to Admin!`,'gold');
+  closeModal();fbAutoSync();toast(`${p.name} promoted to Admin!`,'gold');
   renderAdminPlayers();
 }
 function adminDemote(pid){
@@ -4203,6 +4206,7 @@ function doGiveCoins(pid){
   if(p.id==='u1') DB.me.balance=p.balance;
   DB.transactions.unshift({id:'tx'+Date.now(),uid:pid,uname:p.name,type:amt>0?'credit':'deduct',amount:Math.abs(amt),method:'Admin',ref:reason,status:'approved',date:new Date().toISOString().slice(0,10)});
   closeModal();
+  fbAutoSync();
   toast(`${amt>0?'Gave':'Deducted'} ${Math.abs(amt)} AC ${amt>0?'to':'from'} ${p.name}`,'gold');
   renderAdminPlayers();if(typeof renderWallet==='function')renderWallet();
   updateBalance();
@@ -4232,7 +4236,7 @@ function doAdjustStats(pid){
   p.tournaments=parseInt($('stat-tours')?.value)||0;
   p.balance=parseInt($('stat-bal')?.value)||0;
   if(p.id==='u1'){Object.assign(DB.me,{wins:p.wins,losses:p.losses,tournaments:p.tournaments,balance:p.balance});}
-  closeModal();toast(`Stats updated for ${p.name}`,'success');
+  closeModal();fbAutoSync();toast(`Stats updated for ${p.name}`,'success');
   renderAdminPlayers();if(typeof renderWallet==='function')renderWallet();updateBalance();
 }
 function adminDM(pid){
@@ -4599,6 +4603,7 @@ function confirmTopupPurchase(gid, pkgId){
   _storeOrders.unshift(order);
   DB.transactions.unshift({id:'tx'+Date.now(),uid:'u1',uname:DB.me.name,type:'purchase',amount:pkg.price,method:'Store',ref:`${game.name} ${pkg.label}`,status:'pending',date:new Date().toISOString().slice(0,10)});
   closeModal();
+  fbAutoSync();
   updateBalance();
   pushNotif('u1','tournament','Purchase Received!',`Your order for ${pkg.label} (${game.name}) is pending. Account: ${accountId||'—'}. We'll deliver soon!`);
   toast(`Order placed for ${pkg.label}!`,'gold');
@@ -4615,6 +4620,7 @@ function confirmStorePurchase(itemId){
   _storeOrders.unshift(order);
   DB.transactions.unshift({id:'tx'+Date.now(),uid:'u1',uname:DB.me.name,type:'purchase',amount:item.price,method:'Store',ref:item.name,status:'pending',date:new Date().toISOString().slice(0,10)});
   closeModal();
+  fbAutoSync();
   updateBalance();
   pushNotif('u1','promo','Purchase Received!',`Your order for "${item.name}" is pending. We'll process it shortly!`);
   toast(`Order placed: ${item.name}!`,'gold');
@@ -5001,10 +5007,10 @@ function approveTx(tid){
   const p=DB.players.find(x=>x.id===tx.uid);
   if(tx.type==='deposit'){if(p)p.balance+=tx.amount;if(tx.uid==='u1'){DB.me.balance+=tx.amount;updateBalance();}}
   else if(tx.type==='withdraw'){if(p&&p.balance>=tx.amount)p.balance-=tx.amount;if(tx.uid==='u1'){DB.me.balance-=tx.amount;updateBalance();}}
-  tx.status='approved';toast(`Approved for ${tx.uname}`,'success');renderAdminTx();}
+  tx.status='approved';fbAutoSync();toast(`Approved for ${tx.uname}`,'success');renderAdminTx();}
 function rejectTx(tid){
   const tx=DB.transactions.find(t=>t.id===tid);if(tx)tx.status='rejected';
-  toast('Rejected','info');renderAdminTx();}
+  fbAutoSync();toast('Rejected','info');renderAdminTx();}
 function renderAdminBadges(){
   const el = $('admin-badges'); if(!el) return;
   el.innerHTML = DB.badges.length ? DB.badges.map(b=>`<div class="bac">
@@ -5687,7 +5693,7 @@ function joinTSolo(tid){
   t.players.push('u1'); DB.me.balance -= t.entryFee; DB.me.tournaments++;
   DB.players[0].balance = DB.me.balance; DB.players[0].tournaments = DB.me.tournaments;
   if(t.entryFee>0) DB.transactions.unshift({id:'tx'+Date.now(),uid:'u1',uname:DB.me.name,type:'join',amount:t.entryFee,method:'tournament',ref:t.name,status:'approved',date:new Date().toISOString().slice(0,10)});
-  updateBalance(); toast(`Joined "${t.name}" as solo!`,'success'); renderT();
+  fbAutoSync(); updateBalance(); toast(`Joined "${t.name}" as solo!`,'success'); renderT();
 }
 function showJoinWithTeam(tid){
   const t = DB.tournaments.find(x=>x.id===tid);
@@ -5765,6 +5771,7 @@ function saveTournamentEdit(){
   t.description = document.getElementById('et-desc').value.trim();
   t.modes = window._editModes && window._editModes.length ? [...window._editModes] : t.modes;
   closeModal();
+  fbAutoSync();
   toast(`"${t.name}" updated!`, 'success');
   renderAdminT();
   if(typeof renderT === 'function' && currentPage === 'tournaments') renderT();
@@ -5796,6 +5803,7 @@ function confirmDeleteT(tid){
   }
   DB.tournaments = DB.tournaments.filter(x=>x.id!==tid);
   closeModal();
+  fbAutoSync();
   toast(`"${name}" deleted. Entry fees refunded.`,'info');
   renderAdminT();
   if(currentPage === 'tournaments') renderT();
@@ -6102,6 +6110,7 @@ function saveAdminEdit(pid){
     updateBalance();
   }
   closeModal();
+  fbAutoSync();
   toast(`✓ Profile updated for ${name}!`,'success');
   renderAdminPlayers();
   if(pid==='u1'){ _refreshLogoPanel(); if(currentPage==='profile') renderProfile(); }
@@ -6467,32 +6476,27 @@ function fbAutoSync(){
 
 async function _doCloudSync(){
   try {
-    // Always save current user profile
+    const _ts = Date.now();
+    // Save current user profile with timestamp
     if(_fbUid && DB.me){
       const meData = JSON.parse(JSON.stringify(DB.me));
-      await _fsSet('players', _fbUid, {...meData, id:_fbUid});
+      await _fsSet('players', _fbUid, {...meData, id:_fbUid, _savedAt:_ts});
     }
-    // Admin saves everything
-    if(DB.me.role === 'admin'){
-      const writes = [];
-      const cols = {tournaments:DB.tournaments,teams:DB.teams,guilds:DB.guilds,
-                    badges:DB.badges,storeItems:DB.storeItems,games:DB.games};
-      for(const [col,items] of Object.entries(cols)){
-        (items||[]).filter(x=>x&&x.id).forEach(item=>{
-          writes.push({collection:col, id:String(item.id), data:JSON.parse(JSON.stringify(item))});
-        });
-      }
-      if(writes.length) await _fsBatch(writes);
-    } else {
-      // Player: save only joined tournaments
-      for(const t of (DB.tournaments||[]).filter(t=>t&&t.id&&(t.players||[]).includes('u1'))){
-        await _fsSet('tournaments', String(t.id), JSON.parse(JSON.stringify(t))).catch(()=>{});
-      }
+    // ALL users save ALL shared collections
+    const writes = [];
+    const cols = {tournaments:DB.tournaments, teams:DB.teams, guilds:DB.guilds,
+                  badges:DB.badges, storeItems:DB.storeItems, games:DB.games};
+    for(const [col,items] of Object.entries(cols)){
+      (items||[]).filter(x=>x&&x.id).forEach(item=>{
+        writes.push({collection:col, id:String(item.id), data:JSON.parse(JSON.stringify(item))});
+      });
     }
+    if(writes.length) await _fsBatch(writes);
     lsSave();
     fbShowPill('saved','Saved ✓');
   } catch(e){
     console.warn('Sync error:', e.message);
+    lsSave(); // always save locally even if cloud fails
     fbShowPill('saved','Saved locally ✓');
     if(e.message && e.message.includes('PERMISSION_DENIED')){
       if(!window._rulesShown){ window._rulesShown=true; _showFirestoreRulesModal(); }
@@ -6503,24 +6507,37 @@ async function _doCloudSync(){
 // ── Load all data for current user ──
 async function fbLoadAll(){
   if(!_fbToken) return;
-  fbShowPill('syncing','Loading…',false);
+  fbShowPill('syncing','Syncing…',false);
   try {
     const COLS = ['tournaments','teams','guilds','badges','storeItems','games'];
     const [playerDocs, ...colDocs] = await Promise.all([
       _fsList('players'),
       ...COLS.map(c=>_fsList(c).catch(()=>[]))
     ]);
-    // Load current user
+    // Get local save timestamp to compare
+    const localTs = _lsGetTs();
+    // Get Firestore save timestamp from our own player doc
     const myDoc = playerDocs.find(p=>p.id===_fbUid||p._docId===_fbUid);
-    if(myDoc){ Object.assign(DB.me, myDoc); DB.me.id='u1'; }
-    // Real players only
-    const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
-    if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
-    // Collections
-    COLS.forEach((col,i)=>{ if(colDocs[i].length) DB[col]=colDocs[i]; });
-    fbShowPill('saved','Loaded ✓');
-    lsSave();
-    _reRenderPage();
+    const fsTs = myDoc?._savedAt || 0;
+
+    if(localTs > 0 && localTs >= fsTs){
+      // ── Local data is NEWER than Firestore — push our data UP ──
+      fbShowPill('syncing','Uploading…',false);
+      _doCloudSync(); // push local → cloud in background
+      // Still update the other players list from Firestore
+      const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
+      if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
+      fbShowPill('saved','In sync ✓');
+    } else {
+      // ── Firestore is NEWER or first time — apply Firestore data ──
+      if(myDoc){ Object.assign(DB.me, myDoc); DB.me.id='u1'; }
+      const real = playerDocs.filter(p=>p.id!=='u1'&&p._docId!=='u1');
+      if(real.length) DB.players = real.map(p=>({...p,id:p._docId||p.id}));
+      COLS.forEach((col,i)=>{ if(colDocs[i].length) DB[col]=colDocs[i]; });
+      fbShowPill('saved','Loaded ✓');
+      lsSave();
+      _reRenderPage();
+    }
   } catch(e){
     console.warn('Load error:',e.message);
     fbShowPill('saved','Using local data');
@@ -6598,12 +6615,17 @@ function _reRenderPage(){
 const LS_DB_KEY = 'fairplay_db_v1';
 function lsSave(){
   try {
+    const _ts = Date.now();
     localStorage.setItem(LS_DB_KEY, JSON.stringify({
-      me:DB.me,players:DB.players,tournaments:DB.tournaments,teams:DB.teams,
-      guilds:DB.guilds,badges:DB.badges,storeItems:DB.storeItems,games:DB.games,
-      _uid:_fbUid,_t:Date.now()
+      me:DB.me, players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
+      guilds:DB.guilds, badges:DB.badges, storeItems:DB.storeItems, games:DB.games,
+      _uid:_fbUid, _t:_ts, _savedAt:_ts
     }));
   } catch(e){}
+}
+// ── Helper: get local save timestamp ──
+function _lsGetTs(){
+  try{const r=localStorage.getItem(LS_DB_KEY);if(!r)return 0;return JSON.parse(r)._savedAt||0;}catch(e){return 0;}
 }
 function lsLoad(uid){
   try {
@@ -6655,7 +6677,9 @@ async function fbCheckOnLoad(){
       // Apply admin UI
       const isAdmin = DB.me.role==='admin';
       document.querySelectorAll('[data-page="admin"]').forEach(b=>b.style.display=isAdmin?'':'none');
-      // Load fresh data from Firestore in background
+      // Ensure local data has a fresh timestamp before Firestore load
+      lsSave();
+      // Load/sync with Firestore in background
       fbLoadAll().then(()=>{
         const meta = _fsGet('_meta','init').catch(()=>null);
         meta.then(m=>{ if(!m) fbSeedAll(); });
@@ -6782,7 +6806,9 @@ async function _enterRestApp(user, phone){
   renderDash();
   if(typeof renderAdminSettings==='function') renderAdminSettings();
   _lpSetLoading(false);
-  lsSave();
+  lsSave(); // save with fresh timestamp so local is authoritative
+  // Start background sync
+  setTimeout(()=>fbLoadAll(), 1500);
 }
 
 
