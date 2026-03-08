@@ -5692,31 +5692,78 @@ async function fbSyncAll(){
     }
     fbShowPill('saved','Saved ✓');
   } catch(e){
+    lsSave(); // Always keep localStorage in sync as backup
     _unsavedChanges = true;
-    _syncTimer = setTimeout(fbSyncAll, 6000);
-    const isRules = (e.code||'').includes('permission') || (e.message||'').includes('permission');
+    const code = e.code || '';
+    const msg  = e.message || '';
+    const isRules = code.includes('permission') || msg.includes('permission') || msg.includes('Missing or insufficient');
+    const isOffline = code.includes('unavailable') || msg.includes('offline') || msg.includes('network');
+
     if(isRules){
-      fbShowPill('error', 'Rules blocked');
+      // Firestore rules blocking — show setup guide once
+      _fbConnected = false;
+      fbShowPill('error', 'Rules not set');
       if(!window._rulesWarned){
         window._rulesWarned = true;
-        console.warn('Firestore rules blocking writes — using localStorage backup instead.');
-        fbShowPill('saved', 'Saved locally ✓');
-        _fbConnected = false; // Switch to localStorage-only mode
+        _showFirestoreRulesModal();
       }
+    } else if(isOffline){
+      // Offline — retry quietly
+      fbShowPill('saved', 'Saved locally ✓');
+      _syncTimer = setTimeout(fbSyncAll, 5000);
     } else {
-      // Data is safe in localStorage — don't alarm user with Firestore errors
-      window._fbFailCount = (window._fbFailCount||0) + 1;
-      console.warn('Firestore sync issue (localStorage backup active):', e.code||e.message);
-      if(window._fbFailCount < 3){
-        _unsavedChanges = true;
-        _syncTimer = setTimeout(fbSyncAll, 10000);
-        fbShowPill('saved', 'Saved locally ✓');
-      } else {
-        _fbConnected = false; // Stop trying — use localStorage only
-        fbShowPill('saved', 'Saved locally ✓');
-      }
+      // Other error — retry
+      fbShowPill('error', 'Retrying…');
+      console.error('Firestore sync:', code, msg);
+      _syncTimer = setTimeout(fbSyncAll, 5000);
     }
   }
+}
+
+// ── Show Firestore rules setup modal ──
+function _showFirestoreRulesModal(){
+  if(document.getElementById('rules-modal')) return;
+  const m = document.createElement('div');
+  m.id = 'rules-modal';
+  m.style.cssText = 'position:fixed;inset:0;z-index:999999;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:20px';
+  m.innerHTML = `
+    <div style="background:#0f1f11;border:1px solid rgba(74,222,128,.3);border-radius:20px;padding:32px;max-width:460px;width:100%;font-family:Outfit,sans-serif">
+      <div style="font-size:22px;font-weight:800;color:#fff;margin-bottom:8px">⚠️ One-time Setup Needed</div>
+      <div style="font-size:13px;color:rgba(255,255,255,.6);margin-bottom:24px;line-height:1.6">
+        Firestore rules are blocking saves. Fix it in 30 seconds:
+      </div>
+      <div style="background:rgba(0,0,0,.4);border-radius:12px;padding:16px;margin-bottom:16px">
+        <div style="color:#4ade80;font-weight:700;font-size:12px;margin-bottom:10px">STEP 1 — Open Firebase Console Rules:</div>
+        <a href="https://console.firebase.google.com/project/ff-booyah-eb33c/firestore/rules"
+           target="_blank"
+           style="display:block;background:#1a3a1e;border:1px solid rgba(74,222,128,.4);border-radius:8px;padding:10px 14px;color:#4ade80;text-decoration:none;font-size:13px;font-weight:600;text-align:center">
+          👉 Click here → Firebase Firestore Rules
+        </a>
+      </div>
+      <div style="background:rgba(0,0,0,.4);border-radius:12px;padding:16px;margin-bottom:24px">
+        <div style="color:#4ade80;font-weight:700;font-size:12px;margin-bottom:10px">STEP 2 — Replace ALL rules with this and click Publish:</div>
+        <pre style="background:#000;border-radius:8px;padding:12px;color:#86efac;font-size:11px;overflow:auto;margin:0;line-height:1.6">rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}</pre>
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="document.getElementById('rules-modal').remove(); window._rulesWarned=false; window._fbFailCount=0; _fbConnected=true; fbAutoSync();"
+          style="flex:1;padding:12px;background:#00c853;color:#000;border:none;border-radius:10px;font-weight:700;font-size:14px;cursor:pointer">
+          ✓ Done — Try Again
+        </button>
+        <button onclick="document.getElementById('rules-modal').remove();"
+          style="padding:12px 16px;background:rgba(255,255,255,.08);color:#fff;border:none;border-radius:10px;font-weight:600;font-size:14px;cursor:pointer">
+          Later
+        </button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(m);
 }
 async function fbSyncItem(collection, id){
   if(!_db) return;
@@ -5836,12 +5883,7 @@ async function fbCheckOnLoad(){
       measurementId:     "G-3B2V7RGD60"
     };
     localStorage.setItem(FB_CFG_KEY, JSON.stringify(autoCfg));
-    fbInit(autoCfg);
-    return;
-    if(document.getElementById('fb-apiKey')) document.getElementById('fb-apiKey').value = "AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw";
-    if(document.getElementById('fb-authDomain')) document.getElementById('fb-authDomain').value = "ff-booyah-eb33c.firebaseapp.com";
-    if(document.getElementById('fb-projectId')) document.getElementById('fb-projectId').value = "ff-booyah-eb33c";
-    setTimeout(()=>{ const ov=document.getElementById('fb-setup-overlay'); if(ov) ov.style.display='flex'; }, 400);
+    await fbInit(autoCfg);
   } else {
     try {
       const cfg = JSON.parse(saved);
