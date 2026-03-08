@@ -2220,6 +2220,36 @@ function closeModal(){
     _modalCloseTimer=null;
   }, 300);
 }
+function copyUID(){
+  const uid = DB.me.uid || _fbUid || '';
+  if(!uid){ toast('No UID found','error'); return; }
+  const _done = () => {
+    document.querySelectorAll('.db-copy-uid-btn,.prof-copy-uid-btn').forEach(btn=>{
+      const orig = btn.textContent;
+      btn.textContent = '✓';
+      btn.classList.add('copied');
+      setTimeout(()=>{ btn.textContent=orig; btn.classList.remove('copied'); }, 1800);
+    });
+    toast('UID copied!','success');
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(uid).then(_done).catch(()=>{
+      try{
+        const ta=document.createElement('textarea');
+        ta.value=uid;ta.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+        document.body.appendChild(ta);ta.focus();ta.select();
+        document.execCommand('copy');document.body.removeChild(ta);_done();
+      }catch(e){ toast('Copy failed — long press UID to copy','info'); }
+    });
+  } else {
+    try{
+      const ta=document.createElement('textarea');
+      ta.value=uid;ta.style.cssText='position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);ta.focus();ta.select();
+      document.execCommand('copy');document.body.removeChild(ta);_done();
+    }catch(e){ toast('Copy failed — long press UID to copy','info'); }
+  }
+}
 function countUp(el,to,dur=700){
   if(!el)return;
   const from=parseInt(el.textContent)||0,start=performance.now();
