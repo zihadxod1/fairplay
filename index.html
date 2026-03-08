@@ -1322,6 +1322,11 @@ const setHTML=(id,h)=>{const e=$(id);if(e)e.innerHTML=h;};
 const fdate=d=>new Date(d+'T00:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
 const modeTag=m=>{const map={solo:'mode-solo',duo:'mode-duo',squad:'mode-squad',team:'mode-team'};return`<span class="mode-tag ${map[m]||'mode-solo'}">${m}</span>`;};
 function toast(msg,type='info'){
+  // Auto-save on ANY toast that means data changed (not errors)
+  if(type !== 'error'){
+    if(typeof lsSave === 'function') lsSave(); // localStorage always
+    if((type==='success' || type==='gold') && typeof fbAutoSync === 'function') fbAutoSync();
+  }
   const icons={success:'✓',error:'✕',info:'●',gold:'★'};
   const t=document.createElement('div');t.className=`toast ${type}`;
   t.innerHTML=`<span style="font-size:15px;flex-shrink:0">${icons[type]||'●'}</span><span>${msg}</span>`;
@@ -2480,7 +2485,7 @@ function clearEmojiAvatar(pid){
 function clearSvgAvatar(pid){
   pid=pid||'u1';
   _applyAvatarToPlayer(pid,{_svgIdx:undefined});
-  closeModal();toast('Reset to default','info');
+  closeModal();toast('Reset to default','info'); fbAutoSync();
   if(pid==='u1') renderProfile(); else showAvatarPicker(pid);
 }
 function _renderAvPickerModal(){
@@ -5454,7 +5459,9 @@ async function fbLoadAll(){
       const data = docs.map(d => ({...d.data(), _fbId: d.id}));
       if(c === 'players'){
         DB.players = data;
-        const me = data.find(p => p.id === 'u1');
+        // Load by real UID if logged in, else fall back to 'u1'
+        const myUid = DB.me.uid && DB.me.uid !== '100000000' ? DB.me.uid : null;
+        const me = data.find(p => p.id === myUid) || data.find(p => p.id === 'u1');
         if(me) Object.assign(DB.me, me);
       } else {
         DB[c] = data;
@@ -5593,8 +5600,54 @@ async function fbDelete(collection, id){
     await _db.collection(collection).doc(id).delete();
   } catch(e) { console.error('fbDelete error:', e); }
 }
+// ── localStorage persistence (primary — always works offline) ──
+const LS_DB_KEY = 'fairplay_db_v1';
+
+function lsSave(){
+  try {
+    const snap = {
+      me: DB.me,
+      players: DB.players,
+      tournaments: DB.tournaments,
+      teams: DB.teams,
+      guilds: DB.guilds,
+      badges: DB.badges,
+      storeItems: DB.storeItems,
+      games: DB.games,
+      _savedAt: Date.now(),
+      _uid: DB.me.uid || null,
+    };
+    localStorage.setItem(LS_DB_KEY, JSON.stringify(snap));
+  } catch(e){ /* storage full — ignore */ }
+}
+
+function lsLoad(uid){
+  try {
+    const raw = localStorage.getItem(LS_DB_KEY);
+    if(!raw) return false;
+    const snap = JSON.parse(raw);
+    // Only restore if saved by same user (or no user set yet)
+    if(snap._uid && uid && snap._uid !== uid) return false;
+    if(snap.me)          Object.assign(DB.me, snap.me);
+    if(snap.players)     DB.players     = snap.players;
+    if(snap.tournaments) DB.tournaments = snap.tournaments;
+    if(snap.teams)       DB.teams       = snap.teams;
+    if(snap.guilds)      DB.guilds      = snap.guilds;
+    if(snap.badges)      DB.badges      = snap.badges;
+    if(snap.storeItems)  DB.storeItems  = snap.storeItems;
+    if(snap.games)       DB.games       = snap.games;
+    return true;
+  } catch(e){ return false; }
+}
+
+function lsClear(){
+  try { localStorage.removeItem(LS_DB_KEY); } catch(e){}
+}
+
+// ── Combined auto-save: localStorage always + Firestore if connected ──
 function fbAutoSync(){
-  if(!_fbConnected) return;
+  lsSave(); // Always save to localStorage immediately
+  if(!_fbConnected) return; // Firestore optional
   _unsavedChanges = true;
   fbShowPill('syncing','Saving…', false);
   clearTimeout(_syncTimer);
@@ -5603,6 +5656,7 @@ function fbAutoSync(){
 async function fbSyncAll(){
   if(!_db || !_unsavedChanges) return;
   _unsavedChanges = false;
+  fbShowPill('syncing', 'Saving…', false);
   try {
     const ALL = {
       players:     DB.players     || [],
@@ -5613,6 +5667,18 @@ async function fbSyncAll(){
       storeItems:  DB.storeItems  || [],
       games:       DB.games       || [],
     };
+
+    // Also make sure current user doc is in players list under BOTH uid and 'u1'
+    if(DB.me && DB.me.uid){
+      const meClean = _stripFbMeta({...DB.me});
+      // Write under real uid
+      const uidRef = _db.collection('players').doc(DB.me.uid);
+      await uidRef.set(meClean, {merge:true});
+      // Write under 'u1' for backwards compat
+      const u1Ref = _db.collection('players').doc('u1');
+      await u1Ref.set(meClean, {merge:true});
+    }
+
     for(const [col, items] of Object.entries(ALL)){
       const valid = items.filter(x => x && x.id);
       if(!valid.length) continue;
@@ -5626,10 +5692,26 @@ async function fbSyncAll(){
     }
     fbShowPill('saved','Saved ✓');
   } catch(e){
-    fbShowPill('error', 'Sync failed');
-    console.error('fbSyncAll error:', e);
     _unsavedChanges = true;
-    _syncTimer = setTimeout(fbSyncAll, 5000);
+    _syncTimer = setTimeout(fbSyncAll, 6000);
+    const isRules = (e.code||'').includes('permission') || (e.message||'').includes('permission');
+    if(isRules){
+      fbShowPill('error', 'Rules blocked');
+      if(!window._rulesWarned){
+        window._rulesWarned = true;
+        // Show persistent banner with exact fix instructions
+        const b = document.createElement('div');
+        b.id = 'rules-banner';
+        b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#7f1d1d;color:#fca5a5;padding:14px 20px;font-size:13px;line-height:1.6;text-align:center;font-family:Outfit,sans-serif';
+        b.innerHTML = '⚠️ <strong>Data cannot be saved</strong> — Firestore rules are blocking writes.<br>' +
+          'Fix: <a href="https://console.firebase.google.com/project/ff-booyah-eb33c/firestore/rules" target="_blank" style="color:#fcd34d;font-weight:700">Click here → Firebase Firestore Rules</a> → paste <code style="background:rgba(0,0,0,.3);padding:2px 6px;border-radius:4px">allow read, write: if true;</code> → click Publish' +
+          '<button onclick="this.parentNode.remove()" style="margin-left:16px;background:none;border:1px solid #fca5a5;color:#fca5a5;border-radius:6px;padding:2px 10px;cursor:pointer">✕</button>';
+        document.body.prepend(b);
+      }
+    } else {
+      fbShowPill('error', 'Sync failed — retrying…');
+      console.error('Sync error:', e.code, e.message);
+    }
   }
 }
 async function fbSyncItem(collection, id){
@@ -5831,35 +5913,59 @@ async function _applyGoogleUser(user){
   // Handle extra fields from signup
   if(user._extraName) user.displayName = user._extraName;
   const isAdmin = user.email === ADMIN_EMAIL;
+  // Restore this user's localStorage data first (instant)
+  lsLoad(user.uid);
   DB.me.id             = 'u1';
   DB.me.uid            = user.uid;
   DB.me.name           = user.displayName || user.email.split('@')[0];
   DB.me.email          = user.email;
   DB.me.role           = isAdmin ? 'admin' : 'player';
   DB.me.googlePhotoUrl = user.photoURL || null;
-  const p = DB.players.find(x => x.id === 'u1');
-  if(p){ Object.assign(p, { name:DB.me.name, email:DB.me.email, role:DB.me.role, uid:DB.me.uid }); }
+  // Update player in DB.players - use UID as id for real users
+  const myId = user.uid && user.uid !== '100000000' ? user.uid : 'u1';
+  DB.me.id = myId;
+  const p = DB.players.find(x => x.id === myId) || DB.players.find(x => x.id === 'u1');
+  if(p){ Object.assign(p, { id:myId, name:DB.me.name, email:DB.me.email, role:DB.me.role, uid:DB.me.uid }); }
+  else { DB.players.push({...DB.me}); }
   if(_db){
     try {
+      // Try uid-based doc first (new format), fallback to 'u1' (legacy)
       const docRef = _db.collection('players').doc(user.uid);
-      const doc    = await docRef.get();
-      if(doc.exists){
-        Object.assign(DB.me, doc.data(), {
+      let doc = await docRef.get().catch(()=>null);
+      if(!doc || !doc.exists){
+        const legacyRef = _db.collection('players').doc('u1');
+        const legacyDoc = await legacyRef.get().catch(()=>null);
+        if(legacyDoc && legacyDoc.exists && legacyDoc.data().uid === user.uid){
+          doc = legacyDoc;
+          // Migrate to uid-based doc
+          await docRef.set(legacyDoc.data(), {merge:true}).catch(()=>{});
+        }
+      }
+      if(doc && doc.exists){
+        const d = doc.data();
+        Object.assign(DB.me, d, {
           id:'u1', uid:user.uid, email:user.email,
-          role: isAdmin ? 'admin' : (doc.data().role || 'player'),
-          googlePhotoUrl: user.photoURL || doc.data().googlePhotoUrl || null,
+          role: isAdmin ? 'admin' : (d.role || 'player'),
+          googlePhotoUrl: user.photoURL || d.googlePhotoUrl || null,
         });
+        // Also update players array
+        const pi = DB.players.findIndex(p => p.uid === user.uid || p.id === 'u1');
+        if(pi >= 0) Object.assign(DB.players[pi], DB.me);
+        else DB.players.push({...DB.me});
       } else {
         const profile = {
-          id:'u1', uid:user.uid, name:DB.me.name, email:user.email,
+          id:user.uid, uid:user.uid, name:DB.me.name, email:user.email,
           role: isAdmin ? 'admin' : 'player', balance:1200,
           wins:0, losses:0, tournaments:0, badges:[], gameProfiles:[],
           teamIds:[], guildId:null,
           joinedDate:new Date().toISOString().split('T')[0],
           googlePhotoUrl: user.photoURL || null,
+          phone: user._extraPhone || user.phoneNumber || null,
         };
         Object.assign(DB.me, profile);
-        await docRef.set(profile);
+        await docRef.set(profile).catch(()=>{});
+        // Also write to 'u1' for compat
+        await _db.collection('players').doc('u1').set(profile, {merge:true}).catch(()=>{});
       }
     } catch(e){  }
     fbAutoSync();
@@ -6090,6 +6196,7 @@ function _authErrMsg(e){
   return e.message || 'Sign-in failed. Please try again.';
 }
 function signOut(){
+  lsClear(); // Clear saved data on sign out
   if(_auth){
     _auth.signOut().then(()=>{
       _currentUser = null;
@@ -6101,6 +6208,9 @@ function signOut(){
   }
 }
 (function(){
+  // Restore from localStorage immediately on load (before Firebase)
+  // This means data appears instantly even on slow connections
+  lsLoad(null);
   showLoginPage();
   refreshAvatarBadges();
   fbCheckOnLoad();
