@@ -6121,56 +6121,87 @@ function lpSwitch(tab){
   document.getElementById('lp-tab-signin').classList.toggle('active',!isSignup);
   _lpHideError();
 }
+/* ── Firebase Auth via REST API (no SDK needed) ── */
+const _FB_API = 'https://identitytoolkit.googleapis.com/v1/accounts:';
+const _FB_KEY = 'AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw';
+async function _fbAuthRest(action, body){
+  const res = await fetch(_FB_API + action + '?key=' + _FB_KEY, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  const data = await res.json();
+  if(data.error) throw new Error(data.error.message || 'Auth error');
+  return data;
+}
+async function _fbUpdateDisplayName(idToken, displayName){
+  await fetch(_FB_API + 'update?key=' + _FB_KEY, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({idToken, displayName, returnSecureToken:false})
+  });
+}
+function _authErrMsg(msg){
+  if(!msg) return 'Something went wrong. Please try again.';
+  if(msg.includes('EMAIL_EXISTS')) return 'This email is already registered. Sign in instead.';
+  if(msg.includes('INVALID_PASSWORD')||msg.includes('INVALID_LOGIN_CREDENTIALS')||msg.includes('INVALID_CREDENTIAL')) return 'Wrong email or password. Try again.';
+  if(msg.includes('EMAIL_NOT_FOUND')||msg.includes('USER_NOT_FOUND')) return 'No account with that email. Sign up first.';
+  if(msg.includes('WEAK_PASSWORD')) return 'Password too weak — minimum 6 characters.';
+  if(msg.includes('INVALID_EMAIL')) return 'Invalid email address.';
+  if(msg.includes('TOO_MANY_ATTEMPTS')||msg.includes('BLOCKED')) return 'Too many attempts. Try again later.';
+  if(msg.includes('NETWORK')||msg.includes('fetch')) return 'Network error. Check your connection.';
+  return msg;
+}
 async function lpSignUp(){
   _lpHideError();
   const name  = (document.getElementById('lp-su-name').value||'').trim();
   const email = (document.getElementById('lp-su-email').value||'').trim();
-  const phone = (document.getElementById('lp-su-phone').value||'').trim();
   const pw    = document.getElementById('lp-su-pw').value;
   const pw2   = document.getElementById('lp-su-pw2').value;
-  if(!name)  return _lpShowError('Please enter your name.');
-  if(!email) return _lpShowError('Please enter your email.');
-  if(!pw)    return _lpShowError('Please enter a password.');
+  if(!name)       return _lpShowError('Please enter your name.');
+  if(!email)      return _lpShowError('Please enter your email.');
+  if(!pw)         return _lpShowError('Please enter a password.');
   if(pw.length<6) return _lpShowError('Password must be at least 6 characters.');
-  if(pw!==pw2) return _lpShowError('Passwords do not match.');
+  if(pw!==pw2)    return _lpShowError('Passwords do not match.');
   _lpSetLoading(true,'Creating your account…');
   document.getElementById('lp-signup-btn').disabled=true;
   try{
-    if(!_auth){
-      await _loadFirebaseSDK();
-      if(!_fbApp){ const saved=localStorage.getItem(FB_CFG_KEY); if(saved&&saved!=='skip') await fbInit(JSON.parse(saved)); else{_lpShowError('Firebase not configured.');_lpSetLoading(false);return;} }
-      _auth=firebase.auth&&firebase.auth();
-    }
-    const cred=await _auth.createUserWithEmailAndPassword(email,pw);
-    await cred.user.updateProfile({displayName:name});
-    cred.user._extraPhone=phone; cred.user._extraName=name;
-    await _enterApp(cred.user);
+    const data = await _fbAuthRest('signUp',{email,password:pw,returnSecureToken:true});
+    await _fbUpdateDisplayName(data.idToken, name);
+    // Store token for session
+    localStorage.setItem('fb_token', data.idToken);
+    localStorage.setItem('fb_refresh', data.refreshToken);
+    localStorage.setItem('fb_uid', data.localId);
+    localStorage.setItem('fb_email', email);
+    localStorage.setItem('fb_name', name);
+    // Build user-like object for _enterApp
+    const user = {uid:data.localId, email, displayName:name, _extraName:name};
+    await _enterApp(user);
   }catch(e){
     _lpSetLoading(false);
     document.getElementById('lp-signup-btn').disabled=false;
-    _lpShowError(_authErrMsg(e));
+    _lpShowError(_authErrMsg(e.message));
   }
 }
 async function lpSignIn(){
   _lpHideError();
-  const email=(document.getElementById('lp-si-email').value||'').trim();
-  const pw=document.getElementById('lp-si-pw').value;
+  const email = (document.getElementById('lp-si-email').value||'').trim();
+  const pw    = document.getElementById('lp-si-pw').value;
   if(!email) return _lpShowError('Please enter your email.');
   if(!pw)    return _lpShowError('Please enter your password.');
   _lpSetLoading(true,'Signing in…');
   document.getElementById('lp-signin-btn').disabled=true;
   try{
-    if(!_auth){
-      await _loadFirebaseSDK();
-      if(!_fbApp){ const saved=localStorage.getItem(FB_CFG_KEY); if(saved&&saved!=='skip') await fbInit(JSON.parse(saved)); else{_lpShowError('Firebase not configured.');_lpSetLoading(false);return;} }
-      _auth=firebase.auth&&firebase.auth();
-    }
-    const cred=await _auth.signInWithEmailAndPassword(email,pw);
-    await _enterApp(cred.user);
+    const data = await _fbAuthRest('signInWithPassword',{email,password:pw,returnSecureToken:true});
+    localStorage.setItem('fb_token', data.idToken);
+    localStorage.setItem('fb_refresh', data.refreshToken);
+    localStorage.setItem('fb_uid', data.localId);
+    localStorage.setItem('fb_email', email);
+    localStorage.setItem('fb_name', data.displayName||email.split('@')[0]);
+    const user = {uid:data.localId, email, displayName:data.displayName||email.split('@')[0]};
+    await _enterApp(user);
   }catch(e){
     _lpSetLoading(false);
     document.getElementById('lp-signin-btn').disabled=false;
-    _lpShowError(_authErrMsg(e));
+    _lpShowError(_authErrMsg(e.message));
   }
 }
 async function lpForgotPw(){
@@ -6178,27 +6209,13 @@ async function lpForgotPw(){
   if(!email) return _lpShowError('Enter your email above first.');
   _lpSetLoading(true,'Sending reset email…');
   try{
-    if(!_auth){
-      await _loadFirebaseSDK();
-      if(!_fbApp){ const saved=localStorage.getItem(FB_CFG_KEY); if(saved&&saved!=='skip') await fbInit(JSON.parse(saved)); else{_lpShowError('Firebase not configured.');_lpSetLoading(false);return;} }
-      _auth=firebase.auth&&firebase.auth();
-    }
-    await _auth.sendPasswordResetEmail(email);
+    await _fbAuthRest('sendOobCode',{requestType:'PASSWORD_RESET',email});
     _lpSetLoading(false);
-    _lpShowError('✓ Reset email sent! Check your inbox.','success');
+    _lpShowError('✓ Reset email sent! Check your inbox.');
   }catch(e){
-    _lpSetLoading(false); _lpShowError(_authErrMsg(e));
+    _lpSetLoading(false);
+    _lpShowError(_authErrMsg(e.message));
   }
-}
-function _authErrMsg(e){
-  const m=e.message||'';
-  if(m.includes('email-already')) return 'This email is already registered. Sign in instead.';
-  if(m.includes('wrong-password')||m.includes('invalid-credential')) return 'Wrong password. Try again or reset it.';
-  if(m.includes('user-not-found')) return 'No account with that email. Sign up first.';
-  if(m.includes('weak-password')) return 'Password too weak. Use at least 6 characters.';
-  if(m.includes('invalid-email')) return 'Invalid email address.';
-  if(m.includes('network')) return 'Network error. Check your connection.';
-  return m||'Something went wrong. Please try again.';
 }
 async function signInWithGoogle(){
   _lpHideError();
