@@ -56,6 +56,20 @@
 .lb-row-score{text-align:center;flex-shrink:0;min-width:38px}
 .lb-row-score-val{font-family:'Outfit',sans-serif;font-weight:900;font-size:17px;color:var(--g3)}
 .lb-row-score-lbl{font-size:7px;font-weight:700;letter-spacing:1px;color:var(--dim);text-transform:uppercase}
+
+.lp-tabs{display:flex;gap:0;background:rgba(255,255,255,.05);border-radius:12px;padding:4px;margin-bottom:24px}
+.lp-tab{flex:1;padding:10px;border:none;background:none;color:rgba(240,253,244,.4);font-family:'Outfit',sans-serif;font-weight:600;font-size:14px;border-radius:8px;cursor:pointer;transition:all .2s}
+.lp-tab.active{background:rgba(74,222,128,.15);color:#4ade80;box-shadow:0 2px 8px rgba(74,222,128,.1)}
+.lp-field-label{font-size:12px;font-weight:600;color:rgba(240,253,244,.6);text-align:left;margin-bottom:6px;margin-top:16px;letter-spacing:.5px}
+.lp-input{width:100%;padding:12px 14px;background:rgba(255,255,255,.05);border:1px solid rgba(74,222,128,.15);border-radius:10px;color:#f0fdf4;font-size:14px;font-family:'Outfit',sans-serif;outline:none;transition:all .2s;box-sizing:border-box}
+.lp-input:focus{border-color:rgba(74,222,128,.5);background:rgba(74,222,128,.05);box-shadow:0 0 0 3px rgba(74,222,128,.08)}
+.lp-input::placeholder{color:rgba(240,253,244,.25)}
+.lp-pw-row{display:flex;gap:12px}
+.lp-submit-btn{width:100%;padding:14px;margin-top:24px;background:#1a3a1e;border:1px solid rgba(74,222,128,.3);border-radius:12px;color:#4ade80;font-family:'Outfit',sans-serif;font-weight:700;font-size:15px;cursor:pointer;transition:all .2s;letter-spacing:.5px}
+.lp-submit-btn:hover{background:#22472a;transform:translateY(-1px);box-shadow:0 6px 20px rgba(74,222,128,.15)}
+.lp-submit-btn:disabled{opacity:.5;cursor:not-allowed;transform:none}
+.lp-forgot{text-align:center;margin-top:14px;font-size:12px;color:rgba(74,222,128,.5);cursor:pointer;transition:color .2s}
+.lp-forgot:hover{color:#4ade80}
 </style>
 
 </head>
@@ -96,22 +110,49 @@
       <div class="lp-logo">FAIR <em>P</em>LAY</div>
       <div class="lp-sub">// Esports Tournament Platform</div>
       <div class="lp-divider"></div>
-      <div class="lp-title">Welcome back</div>
-      <div class="lp-desc">Sign in with your Google account to continue</div>
-      <button class="lp-google-btn" onclick="signInWithGoogle()" id="lp-signin-btn">
-        <svg width="20" height="20" viewBox="0 0 48 48">
-          <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
-          <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
-          <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
-          <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
-        </svg>
-        Sign in with Google
-      </button>
+
+      <!-- Tab switcher -->
+      <div class="lp-tabs">
+        <button class="lp-tab active" id="lp-tab-signup" onclick="lpSwitch('signup')">Sign Up</button>
+        <button class="lp-tab" id="lp-tab-signin" onclick="lpSwitch('signin')">Sign In</button>
+      </div>
+
+      <!-- SIGN UP FORM -->
+      <div id="lp-signup-form">
+        <div class="lp-field-label">Name</div>
+        <input class="lp-input" id="lp-su-name" type="text" placeholder="Max Robinson" autocomplete="name">
+        <div class="lp-field-label">Email</div>
+        <input class="lp-input" id="lp-su-email" type="email" placeholder="byte@gmail.com" autocomplete="email">
+        <div class="lp-field-label">Phone</div>
+        <input class="lp-input" id="lp-su-phone" type="tel" placeholder="+8801234567890" autocomplete="tel">
+        <div class="lp-pw-row">
+          <div style="flex:1">
+            <div class="lp-field-label">Password</div>
+            <input class="lp-input" id="lp-su-pw" type="password" placeholder="••••••••" autocomplete="new-password">
+          </div>
+          <div style="flex:1">
+            <div class="lp-field-label">Confirm Password</div>
+            <input class="lp-input" id="lp-su-pw2" type="password" placeholder="••••••••" autocomplete="new-password">
+          </div>
+        </div>
+        <button class="lp-submit-btn" id="lp-signup-btn" onclick="lpSignUp()">Create an account</button>
+      </div>
+
+      <!-- SIGN IN FORM -->
+      <div id="lp-signin-form" style="display:none">
+        <div class="lp-field-label">Email</div>
+        <input class="lp-input" id="lp-si-email" type="email" placeholder="byte@gmail.com" autocomplete="email">
+        <div class="lp-field-label">Password</div>
+        <input class="lp-input" id="lp-si-pw" type="password" placeholder="••••••••" autocomplete="current-password">
+        <button class="lp-submit-btn" id="lp-signin-btn" onclick="lpSignIn()">Sign In</button>
+        <div class="lp-forgot" onclick="lpForgotPw()">Forgot password?</div>
+      </div>
+
       <div id="lp-status" class="lp-status" style="display:none">
-        <span class="lp-spinner"></span><span id="lp-status-text">Checking sign-in…</span>
+        <span class="lp-spinner"></span><span id="lp-status-text">Please wait…</span>
       </div>
       <div id="lp-error" class="lp-error" style="display:none"></div>
-      <div class="lp-footer">By signing in you agree to Fair Play's terms of service</div>
+      <div class="lp-footer">By signing up you agree to Fair Play's terms of service</div>
     </div>
   </div>
 </div>
@@ -6071,6 +6112,93 @@ async function initAuth(){
     refreshAvatarBadges();
     renderDash();
   }
+}
+function lpSwitch(tab){
+  const isSignup = tab==='signup';
+  document.getElementById('lp-signup-form').style.display = isSignup?'':'none';
+  document.getElementById('lp-signin-form').style.display = isSignup?'none':'';
+  document.getElementById('lp-tab-signup').classList.toggle('active',isSignup);
+  document.getElementById('lp-tab-signin').classList.toggle('active',!isSignup);
+  _lpHideError();
+}
+async function lpSignUp(){
+  _lpHideError();
+  const name  = (document.getElementById('lp-su-name').value||'').trim();
+  const email = (document.getElementById('lp-su-email').value||'').trim();
+  const phone = (document.getElementById('lp-su-phone').value||'').trim();
+  const pw    = document.getElementById('lp-su-pw').value;
+  const pw2   = document.getElementById('lp-su-pw2').value;
+  if(!name)  return _lpShowError('Please enter your name.');
+  if(!email) return _lpShowError('Please enter your email.');
+  if(!pw)    return _lpShowError('Please enter a password.');
+  if(pw.length<6) return _lpShowError('Password must be at least 6 characters.');
+  if(pw!==pw2) return _lpShowError('Passwords do not match.');
+  _lpSetLoading(true,'Creating your account…');
+  document.getElementById('lp-signup-btn').disabled=true;
+  try{
+    if(!_auth){
+      await _loadFirebaseSDK();
+      if(!_fbApp){ const saved=localStorage.getItem(FB_CFG_KEY); if(saved&&saved!=='skip') await fbInit(JSON.parse(saved)); else{_lpShowError('Firebase not configured.');_lpSetLoading(false);return;} }
+      _auth=firebase.auth&&firebase.auth();
+    }
+    const cred=await _auth.createUserWithEmailAndPassword(email,pw);
+    await cred.user.updateProfile({displayName:name});
+    cred.user._extraPhone=phone; cred.user._extraName=name;
+    await _enterApp(cred.user);
+  }catch(e){
+    _lpSetLoading(false);
+    document.getElementById('lp-signup-btn').disabled=false;
+    _lpShowError(_authErrMsg(e));
+  }
+}
+async function lpSignIn(){
+  _lpHideError();
+  const email=(document.getElementById('lp-si-email').value||'').trim();
+  const pw=document.getElementById('lp-si-pw').value;
+  if(!email) return _lpShowError('Please enter your email.');
+  if(!pw)    return _lpShowError('Please enter your password.');
+  _lpSetLoading(true,'Signing in…');
+  document.getElementById('lp-signin-btn').disabled=true;
+  try{
+    if(!_auth){
+      await _loadFirebaseSDK();
+      if(!_fbApp){ const saved=localStorage.getItem(FB_CFG_KEY); if(saved&&saved!=='skip') await fbInit(JSON.parse(saved)); else{_lpShowError('Firebase not configured.');_lpSetLoading(false);return;} }
+      _auth=firebase.auth&&firebase.auth();
+    }
+    const cred=await _auth.signInWithEmailAndPassword(email,pw);
+    await _enterApp(cred.user);
+  }catch(e){
+    _lpSetLoading(false);
+    document.getElementById('lp-signin-btn').disabled=false;
+    _lpShowError(_authErrMsg(e));
+  }
+}
+async function lpForgotPw(){
+  const email=(document.getElementById('lp-si-email').value||'').trim();
+  if(!email) return _lpShowError('Enter your email above first.');
+  _lpSetLoading(true,'Sending reset email…');
+  try{
+    if(!_auth){
+      await _loadFirebaseSDK();
+      if(!_fbApp){ const saved=localStorage.getItem(FB_CFG_KEY); if(saved&&saved!=='skip') await fbInit(JSON.parse(saved)); else{_lpShowError('Firebase not configured.');_lpSetLoading(false);return;} }
+      _auth=firebase.auth&&firebase.auth();
+    }
+    await _auth.sendPasswordResetEmail(email);
+    _lpSetLoading(false);
+    _lpShowError('✓ Reset email sent! Check your inbox.','success');
+  }catch(e){
+    _lpSetLoading(false); _lpShowError(_authErrMsg(e));
+  }
+}
+function _authErrMsg(e){
+  const m=e.message||'';
+  if(m.includes('email-already')) return 'This email is already registered. Sign in instead.';
+  if(m.includes('wrong-password')||m.includes('invalid-credential')) return 'Wrong password. Try again or reset it.';
+  if(m.includes('user-not-found')) return 'No account with that email. Sign up first.';
+  if(m.includes('weak-password')) return 'Password too weak. Use at least 6 characters.';
+  if(m.includes('invalid-email')) return 'Invalid email address.';
+  if(m.includes('network')) return 'Network error. Check your connection.';
+  return m||'Something went wrong. Please try again.';
 }
 async function signInWithGoogle(){
   _lpHideError();
