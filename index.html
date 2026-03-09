@@ -890,6 +890,9 @@ pre, code { white-space: pre-wrap; word-break: break-all; }
   .db-hero-bal-wrap{min-width:88px;padding:8px 8px}
   .db-hero-uid{max-width:100px}
 }
+
+.pla-btn.delete-player{background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.3);color:#f87171}
+.pla-btn.delete-player:hover{background:rgba(248,113,113,.25);border-color:rgba(248,113,113,.5)}
 </style>
 </head>
 <body>
@@ -4229,6 +4232,60 @@ function createCustomBadge(){
   toast(`Badge "${name}" created!`,'success');
   renderAdminBadges();
 }
+function adminDeletePlayer(pid){
+  const p = DB.players.find(x=>x.id===pid);
+  if(!p) return;
+  if(DB.me.role !== 'admin'){ toast('Admin only','error'); return; }
+  if(p.role === 'admin'){ toast('Cannot delete an admin account','error'); return; }
+  openModal(`<div class="mbox" style="max-width:400px">
+    <button class="mclose" onclick="closeModal()">✕</button>
+    <div class="mtitle" style="color:var(--red)">🗑️ Delete Profile</div>
+    <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:10px;padding:14px;margin:14px 0;text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">${getAvatar(p).startsWith('data:')||getAvatar(p).startsWith('http')?'👤':getAvatar(p)}</div>
+      <div style="font-weight:800;font-size:15px;color:var(--g5)">${p.name}</div>
+      <div style="font-size:11px;color:var(--dim);margin-top:4px">${p.email}</div>
+      <div style="font-size:11px;color:var(--dim)">${p.uid}</div>
+    </div>
+    <div style="font-size:12px;color:var(--red);text-align:center;margin-bottom:16px;font-weight:600">
+      ⚠️ This will permanently delete this player's profile,<br>remove them from all teams & guilds, and cannot be undone.
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-d" style="flex:1" onclick="closeModal()">Cancel</button>
+      <button class="btn" style="flex:1;background:rgba(248,113,113,.18);border:1px solid rgba(248,113,113,.4);color:#f87171;font-weight:800"
+        onclick="confirmDeletePlayer('${pid}')">🗑️ Delete Forever</button>
+    </div>
+  </div>`);
+}
+function confirmDeletePlayer(pid){
+  if(DB.me.role !== 'admin'){ toast('Admin only','error'); return; }
+  const p = DB.players.find(x=>x.id===pid);
+  if(!p){ closeModal(); return; }
+  if(p.role === 'admin'){ toast('Cannot delete admin','error'); return; }
+  const name = p.name;
+  // Remove from players list
+  DB.players = DB.players.filter(x=>x.id!==pid);
+  // Remove from all teams
+  DB.teams.forEach(t=>{
+    t.memberIds = (t.memberIds||[]).filter(id=>id!==pid);
+    if(t.leaderId===pid && t.memberIds.length) t.leaderId=t.memberIds[0];
+  });
+  // Remove from all guilds
+  DB.guilds.forEach(g=>{
+    g.memberIds = (g.memberIds||[]).filter(id=>id!==pid);
+    if(g.leaderId===pid && g.memberIds.length) g.leaderId=g.memberIds[0];
+  });
+  // Remove from tournaments
+  DB.tournaments.forEach(t=>{ t.players=(t.players||[]).filter(id=>id!==pid); });
+  // Delete from Firestore if connected
+  if(_fbConnected && _fbToken){
+    fetch(`${FS_BASE}/players/${pid}`,{method:'DELETE',headers:_authHeaders()}).catch(()=>{});
+    fetch(`${FS_BASE}/avatars/${pid}`,{method:'DELETE',headers:_authHeaders()}).catch(()=>{});
+  }
+  fbAutoSync();
+  closeModal();
+  toast(`"${name}" deleted permanently`,'error');
+  renderAdminPlayers();
+}
 function adminToggleBan(pid){
   const p=DB.players.find(x=>x.id===pid);if(!p)return;
   p.banned=!p.banned;
@@ -6237,6 +6294,7 @@ function renderAdminPlayers(){
         <button class="pla-btn dm" onclick="adminDM('${p.id}')" title="DM">📨</button>
         <button class="pla-btn ${p.banned?'unban':'ban'}" onclick="adminToggleBan('${p.id}')" title="${p.banned?'Unban':'Ban'}">${p.banned?'🔓':'🚫'}</button>
         <button class="pla-btn ${p.role==='admin'?'demote':'promote'}" onclick="adminPromote('${p.id}')" title="${p.role==='admin'?'Demote':'Promote'}">${p.role==='admin'?'⬇':'👑'}</button>
+        ${p.id!=='u1'?`<button class="pla-btn delete-player" onclick="adminDeletePlayer('${p.id}')" title="Delete Profile">🗑️</button>`:''}
       </div>
     </div>`;}).join('');
   [...el.querySelectorAll('.bac')].forEach((el,i)=>setTimeout(()=>revealDown(el),i*45));
