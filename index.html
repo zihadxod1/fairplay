@@ -2527,12 +2527,28 @@ function showAvatarPicker(targetPid){
   </div>`);
 }
 function _applyAvatarToPlayer(pid, fields){
-  const player=DB.players.find(x=>x.id===pid); if(!player) return;
+  // Find player by id, fallback to first player if 'u1'
+  let player = DB.players.find(x=>x.id===pid);
+  if(!player && pid==='u1') player = DB.players[0];
+  if(!player) { Object.assign(DB.me, fields); player = DB.me; }
   Object.assign(player, fields);
-  if(pid==='u1') Object.assign(DB.me, fields);
-  const url=getAvatar(player);
-  if(pid==='u1'){ const nav=document.getElementById('nav-av'); if(nav)nav.src=url; _refreshLogoPanel(); }
+  // Always sync to DB.me if this is the current user
+  const isMe = pid==='u1' || player===DB.players[0] || player===DB.me;
+  if(isMe){ Object.assign(DB.me, fields); DB.players[0] = Object.assign(DB.players[0]||{}, fields); }
+  // Update nav avatar immediately
+  if(isMe){
+    const navImg = document.getElementById('nav-av-img');
+    const url = getAvatar(DB.me);
+    if(navImg){ navImg.src=url; navImg.style.display='block'; }
+    if(typeof _refreshLogoPanel==='function') _refreshLogoPanel();
+    if(typeof refreshAvatarBadges==='function') refreshAvatarBadges();
+    // Update dashboard hero avatar
+    const dbAv = document.getElementById('db-hero-av');
+    if(dbAv){ dbAv.style.backgroundImage='url('+url+')'; dbAv.style.backgroundSize='cover'; dbAv.style.backgroundPosition='center'; }
+  }
   if(typeof renderAdminPlayers==='function') renderAdminPlayers();
+  // Save to Firebase
+  if(typeof fbAutoSync==='function') fbAutoSync();
 }
 function _buildLogoInner(p){
   if(p.avatarCustom) return `<img src="${p.avatarCustom}" style="width:100%;height:100%;object-fit:cover;">`;
@@ -2551,15 +2567,18 @@ function _refreshLogoPanel(){
 }
 function pickSvg(i, pid){
   pid=pid||'u1';
-  _applyAvatarToPlayer(pid,{_svgIdx:i,_emojiIdx:undefined,avatarCustom:null});
+  _applyAvatarToPlayer(pid,{_svgIdx:i,_emojiIdx:null,avatarCustom:null});
   closeModal();toast('Avatar updated!','success');
-  if(pid==='u1') renderProfile(); else toast('Updated '+DB.players.find(x=>x.id===pid)?.name,'success');
+  const isMe=pid==='u1'||(!DB.players.find(x=>x.id===pid&&x!==DB.players[0]));
+  if(isMe){ setTimeout(()=>{renderProfile();renderDash();},50); }
+  else toast('Updated '+DB.players.find(x=>x.id===pid)?.name,'success');
 }
 function pickEmoji(i, pid){
   pid=pid||'u1';
-  _applyAvatarToPlayer(pid,{_emojiIdx:i,_svgIdx:undefined,avatarCustom:null});
+  _applyAvatarToPlayer(pid,{_emojiIdx:i,_svgIdx:null,avatarCustom:null});
   closeModal();toast(EMOJI_AVATARS[i].e+' '+EMOJI_AVATARS[i].n+' set!','success');
-  if(pid==='u1') renderProfile();
+  const isMe=pid==='u1'||(!DB.players.find(x=>x.id===pid&&x!==DB.players[0]));
+  if(isMe){ setTimeout(()=>{renderProfile();renderDash();},50); }
 }
 function pickCustom(input, pid){
   pid=pid||'u1';
@@ -2567,9 +2586,10 @@ function pickCustom(input, pid){
   if(f.size>3*1024*1024){toast('Max 3MB','error');return;}
   const r=new FileReader();
   r.onload=e=>{
-    _applyAvatarToPlayer(pid,{avatarCustom:e.target.result,_svgIdx:undefined,_emojiIdx:undefined});
+    _applyAvatarToPlayer(pid,{avatarCustom:e.target.result,_svgIdx:null,_emojiIdx:null});
     closeModal();toast('Custom avatar set!','success');
-    if(pid==='u1') renderProfile();
+    const isMe=pid==='u1'||(!DB.players.find(x=>x.id===pid&&x!==DB.players[0]));
+    if(isMe){ setTimeout(()=>{renderProfile();renderDash();},50); }
   };r.readAsDataURL(f);
 }
 function clearCustomAvatar(pid){
