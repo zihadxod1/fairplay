@@ -1181,12 +1181,14 @@ img{display:block;max-width:100%}
     <!-- ADMIN -->
     <div class="page" id="page-admin">
       <div class="page-header"><div class="page-title" style="color:var(--red)">🔑 Admin Panel</div><div class="page-subtitle">Platform management</div></div>
+      <div id="admin-overview" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
       <div class="admin-tabs">
         <div class="admin-tab active" onclick="setAdminTab('players',this)">👥 Players</div>
-        <div class="admin-tab" onclick="setAdminTab('tournaments',this)">🏆 Tournaments</div>
+        <div class="admin-tab" onclick="setAdminTab('tournaments',this)">🏆 Tourneys</div>
         <div class="admin-tab" onclick="setAdminTab('store',this)">🛒 Store</div>
-        <div class="admin-tab" onclick="setAdminTab('transactions',this)">💰 Transactions</div>
-        <div class="admin-tab" onclick="setAdminTab('notifications',this)">🔔 Notifications</div>
+        <div class="admin-tab" onclick="setAdminTab('transactions',this)">💰 Wallet <span id="adm-pending-dot"></span></div>
+        <div class="admin-tab" onclick="setAdminTab('notifications',this)">🔔 Notifs</div>
+        <div class="admin-tab" onclick="setAdminTab('settings',this)">⚙️ Settings</div>
       </div>
       <div id="admin-content"></div>
     </div>
@@ -1239,7 +1241,8 @@ const LS_SESSION   = 'fp_session_v2';
 // ================================================================
 let DB = {
   me:null, players:[], tournaments:[], teams:[], guilds:[],
-  badges:[], transactions:[], storeItems:[], games:[], notifications:[]
+  badges:[], transactions:[], storeItems:[], games:[], notifications:[],
+  paymentMethods:[], config:{}
 };
 let S = { token:null, refresh:null, uid:null, email:null }; // session
 let _tFilter    = 'all';
@@ -1432,6 +1435,12 @@ async function fbLoadAll() {
     DB.games         = games.filter(Boolean);
     DB.notifications = notifications.filter(Boolean);
     DB.me            = DB.players.find(p => _pid(p) === S.uid) || null;
+
+    // Load platform meta (payment methods, config)
+    const payMeta = await fsGet('_meta','paymentMethods');
+    if (payMeta?.methods) DB.paymentMethods = payMeta.methods;
+    const cfgMeta = await fsGet('_meta','config');
+    if (cfgMeta) { delete cfgMeta._fsId; DB.config = cfgMeta; }
 
     // Load avatars for players (non-blocking)
     _loadAvatars();
@@ -2374,10 +2383,27 @@ function setWalletTab(tab, el) {
 function renderWalletContent() {
   const el = document.getElementById('wallet-content');
   if (_walletTab === 'deposit') {
+    const methods = DB.paymentMethods||[];
+    const payInfo = methods.length
+      ? `<div style="margin-bottom:14px">
+          <div style="font-size:11px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">💳 Send Payment To</div>
+          ${methods.map(m=>`
+            <div style="background:var(--panel2);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="copyText('${m.number}')">
+              <span style="font-size:20px">${m.icon||'💳'}</span>
+              <div style="flex:1">
+                <div style="font-weight:700;font-size:13px">${m.name}${m.holder?' · '+m.holder:''}</div>
+                <div style="font-size:13px;font-family:monospace;color:var(--g1)">${m.number} 📋</div>
+                ${m.note?`<div style="font-size:11px;color:var(--dim);margin-top:2px">${m.note}</div>`:''}
+              </div>
+              <span style="font-size:10px;color:var(--dim)">Min ${m.min||10} AC</span>
+            </div>`).join('')}
+        </div>`
+      : `<div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:12px;color:var(--dim);margin-bottom:12px;text-align:center">⚠️ Admin has not configured payment methods yet. Contact admin for deposit info.</div>`;
     el.innerHTML = `
-      <div class="form-group"><label class="form-label">Amount (AC) *</label><input class="form-input" type="number" id="dep-amount" placeholder="Min 10 AC" min="10"></div>
+      ${payInfo}
+      <div class="form-group"><label class="form-label">Amount (AC) *</label><input class="form-input" type="number" id="dep-amount" placeholder="Min ${DB.config?.minDeposit||10} AC" min="${DB.config?.minDeposit||10}"></div>
       <div class="form-group">
-        <label class="form-label">Payment Screenshot</label>
+        <label class="form-label">Payment Screenshot *</label>
         <div class="upload-zone" onclick="document.getElementById('dep-proof').click()">
           <input type="file" id="dep-proof" accept="image/*" onchange="handleDepProof(this)">
           <div id="dep-proof-preview" style="pointer-events:none">📸<br><span style="font-size:12px;color:var(--dim)">Click to upload payment proof</span></div>
@@ -2755,6 +2781,12 @@ function copyUID() {
     .catch(() => { prompt('Copy this UID:', uid); });
 }
 
+function copyText(text) {
+  navigator.clipboard.writeText(text)
+    .then(() => toast('Copied! 📋','success'))
+    .catch(() => { prompt('Copy:', text); });
+}
+
 // ================================================================
 // ADMIN
 // ================================================================
@@ -2774,100 +2806,297 @@ function setAdminTab(tab, el) {
 }
 
 function renderAdminContent() {
-  const fns = { players:renderAdminPlayers, tournaments:renderAdminTournaments, store:renderAdminStore, transactions:renderAdminTransactions, notifications:renderAdminNotifications };
+  _renderAdminOverview();
+  const fns = {
+    players:       renderAdminPlayers,
+    tournaments:   renderAdminTournaments,
+    store:         renderAdminStore,
+    transactions:  renderAdminTransactions,
+    notifications: renderAdminNotifications,
+    settings:      renderAdminSettings
+  };
   if (fns[_adminTab]) fns[_adminTab]();
 }
 
-// ---- Admin: Players ----
+function _renderAdminOverview() {
+  const el = document.getElementById('admin-overview');
+  if (!el) return;
+  const pending  = DB.transactions.filter(t=>t.status==='pending').length;
+  const totalAC  = DB.players.reduce((s,p)=>(s+(p.balance||0)),0);
+  const openT    = DB.tournaments.filter(t=>t.status==='open').length;
+  const bannedN  = DB.players.filter(p=>p.banned).length;
+  el.innerHTML = `
+    <div style="background:rgba(74,222,128,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px">👥</span>
+      <div><div style="font-size:18px;font-weight:800;color:var(--g1)">${DB.players.length}</div><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px">Players${bannedN?' ('+bannedN+' banned)':''}</div></div>
+    </div>
+    <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px">💰</span>
+      <div><div style="font-size:18px;font-weight:800;color:var(--gold)">${totalAC.toLocaleString()}</div><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px">AC Circulating</div></div>
+    </div>
+    <div style="background:${pending?'rgba(248,113,113,.08)':'rgba(74,222,128,.06)'};border:1px solid ${pending?'rgba(248,113,113,.25)':'var(--border2)'};border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="setAdminTab('transactions',document.querySelector('.admin-tab:nth-child(4)'))">
+      <span style="font-size:22px">⏳</span>
+      <div><div style="font-size:18px;font-weight:800;color:${pending?'var(--red)':'var(--g1)'}">${pending}</div><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px">Pending Tx</div></div>
+    </div>
+    <div style="background:rgba(74,222,128,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px">
+      <span style="font-size:22px">🏆</span>
+      <div><div style="font-size:18px;font-weight:800;color:var(--g1)">${openT}</div><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.8px">Live Tourneys</div></div>
+    </div>
+  `;
+  // pending dot on wallet tab
+  const dot = document.getElementById('adm-pending-dot');
+  if (dot) {
+    dot.style.display = pending ? 'inline-block' : 'none';
+    dot.style.cssText = pending
+      ? 'display:inline-block;width:7px;height:7px;background:var(--red);border-radius:50%;margin-left:5px;vertical-align:middle;animation:pulse 1.5s ease infinite'
+      : 'display:none';
+  }
+}
+
+// ================================================================
+// ADMIN — PLAYERS
+// ================================================================
 function renderAdminPlayers() {
   const el = document.getElementById('admin-content');
-  const q  = (document.getElementById('adm-psearch')?.value || '').toLowerCase();
-  let players = DB.players;
-  if (q) players = players.filter(p => p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.uid?.toLowerCase().includes(q));
-
+  const q  = (document.getElementById('adm-psearch')?.value||'').toLowerCase();
+  let players = [...DB.players];
+  if (q) players = players.filter(p =>
+    p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.uid?.toLowerCase().includes(q)
+  );
   el.innerHTML = `
-    <div class="search-box" style="margin-bottom:12px">
+    <div class="search-box" style="margin-bottom:10px">
       <span class="search-icon">🔍</span>
-      <input type="text" id="adm-psearch" placeholder="Search players..." oninput="renderAdminPlayers()">
+      <input type="text" id="adm-psearch" placeholder="Search by name, email, UID..." oninput="renderAdminPlayers()" value="${q}">
     </div>
-    <div style="font-size:12px;color:var(--dim);margin-bottom:10px">${players.length} player(s)</div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:10px">${players.length} player(s) total</div>
     ${players.map(p => {
       const pid = _pid(p);
       return `
       <div class="admin-player-card">
         <div class="admin-player-top">
-          <div class="admin-player-avatar">${_avatarInner(p)}</div>
+          <div class="admin-player-avatar" onclick="adminEditProfile('${pid}')" style="cursor:pointer">${_avatarInner(p)}</div>
           <div style="flex:1;min-width:0">
             <div class="admin-player-name">
               ${p.name||'—'}
-              ${p.role==='admin' ? '<span class="badge-role admin" style="font-size:8px">ADMIN</span>' : ''}
-              ${p.banned ? '<span style="font-size:10px;color:var(--red);font-weight:700"> BANNED</span>' : ''}
+              ${p.role==='admin'?'<span class="badge-role admin" style="font-size:8px">ADMIN</span>':''}
+              ${p.banned?'<span style="font-size:9px;color:var(--red);font-weight:700;background:rgba(248,113,113,.15);padding:1px 6px;border-radius:4px;margin-left:4px">BANNED</span>':''}
             </div>
-            <div class="admin-player-email">${p.email||''} · ${p.uid||'no uid'} · ${p.balance||0} AC</div>
+            <div class="admin-player-email">${p.email||''}</div>
+            <div style="font-size:10px;color:var(--dim2);font-family:monospace;margin-top:2px">${p.uid||'no-uid'} · ${p.balance||0} AC · ${p.wins||0}W ${p.losses||0}L</div>
           </div>
         </div>
         <div class="admin-actions">
-          <button class="admin-btn gold"    onclick="adminGiveCoins('${pid}')">💰 Coins</button>
-          <button class="admin-btn"         onclick="adminAdjustStats('${pid}')">📊 Stats</button>
-          <button class="admin-btn"         onclick="adminManageBadges('${pid}')">🏅 Badges</button>
-          <button class="admin-btn"         onclick="adminEditUID('${pid}')">🔑 UID</button>
-          <button class="admin-btn"         onclick="adminUnlockName('${pid}')">🔓 Name</button>
-          <button class="admin-btn"         onclick="openAvatarPicker('${pid}')">🖼️ Avatar</button>
-          <button class="admin-btn"         onclick="viewPlayerModal('${pid}')">👁️ View</button>
+          <button class="admin-btn" onclick="adminEditProfile('${pid}')">✏️ Edit</button>
+          <button class="admin-btn gold" onclick="adminGiveCoins('${pid}')">💰 Coins</button>
+          <button class="admin-btn" onclick="adminAdjustStats('${pid}')">📊 Stats</button>
+          <button class="admin-btn" onclick="adminManageBadges('${pid}')">🏅 Badges</button>
+          <button class="admin-btn" onclick="adminDM('${pid}')">📨 DM</button>
+          <button class="admin-btn" onclick="adminResetNameCooldown('${pid}')">🔓 Name</button>
+          <button class="admin-btn" onclick="openAvatarPicker('${pid}')">🖼️ Avatar</button>
+          <button class="admin-btn" onclick="adminEditUID('${pid}')">🔑 UID</button>
           ${p.banned
-            ? `<button class="admin-btn success" onclick="adminBan('${pid}',false)">✅ Unban</button>`
-            : `<button class="admin-btn danger"  onclick="adminBan('${pid}',true)">🚫 Ban</button>`}
-          ${p.role !== 'admin'
-            ? `<button class="admin-btn gold" onclick="adminPromote('${pid}',true)">👑 Promote</button>`
-            : p.email !== ADMIN_EMAIL ? `<button class="admin-btn" onclick="adminPromote('${pid}',false)">⬇ Demote</button>` : ''}
-          ${p.email !== ADMIN_EMAIL ? `<button class="admin-btn danger" onclick="adminDeletePlayer('${pid}')">🗑️ Delete</button>` : ''}
+            ? `<button class="admin-btn success" onclick="adminToggleBan('${pid}')">✅ Unban</button>`
+            : `<button class="admin-btn danger" onclick="adminToggleBan('${pid}')">🚫 Ban</button>`}
+          ${p.role!=='admin'
+            ? `<button class="admin-btn gold" onclick="adminConfirmPromote('${pid}')">👑 Promote</button>`
+            : p.email!==ADMIN_EMAIL ? `<button class="admin-btn" onclick="adminDemote('${pid}')">⬇ Demote</button>` : ''}
+          ${p.email!==ADMIN_EMAIL ? `<button class="admin-btn danger" onclick="adminDeletePlayer('${pid}')">🗑️ Delete</button>` : ''}
         </div>
       </div>`;
     }).join('')}`;
 }
 
-async function adminGiveCoins(pid) {
+function adminEditProfile(pid) {
   const p = _findPlayer(pid); if (!p) return;
-  const input = prompt(`Give coins to "${p.name}"\nEnter amount (use - to deduct):`);
-  if (input === null) return;
-  const amount = Number(input);
-  if (isNaN(amount)) { toast('Invalid amount','error'); return; }
+  openModal(`
+    <div class="modal-close-row">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div id="aep-av" style="width:56px;height:56px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;border:3px solid var(--border2);cursor:pointer;flex-shrink:0" onclick="openAvatarPicker('${pid}')">${_avatarInner(p)}</div>
+        <div><div style="font-weight:800;font-size:15px">${p.name||'Player'}</div><div style="font-size:11px;color:var(--dim)">${p.email||''}</div></div>
+      </div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Display Name *</label><input class="form-input" id="aep-name" value="${p.name||''}"></div>
+      <div class="form-group"><label class="form-label">Role</label>
+        <select class="form-input" id="aep-role" ${p.email===ADMIN_EMAIL?'disabled':''}>
+          <option value="player" ${p.role!=='admin'?'selected':''}>Player</option>
+          <option value="admin"  ${p.role==='admin'?'selected':''}>Admin</option>
+        </select>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">AC Balance</label><input class="form-input" type="number" id="aep-balance" value="${p.balance||0}" min="0"></div>
+      <div class="form-group"><label class="form-label">Events Played</label><input class="form-input" type="number" id="aep-events" value="${p.tournaments||0}" min="0"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Wins</label><input class="form-input" type="number" id="aep-wins" value="${p.wins||0}" min="0"></div>
+      <div class="form-group"><label class="form-label">Losses</label><input class="form-input" type="number" id="aep-losses" value="${p.losses||0}" min="0"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Display UID</label><input class="form-input" id="aep-uid" value="${p.uid||''}"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" id="btn-aep" onclick="saveAdminEdit('${pid}')">💾 Save Changes</button>
+      <button class="btn-details" onclick="adminDM('${pid}')">📨 Send DM</button>
+    </div>
+  `);
+}
+
+async function saveAdminEdit(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  const name = (_v('aep-name')||'').trim();
+  if (!name) { toast('Name cannot be empty','error'); return; }
+  _btn('btn-aep', true);
+  p.name       = name;
+  p.uid        = _v('aep-uid').trim() || p.uid;
+  p.balance    = Math.max(0, Number(_v('aep-balance'))||0);
+  p.wins       = Math.max(0, Number(_v('aep-wins'))||0);
+  p.losses     = Math.max(0, Number(_v('aep-losses'))||0);
+  p.tournaments= Math.max(0, Number(_v('aep-events'))||0);
+  if (p.email !== ADMIN_EMAIL) p.role = _v('aep-role') || p.role;
+  const ok = await fsSet('players', pid, p);
+  if (ok) {
+    if (pid === DB.me?.id) _refreshUI();
+    toast(`${p.name} updated ✅`,'success');
+    _cacheDB(); closeModal(); renderAdminPlayers();
+  } else { toast('Save failed','error'); _btn('btn-aep', false); }
+}
+
+async function adminToggleBan(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.banned = !p.banned;
+  await fsSet('players', pid, p);
+  toast(p.banned ? `🚫 ${p.name} banned` : `✅ ${p.name} unbanned`, p.banned ? 'error' : 'success');
+  _cacheDB(); renderAdminPlayers();
+}
+
+function adminConfirmPromote(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">👑 Promote to Admin</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <p style="font-size:14px;line-height:1.6;margin-bottom:16px">Promote <b>${p.name}</b> to Admin?<br><span style="font-size:12px;color:var(--dim)">They will get full platform access.</span></p>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" onclick="adminDoPromote('${pid}')">👑 Yes, Promote</button>
+      <button class="btn-details" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+async function adminDoPromote(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.role = 'admin';
+  await fsSet('players', pid, p);
+  toast(`${p.name} promoted to Admin 👑`,'success');
+  _cacheDB(); closeModal(); renderAdminPlayers();
+}
+async function adminDemote(pid) {
+  if (pid === DB.me?.id) { toast("Can't demote yourself",'error'); return; }
+  const p = _findPlayer(pid); if (!p) return;
+  p.role = 'player';
+  await fsSet('players', pid, p);
+  toast(`${p.name} demoted to Player`,'info');
+  _cacheDB(); renderAdminPlayers();
+}
+
+function adminGiveCoins(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">💰 Give Coins — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div style="background:var(--panel);border-radius:var(--radius);padding:12px;margin-bottom:14px;text-align:center">
+      <div style="font-size:11px;color:var(--dim);text-transform:uppercase;letter-spacing:1px">Current Balance</div>
+      <div style="font-size:28px;font-weight:900;color:var(--gold)">${p.balance||0} AC</div>
+    </div>
+    <div class="form-group"><label class="form-label">Amount (negative to deduct)</label>
+      <input class="form-input" type="number" id="gc-amount" placeholder="e.g. 500 or -100">
+    </div>
+    <button class="btn-primary" id="btn-gc" onclick="saveGiveCoins('${pid}')">Apply</button>
+  `);
+}
+async function saveGiveCoins(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  const amount = Number(_v('gc-amount'));
+  if (isNaN(amount) || amount === 0) { toast('Enter a valid amount','error'); return; }
+  _btn('btn-gc', true);
   p.balance = Math.max(0, (p.balance||0) + amount);
   await fsSet('players', pid, p);
-  toast(`${amount >= 0 ? 'Gave' : 'Deducted'} ${Math.abs(amount)} AC ${amount>=0?'to':'from'} ${p.name}`,'success');
-  _cacheDB(); renderAdminPlayers();
+  if (pid === DB.me?.id) { DB.me.balance = p.balance; renderDash(); }
+  toast(`${amount>0?'Gave':'Deducted'} ${Math.abs(amount)} AC ${amount>0?'to':'from'} ${p.name}`,'success');
+  _cacheDB(); closeModal(); renderAdminPlayers();
 }
 
 function adminAdjustStats(pid) {
   const p = _findPlayer(pid); if (!p) return;
   openModal(`
     <div class="modal-close-row"><div class="modal-title">📊 Stats — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Wins</label><input class="form-input" id="as-wins" type="number" value="${p.wins||0}" min="0"></div>
-    <div class="form-group"><label class="form-label">Losses</label><input class="form-input" id="as-losses" type="number" value="${p.losses||0}" min="0"></div>
-    <div class="form-group"><label class="form-label">Events Played</label><input class="form-input" id="as-events" type="number" value="${p.tournaments||0}" min="0"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Wins</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="form-input" type="number" id="as-wins" value="${p.wins||0}" min="0" style="flex:1">
+          <button class="admin-btn success" onclick="adminWin('${pid}',this)" style="flex-shrink:0;padding:11px 10px">+W</button>
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Losses</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <input class="form-input" type="number" id="as-losses" value="${p.losses||0}" min="0" style="flex:1">
+          <button class="admin-btn danger" onclick="adminLoss('${pid}',this)" style="flex-shrink:0;padding:11px 10px">+L</button>
+        </div>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Events Played</label><input class="form-input" type="number" id="as-events" value="${p.tournaments||0}" min="0"></div>
     <button class="btn-primary" id="btn-as" onclick="saveAdminStats('${pid}')">Save Stats</button>
   `);
 }
-
 async function saveAdminStats(pid) {
   const p = _findPlayer(pid); if (!p) return;
   _btn('btn-as', true);
-  p.wins       = Math.max(0, Number(_v('as-wins'))  || 0);
-  p.losses     = Math.max(0, Number(_v('as-losses')) || 0);
-  p.tournaments= Math.max(0, Number(_v('as-events')) || 0);
+  p.wins        = Math.max(0, Number(_v('as-wins'))||0);
+  p.losses      = Math.max(0, Number(_v('as-losses'))||0);
+  p.tournaments = Math.max(0, Number(_v('as-events'))||0);
   await fsSet('players', pid, p);
-  toast('Stats updated','success'); _cacheDB(); closeModal(); renderAdminPlayers();
+  toast('Stats updated ✅','success'); _cacheDB(); closeModal(); renderAdminPlayers();
+}
+async function adminWin(pid, btn) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.wins = (p.wins||0) + 1;
+  const inp = document.getElementById('as-wins');
+  if (inp) { inp.value = p.wins; _countUp(inp, p.wins-1, p.wins); }
+  if (btn) { btn.textContent='✅'; setTimeout(()=>btn.textContent='+W',800); }
+  await fsSet('players', pid, p);
+  if (pid===DB.me?.id) { DB.me.wins=p.wins; renderDash(); }
+  _cacheDB();
+}
+async function adminLoss(pid, btn) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.losses = (p.losses||0) + 1;
+  const inp = document.getElementById('as-losses');
+  if (inp) { inp.value = p.losses; _countUp(inp, p.losses-1, p.losses); }
+  if (btn) { btn.textContent='❌'; setTimeout(()=>btn.textContent='+L',800); }
+  await fsSet('players', pid, p);
+  if (pid===DB.me?.id) { DB.me.losses=p.losses; renderDash(); }
+  _cacheDB();
+}
+function _countUp(el, from, to) {
+  if (!el) return;
+  const dur = 400, steps = 12, step = (to-from)/steps;
+  let cur = from, i = 0;
+  const t = setInterval(()=>{
+    cur += step; i++;
+    el.value = Math.round(cur);
+    if (i >= steps) { el.value = to; clearInterval(t); }
+  }, dur/steps);
 }
 
 function adminManageBadges(pid) {
   const p = _findPlayer(pid); if (!p) return;
-  const all = ['owner','tournament','winner','veteran','legend','newbie'];
+  const ALL_BADGES = ['owner','tournament','winner','veteran','legend','newbie'];
+  const badgeInfo  = { owner:'👑', tournament:'🏆', winner:'🥇', veteran:'⚔️', legend:'🌟', newbie:'🌱' };
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🏅 Badges — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    ${all.map(b => {
+    ${ALL_BADGES.map(b => {
       const has = (p.badges||[]).includes(b);
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
-        <span style="font-size:13px;font-weight:600;text-transform:capitalize">${b}</span>
+        <div style="display:flex;align-items:center;gap:10px">
+          <span style="font-size:20px">${badgeInfo[b]||'🏅'}</span>
+          <span style="font-size:13px;font-weight:600;text-transform:capitalize">${b}</span>
+        </div>
         ${has
           ? `<button class="admin-btn danger" onclick="adminToggleBadge('${pid}','${b}',false)">✕ Remove</button>`
           : `<button class="admin-btn success" onclick="adminToggleBadge('${pid}','${b}',true)">+ Add</button>`}
@@ -2875,327 +3104,723 @@ function adminManageBadges(pid) {
     }).join('')}
   `);
 }
-
 async function adminToggleBadge(pid, badge, add) {
   const p = _findPlayer(pid); if (!p) return;
-  p.badges = p.badges || [];
+  p.badges = p.badges||[];
   if (add) { if (!p.badges.includes(badge)) p.badges.push(badge); }
-  else p.badges = p.badges.filter(b => b !== badge);
+  else p.badges = p.badges.filter(b=>b!==badge);
   await fsSet('players', pid, p);
   toast(`Badge ${add?'added':'removed'}`,'success');
   _cacheDB(); adminManageBadges(pid);
 }
 
+function adminDM(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">📨 DM — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Message Type</label>
+      <select class="form-input" id="dm-type">
+        <option value="admin">📣 Admin</option>
+        <option value="system">🔧 System</option>
+        <option value="promo">🎁 Promo</option>
+        <option value="warning">⚠️ Warning</option>
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="dm-title" placeholder="Message subject"></div>
+    <div class="form-group"><label class="form-label">Message</label><textarea class="form-input" id="dm-body" rows="4" style="resize:vertical" placeholder="Your message..."></textarea></div>
+    <button class="btn-primary" id="btn-dm" onclick="sendDM('${pid}')">Send Message</button>
+  `);
+}
+async function sendDM(pid) {
+  const title = _v('dm-title').trim();
+  const body  = _v('dm-body').trim();
+  const type  = _v('dm-type');
+  if (!title||!body) { toast('Fill title and message','error'); return; }
+  _btn('btn-dm', true);
+  const p = _findPlayer(pid); if (!p) return;
+  const typeIcons = { admin:'📣', system:'🔧', promo:'🎁', warning:'⚠️' };
+  const id   = 'notif_'+Date.now();
+  const notif = {
+    id, title:`${typeIcons[type]||'📨'} ${title}`, body,
+    date:new Date().toISOString(), readBy:[], targetUid:pid, type
+  };
+  DB.notifications.push(notif);
+  await fsSet('notifications', id, notif);
+  toast(`DM sent to ${p.name} 📨`,'success');
+  _cacheDB(); closeModal();
+}
+
+async function adminResetNameCooldown(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  // Backdate by 31 days
+  p.lastNameChange = new Date(Date.now() - 31*24*60*60*1000).toISOString();
+  await fsSet('players', pid, p);
+  toast(`Name change unlocked for ${p.name} 🔓`,'success'); _cacheDB();
+}
+
 async function adminEditUID(pid) {
   const p = _findPlayer(pid); if (!p) return;
   const newUID = prompt('Enter new display UID:', p.uid||'');
-  if (!newUID || newUID === p.uid) return;
+  if (newUID===null || newUID.trim()===p.uid) return;
   p.uid = newUID.trim();
   await fsSet('players', pid, p);
   toast('UID updated','success'); _cacheDB(); renderAdminPlayers();
-}
-
-async function adminUnlockName(pid) {
-  const p = _findPlayer(pid); if (!p) return;
-  p.lastNameChange = null;
-  await fsSet('players', pid, p);
-  toast(`Name cooldown unlocked for ${p.name}`,'success'); _cacheDB();
-}
-
-async function adminBan(pid, ban) {
-  const p = _findPlayer(pid); if (!p) return;
-  p.banned = ban;
-  await fsSet('players', pid, p);
-  toast(ban ? `${p.name} banned` : `${p.name} unbanned`, ban ? 'error' : 'success');
-  _cacheDB(); renderAdminPlayers();
-}
-
-async function adminPromote(pid, promote) {
-  const p = _findPlayer(pid); if (!p) return;
-  p.role = promote ? 'admin' : 'player';
-  await fsSet('players', pid, p);
-  toast(promote ? `${p.name} promoted to Admin` : `${p.name} demoted`,'success');
-  _cacheDB(); renderAdminPlayers();
 }
 
 function adminDeletePlayer(pid) {
   const p = _findPlayer(pid); if (!p) return;
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🗑️ Delete Player</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <p style="font-size:14px;margin-bottom:20px;line-height:1.6">Delete <b>"${p.name}"</b>?<br><span style="color:var(--red);font-size:12px">This cannot be undone.</span></p>
+    <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:4px">${p.name}</div>
+      <div style="font-size:12px;color:var(--dim)">${p.email||''} · ${p.uid||''}</div>
+    </div>
+    <p style="font-size:13px;color:var(--red);margin-bottom:16px">⚠️ This permanently deletes the account, removes them from all teams/guilds/tournaments, and cannot be undone.</p>
     <div style="display:flex;gap:8px">
-      <button class="btn-primary" style="background:var(--red2)" onclick="confirmDeletePlayer('${pid}')">Yes, Delete</button>
+      <button class="btn-primary" style="background:var(--red2)" onclick="confirmDeletePlayer('${pid}')">🗑️ Delete Forever</button>
       <button class="btn-details" onclick="closeModal()">Cancel</button>
     </div>
   `);
 }
-
 async function confirmDeletePlayer(pid) {
-  DB.players = DB.players.filter(p => _pid(p) !== pid);
-  await Promise.all([fsDelete('players', pid), fsDelete('avatars', pid)]);
-  toast('Player deleted','success'); _cacheDB(); closeModal(); renderAdminPlayers();
+  // Remove from teams, guilds, tournaments
+  DB.teams.forEach(t => { if((t.memberIds||[]).includes(pid)){ t.memberIds=t.memberIds.filter(id=>id!==pid); fsSet('teams',t.id||t._fsId,t); }});
+  DB.guilds.forEach(g => { if((g.memberIds||[]).includes(pid)){ g.memberIds=g.memberIds.filter(id=>id!==pid); fsSet('guilds',g.id||g._fsId,g); }});
+  DB.tournaments.forEach(t => { if((t.players||[]).includes(pid)){ t.players=t.players.filter(id=>id!==pid); fsSet('tournaments',t.id||t._fsId,t); }});
+  DB.players = DB.players.filter(p => _pid(p)!==pid);
+  await Promise.all([fsDelete('players',pid), fsDelete('avatars',pid)]);
+  toast('Player deleted permanently','success'); _cacheDB(); closeModal(); renderAdminPlayers();
 }
 
-// ---- Admin: Tournaments ----
+// ================================================================
+// ADMIN — TOURNAMENTS
+// ================================================================
 function renderAdminTournaments() {
   const el = document.getElementById('admin-content');
   el.innerHTML = `
-    <button class="btn-create" onclick="openCreateTournament()" style="border-style:solid;color:var(--g1)">➕ Create Tournament</button>
+    <button class="btn-create" onclick="adminCreateT()" style="border-style:solid;color:var(--g1)">➕ Create Tournament</button>
     ${DB.tournaments.map(t => {
-      const tid = t.id || t._fsId;
+      const tid = t.id||t._fsId;
       return `
       <div class="card" style="margin-bottom:8px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <div style="font-weight:700;font-size:14px">${t.name}</div>
-          <span class="tc-status-badge ${t.status||'upcoming'}" style="position:static">${(t.status||'upcoming').toUpperCase()}</span>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <div style="width:44px;height:44px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;flex-shrink:0;border:1px solid var(--border)">
+            ${t.logoIsImg&&t.logo ? `<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover">` : _gameEmoji(t.game)}
+          </div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:14px">${t.name}</div>
+            <div style="font-size:11px;color:var(--dim)">${t.game||'—'} · ${(t.players||[]).length}/${t.maxPlayers||16} players · ${t.entryFee?t.entryFee+' AC':'Free'}</div>
+          </div>
+          <span class="tc-status-badge ${t.status||'upcoming'}" style="position:static;flex-shrink:0">${(t.status||'upcoming').toUpperCase()}</span>
         </div>
-        <div style="font-size:11px;color:var(--dim);margin-bottom:10px">${t.game||'—'} · ${(t.players||[]).length}/${t.maxPlayers||16} players · ${t.entryFee?t.entryFee+' AC entry':'Free'} · Prize: ${t.prize||'—'}</div>
         <div class="admin-actions">
           <button class="admin-btn success" onclick="adminSetTStatus('${tid}','open')">✅ Open</button>
-          <button class="admin-btn gold"    onclick="adminSetTStatus('${tid}','upcoming')">⏳ Upcoming</button>
+          <button class="admin-btn gold"    onclick="adminSetTStatus('${tid}','upcoming')">⏳ Soon</button>
           <button class="admin-btn danger"  onclick="adminSetTStatus('${tid}','closed')">🔒 Close</button>
-          <button class="admin-btn"         onclick="adminEditTournament('${tid}')">✏️ Edit</button>
+          <button class="admin-btn"         onclick="adminEditT('${tid}')">✏️ Edit</button>
+          <button class="admin-btn"         onclick="adminEditTLogo('${tid}')">🖼️ Logo</button>
           <button class="admin-btn success" onclick="adminRecordWins('${tid}')">📊 Results</button>
           <button class="admin-btn danger"  onclick="adminDeleteT('${tid}')">🗑️ Delete</button>
         </div>
       </div>`;
-    }).join('') || '<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments yet</p></div>'}
+    }).join('')||'<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments yet</p></div>'}
   `;
 }
 
 async function adminSetTStatus(tid, status) {
-  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
   t.status = status;
   await fsSet('tournaments', tid, t);
   toast(`Status → ${status}`,'success'); _cacheDB(); renderAdminTournaments();
 }
 
-function openCreateTournament() {
+function adminCreateT() {
   const GAMES = ['Valorant','Street Fighter 6','Free Fire','PUBG Mobile','Call of Duty Mobile','Mobile Legends','Other'];
   openModal(`
     <div class="modal-close-row"><div class="modal-title">➕ Create Tournament</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Name *</label><input class="form-input" id="nt-name" placeholder="Tournament name"></div>
-    <div class="form-group"><label class="form-label">Game *</label>
-      <select class="form-input" id="nt-game">${GAMES.map(g=>`<option>${g}</option>`).join('')}</select>
-    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Name *</label><input class="form-input" id="nt-name" placeholder="Tournament name"></div>
+      <div class="form-group"><label class="form-label">Game *</label>
+        <select class="form-input" id="nt-game">${GAMES.map(g=>`<option>${g}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Format</label><input class="form-input" id="nt-format" placeholder="Solo / Duo / Squad"></div>
       <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="nt-date"></div>
       <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" id="nt-time"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="form-group"><label class="form-label">Max Players</label><input class="form-input" type="number" id="nt-max" value="16" min="2"></div>
       <div class="form-group"><label class="form-label">Entry Fee (AC)</label><input class="form-input" type="number" id="nt-fee" value="0" min="0"></div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Prize Pool</label><input class="form-input" id="nt-prize" placeholder="e.g. 5000 AC or Gift Card"></div>
     </div>
-    <div class="form-group"><label class="form-label">Format</label><input class="form-input" id="nt-format" placeholder="Solo / Duo / Squad"></div>
-    <div class="form-group"><label class="form-label">Prize Pool</label><input class="form-input" id="nt-prize" placeholder="e.g. 5000 AC or Gift Card"></div>
+    <div class="form-group"><label class="form-label">Logo (emoji or image)</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input class="form-input" id="nt-logo-emoji" placeholder="🎯 Emoji" maxlength="4" style="flex:1">
+        <button class="admin-btn" onclick="document.getElementById('nt-logo-file').click()" style="white-space:nowrap">📷 Upload</button>
+        <input type="file" id="nt-logo-file" accept="image/*" style="display:none" onchange="previewTLogo(this,'nt-logo-preview','nt-logo-data')">
+      </div>
+      <div id="nt-logo-preview" style="margin-top:8px"></div>
+      <input type="hidden" id="nt-logo-data">
+    </div>
+    <div class="form-group"><label class="form-label">Modes (comma-separated)</label><input class="form-input" id="nt-modes" placeholder="e.g. Solo, TPP, Ranked"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="nt-desc" rows="3" style="resize:vertical" placeholder="Tournament details..."></textarea></div>
-    <button class="btn-primary" id="btn-nt" onclick="createTournament()">Create Tournament</button>
+    <button class="btn-primary" id="btn-nt" onclick="saveCreateT()">Create Tournament</button>
   `);
 }
 
-async function createTournament() {
+function previewTLogo(input, previewId, dataId) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const prev = document.getElementById(previewId);
+    const dat  = document.getElementById(dataId);
+    if (prev) prev.innerHTML = `<img src="${e.target.result}" style="height:60px;border-radius:8px;object-fit:cover">`;
+    if (dat)  dat.value = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveCreateT() {
   const name = _v('nt-name').trim();
-  const game = _v('nt-game');
   if (!name) { toast('Enter tournament name','error'); return; }
   _btn('btn-nt', true);
-  const id = 't_' + Date.now();
+  const logoData  = _v('nt-logo-data');
+  const logoEmoji = _v('nt-logo-emoji').trim();
+  const id = 't_'+Date.now();
+  const modesRaw = _v('nt-modes').trim();
   const t = {
-    id, name, game,
-    date:       _v('nt-date'),
-    time:       _v('nt-time'),
-    format:     _v('nt-format') || 'Solo',
-    maxPlayers: Number(_v('nt-max')) || 16,
-    entryFee:   Number(_v('nt-fee')) || 0,
-    prize:      _v('nt-prize'),
-    description:_v('nt-desc'),
-    status:     'upcoming',
-    players:    [],
-    modes:      [_v('nt-format')||'Solo'],
-    createdAt:  new Date().toISOString()
+    id, name, game:_v('nt-game'), date:_v('nt-date'), time:_v('nt-time'),
+    format:_v('nt-format')||'Solo', maxPlayers:Number(_v('nt-max'))||16,
+    entryFee:Number(_v('nt-fee'))||0, prize:_v('nt-prize'), description:_v('nt-desc'),
+    modes: modesRaw ? modesRaw.split(',').map(s=>s.trim()).filter(Boolean) : [_v('nt-format')||'Solo'],
+    logo: logoData||logoEmoji, logoIsImg:!!logoData,
+    status:'upcoming', players:[], createdAt:new Date().toISOString()
   };
   DB.tournaments.push(t);
   const ok = await fsSet('tournaments', id, t);
   if (ok) { toast('Tournament created! 🏆','success'); _cacheDB(); closeModal(); renderAdminTournaments(); }
-  else    { toast('Error creating tournament','error'); _btn('btn-nt', false); }
+  else    { toast('Error creating tournament','error'); _btn('btn-nt',false); }
 }
 
-async function adminDeleteT(tid) {
-  if (!confirm('Delete this tournament?')) return;
-  DB.tournaments = DB.tournaments.filter(t => (t.id||t._fsId) !== tid);
-  await fsDelete('tournaments', tid);
-  toast('Tournament deleted','success'); _cacheDB(); renderAdminTournaments();
-}
-
-function adminEditTournament(tid) {
-  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+function adminEditT(tid) {
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
+  const GAMES = ['Valorant','Street Fighter 6','Free Fire','PUBG Mobile','Call of Duty Mobile','Mobile Legends','Other'];
   openModal(`
     <div class="modal-close-row"><div class="modal-title">✏️ Edit — ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="et-name" value="${t.name||''}"></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Name</label><input class="form-input" id="et-name" value="${t.name||''}"></div>
+      <div class="form-group"><label class="form-label">Game</label>
+        <select class="form-input" id="et-game">${GAMES.map(g=>`<option ${g===t.game?'selected':''}>${g}</option>`).join('')}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Format</label><input class="form-input" id="et-format" value="${t.format||'Solo'}"></div>
       <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="et-date" value="${t.date||''}"></div>
       <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" id="et-time" value="${t.time||''}"></div>
+      <div class="form-group"><label class="form-label">Max Players</label><input class="form-input" type="number" id="et-max" value="${t.maxPlayers||16}"></div>
+      <div class="form-group"><label class="form-label">Entry Fee (AC)</label><input class="form-input" type="number" id="et-fee" value="${t.entryFee||0}"></div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Prize</label><input class="form-input" id="et-prize" value="${t.prize||''}"></div>
     </div>
-    <div class="form-group"><label class="form-label">Prize</label><input class="form-input" id="et-prize" value="${t.prize||''}"></div>
-    <div class="form-group"><label class="form-label">Max Players</label><input class="form-input" type="number" id="et-max" value="${t.maxPlayers||16}"></div>
-    <div class="form-group"><label class="form-label">Entry Fee (AC)</label><input class="form-input" type="number" id="et-fee" value="${t.entryFee||0}"></div>
+    <div class="form-group"><label class="form-label">Modes (comma-separated)</label><input class="form-input" id="et-modes" value="${(t.modes||[]).join(', ')}"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="et-desc" rows="3" style="resize:vertical">${t.description||''}</textarea></div>
     <button class="btn-primary" id="btn-et" onclick="saveTEdit('${tid}')">Save Changes</button>
   `);
 }
 
 async function saveTEdit(tid) {
-  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
   _btn('btn-et', true);
-  t.name        = _v('et-name')  || t.name;
-  t.date        = _v('et-date')  || t.date;
-  t.time        = _v('et-time')  || t.time;
-  t.prize       = _v('et-prize');
-  t.maxPlayers  = Number(_v('et-max')) || t.maxPlayers;
-  t.entryFee    = Number(_v('et-fee')) || 0;
-  t.description = _v('et-desc');
+  t.name       = _v('et-name')||t.name;
+  t.game       = _v('et-game')||t.game;
+  t.date       = _v('et-date')||t.date;
+  t.time       = _v('et-time')||t.time;
+  t.format     = _v('et-format')||t.format;
+  t.maxPlayers = Number(_v('et-max'))||t.maxPlayers;
+  t.entryFee   = Number(_v('et-fee'))||0;
+  t.prize      = _v('et-prize');
+  t.description= _v('et-desc');
+  const modesRaw = _v('et-modes').trim();
+  if (modesRaw) t.modes = modesRaw.split(',').map(s=>s.trim()).filter(Boolean);
   await fsSet('tournaments', tid, t);
-  toast('Tournament updated','success'); _cacheDB(); closeModal(); renderAdminTournaments();
+  toast('Tournament updated ✅','success'); _cacheDB(); closeModal(); renderAdminTournaments();
+}
+
+function adminEditTLogo(tid) {
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">🖼️ Tournament Logo</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="upload-zone" onclick="document.getElementById('tlogo-file').click()">
+      <input type="file" id="tlogo-file" accept="image/*" style="display:none" onchange="saveTLogo('${tid}',this)">
+      <div>📷<br><span style="font-size:13px;color:var(--dim)">Tap to upload logo image</span></div>
+    </div>
+    <div id="tlogo-preview" style="margin-top:12px;text-align:center"></div>
+  `);
+}
+async function saveTLogo(tid, input) {
+  const file = input.files[0]; if(!file) return;
+  if (file.size > 2*1024*1024) { toast('Image too large (max 2MB)','error'); return; }
+  const data = await new Promise(res=>{ const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
+  t.logo = data; t.logoIsImg = true;
+  document.getElementById('tlogo-preview').innerHTML = `<img src="${data}" style="max-height:100px;border-radius:8px">`;
+  await fsSet('tournaments', tid, t);
+  toast('Logo updated! 🖼️','success'); _cacheDB(); renderAdminTournaments();
+}
+
+async function adminDeleteT(tid) {
+  if (!confirm('Delete this tournament?')) return;
+  DB.tournaments = DB.tournaments.filter(t=>(t.id||t._fsId)!==tid);
+  await fsDelete('tournaments', tid);
+  toast('Tournament deleted','success'); _cacheDB(); renderAdminTournaments();
 }
 
 function adminRecordWins(tid) {
-  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
-  const players = (t.players||[]).map(pid => DB.players.find(p => _pid(p) === pid)).filter(Boolean);
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
+  const players = (t.players||[]).map(pid=>DB.players.find(p=>_pid(p)===pid)).filter(Boolean);
   openModal(`
     <div class="modal-close-row"><div class="modal-title">📊 Results — ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    ${players.length
-      ? players.map(p => `
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="display:flex;align-items:center;gap:8px">
-            <div style="width:30px;height:30px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
-            <span style="font-size:13px;font-weight:600">${p.name}</span>
-            <span style="font-size:11px;color:var(--dim)">${p.wins||0}W ${p.losses||0}L</span>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:12px">${players.length} registered players</div>
+    ${players.map(p => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:32px;height:32px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${_avatarInner(p)}</div>
+          <div>
+            <div style="font-size:13px;font-weight:600">${p.name}</div>
+            <div id="rs-${_pid(p)}" style="font-size:11px;color:var(--dim)">${p.wins||0}W ${p.losses||0}L</div>
           </div>
-          <div style="display:flex;gap:6px">
-            <button class="admin-btn success" onclick="adminRecordResult('${_pid(p)}','win',this)">✅ Win</button>
-            <button class="admin-btn danger"  onclick="adminRecordResult('${_pid(p)}','loss',this)">❌ Loss</button>
-          </div>
-        </div>`)
-        .join('')
-      : '<div class="empty-state" style="padding:20px"><p>No players registered</p></div>'}
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="admin-btn success" onclick="adminWinBtn('${_pid(p)}')">✅ Win</button>
+          <button class="admin-btn danger"  onclick="adminLossBtn('${_pid(p)}')">❌ Loss</button>
+        </div>
+      </div>`).join('')||'<div class="empty-state" style="padding:20px"><p>No players registered</p></div>'}
   `);
 }
-
-async function adminRecordResult(pid, result, btn) {
-  const p = _findPlayer(pid); if (!p) return;
-  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
-  if (result === 'win')  p.wins   = (p.wins||0)   + 1;
-  else                   p.losses = (p.losses||0)  + 1;
+async function adminWinBtn(pid) {
+  const p = _findPlayer(pid); if(!p) return;
+  p.wins = (p.wins||0)+1;
   await fsSet('players', pid, p);
-  toast(`${result === 'win' ? '✅ Win' : '❌ Loss'} recorded for ${p.name}`,'success');
-  _cacheDB();
+  const el = document.getElementById('rs-'+pid);
+  if (el) el.innerHTML = `<span style="color:var(--g1);font-weight:700">${p.wins}W</span> ${p.losses||0}L`;
+  if (pid===DB.me?.id) { DB.me.wins=p.wins; renderDash(); }
+  toast(`+1 Win for ${p.name}`,'success'); _cacheDB();
+}
+async function adminLossBtn(pid) {
+  const p = _findPlayer(pid); if(!p) return;
+  p.losses = (p.losses||0)+1;
+  await fsSet('players', pid, p);
+  const el = document.getElementById('rs-'+pid);
+  if (el) el.innerHTML = `${p.wins||0}W <span style="color:var(--red);font-weight:700">${p.losses}L</span>`;
+  if (pid===DB.me?.id) { DB.me.losses=p.losses; renderDash(); }
+  toast(`+1 Loss for ${p.name}`,'info'); _cacheDB();
 }
 
-// ---- Admin: Store ----
+// ================================================================
+// ADMIN — STORE (full CRUD + top-up package management)
+// ================================================================
+let _storeEditId = null; // null = new item, string = editing
+
 function renderAdminStore() {
   const el = document.getElementById('admin-content');
+  const catFilter = window._admStoreCat || 'all';
+  const items = catFilter==='all' ? DB.storeItems : DB.storeItems.filter(i=>(i.cat||'cosmetics')===catFilter);
+
   el.innerHTML = `
-    <button class="btn-create" onclick="openAddStoreItem()" style="border-style:solid;color:var(--g1)">➕ Add Store Item</button>
-    ${DB.storeItems.map(i => {
-      const iid = i.id || i._fsId;
+    <div style="display:flex;gap:8px;margin-bottom:12px;overflow-x:auto">
+      ${['all','topup','cosmetics','bundles','badges'].map(c=>
+        `<button class="filter-tab ${catFilter===c?'active':''}" onclick="adminFilterStoreCat(this,'${c}')" style="white-space:nowrap">${c}</button>`
+      ).join('')}
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
+      <button class="btn-create" onclick="adminAddStoreItem()" style="flex:1;border-style:solid;color:var(--g1);padding:10px">➕ Add Item</button>
+      <button class="btn-create" onclick="renderAdminTopup()" style="flex:1;border-style:solid;color:var(--gold);padding:10px">🎮 Manage Top-ups</button>
+    </div>
+    ${items.map(i => {
+      const iid = i.id||i._fsId;
       return `<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:28px">${i.icon||'📦'}</span>
+        <span style="font-size:26px;flex-shrink:0">${i.icon||'📦'}</span>
         <div style="flex:1;min-width:0">
-          <div style="font-weight:700">${i.name}</div>
-          <div style="font-size:11px;color:var(--dim)">${i.cat||'cosmetics'} · ${i.price} AC</div>
+          <div style="font-weight:700;font-size:13px">${i.name}</div>
+          <div style="font-size:11px;color:var(--dim)">${i.cat||'cosmetics'} · ${i.price} AC${i.badgeType?' · '+i.badgeType:''}</div>
         </div>
-        <button class="admin-btn danger" onclick="adminDeleteItem('${iid}')">🗑️</button>
+        <div style="display:flex;gap:4px;flex-shrink:0">
+          <button class="admin-btn" onclick="adminEditStoreItem('${iid}')">✏️</button>
+          <button class="admin-btn danger" onclick="adminDeleteStoreItem('${iid}')">🗑️</button>
+        </div>
       </div>`;
-    }).join('') || '<div class="empty-state" style="padding:24px"><p>No items yet</p></div>'}
+    }).join('')||'<div class="empty-state" style="padding:24px"><p>No items in this category</p></div>'}
+    <div id="store-item-form" style="display:none"></div>
   `;
 }
 
-function openAddStoreItem() {
+function adminFilterStoreCat(btn, cat) {
+  window._admStoreCat = cat;
+  renderAdminStore();
+}
+
+function adminAddStoreItem() {
+  _storeEditId = null;
+  _showStoreForm(null);
+}
+function adminEditStoreItem(iid) {
+  _storeEditId = iid;
+  const item = DB.storeItems.find(i=>(i.id||i._fsId)===iid);
+  _showStoreForm(item);
+}
+function _showStoreForm(item) {
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">➕ Add Item</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Name *</label><input class="form-input" id="ni-name" placeholder="Item name"></div>
+    <div class="modal-close-row"><div class="modal-title">${item?'✏️ Edit Item':'➕ New Store Item'}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Name *</label><input class="form-input" id="sf-name" value="${item?.name||''}"></div>
       <div class="form-group"><label class="form-label">Category</label>
-        <select class="form-input" id="ni-cat"><option value="cosmetics">Cosmetics</option><option value="bundles">Bundles</option></select>
+        <select class="form-input" id="sf-cat" onchange="adminStoreFormCatChange()">
+          <option value="cosmetics" ${item?.cat==='cosmetics'?'selected':''}>Cosmetics</option>
+          <option value="bundles"   ${item?.cat==='bundles'?'selected':''}>Bundles</option>
+          <option value="topup"     ${item?.cat==='topup'?'selected':''}>Top-up</option>
+          <option value="badges"    ${item?.cat==='badges'?'selected':''}>Badges</option>
+        </select>
       </div>
-      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="ni-icon" placeholder="🎭" maxlength="4"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="ni-desc" placeholder="What does this item do?"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="ni-price" placeholder="100" min="1"></div>
+      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="sf-icon" value="${item?.icon||'📦'}" maxlength="4"></div>
+      <div class="form-group"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="sf-price" value="${item?.price||0}" min="0"></div>
       <div class="form-group"><label class="form-label">Badge</label>
-        <select class="form-input" id="ni-badge"><option value="">None</option><option value="HOT">🔥 HOT</option><option value="BEST VALUE">⭐ BEST VALUE</option></select>
+        <select class="form-input" id="sf-badge">
+          <option value="" ${!item?.badgeType?'selected':''}>None</option>
+          <option value="HOT" ${item?.badgeType==='HOT'?'selected':''}>🔥 HOT</option>
+          <option value="BEST VALUE" ${item?.badgeType==='BEST VALUE'?'selected':''}>⭐ BEST VALUE</option>
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Description</label><input class="form-input" id="sf-desc" value="${item?.desc||''}"></div>
+      <div class="form-group" style="grid-column:span 2" id="sf-instr-wrap"><label class="form-label">Instructions</label><textarea class="form-input" id="sf-instr" rows="2" style="resize:vertical">${item?.instructions||''}</textarea></div>
+      <div class="form-group" style="grid-column:span 2" id="sf-topup-wrap" style="display:none">
+        <label class="form-label">Amount (for top-up)</label>
+        <input class="form-input" type="number" id="sf-amount" value="${item?.amount||0}">
+      </div>
+      <div class="form-group" style="grid-column:span 2" id="sf-bonus-wrap">
+        <label class="form-label">Bonus Text</label><input class="form-input" id="sf-bonus" value="${item?.bonus||''}">
       </div>
     </div>
-    <button class="btn-primary" id="btn-ni" onclick="saveStoreItem()">Add Item</button>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" id="btn-sf" onclick="adminSaveStoreItem()">💾 Save Item</button>
+      <button class="btn-details" onclick="adminResetStoreForm()">↺ Reset</button>
+    </div>
   `);
 }
 
-async function saveStoreItem() {
-  const name = _v('ni-name').trim();
-  const price = Number(_v('ni-price'));
-  if (!name || !price) { toast('Enter name and price','error'); return; }
-  _btn('btn-ni', true);
-  const id   = 'item_' + Date.now();
-  const item = { id, name, cat:_v('ni-cat')||'cosmetics', icon:_v('ni-icon')||'📦', desc:_v('ni-desc'), price, badgeType:_v('ni-badge'), createdAt:new Date().toISOString() };
-  DB.storeItems.push(item);
-  const ok = await fsSet('storeItems', id, item);
-  if (ok) { toast('Item added!','success'); _cacheDB(); closeModal(); renderAdminStore(); }
-  else    { toast('Error adding item','error'); _btn('btn-ni', false); }
+function adminStoreFormCatChange() {
+  const cat = _v('sf-cat');
+  const tw = document.getElementById('sf-topup-wrap');
+  if (tw) tw.style.display = cat==='topup' ? 'block' : 'none';
 }
 
-async function adminDeleteItem(iid) {
-  if (!confirm('Delete this item?')) return;
-  DB.storeItems = DB.storeItems.filter(i => (i.id||i._fsId) !== iid);
+function adminResetStoreForm() {
+  _storeEditId = null; _showStoreForm(null);
+}
+
+async function adminSaveStoreItem() {
+  const name  = _v('sf-name').trim();
+  const price = Number(_v('sf-price'));
+  if (!name) { toast('Enter item name','error'); return; }
+  _btn('btn-sf', true);
+  const id   = _storeEditId || 'item_'+Date.now();
+  const item = {
+    id, name, cat:_v('sf-cat')||'cosmetics', icon:_v('sf-icon')||'📦',
+    desc:_v('sf-desc'), price, bonus:_v('sf-bonus'),
+    instructions:_v('sf-instr'), badgeType:_v('sf-badge'),
+    amount:Number(_v('sf-amount'))||0,
+    featured:false, createdAt:new Date().toISOString()
+  };
+  if (_storeEditId) {
+    const idx = DB.storeItems.findIndex(i=>(i.id||i._fsId)===_storeEditId);
+    if (idx>=0) DB.storeItems[idx] = item;
+  } else {
+    DB.storeItems.push(item);
+  }
+  const ok = await fsSet('storeItems', id, item);
+  if (ok) { toast(`Item ${_storeEditId?'updated':'added'}! ✅`,'success'); _cacheDB(); closeModal(); renderAdminStore(); }
+  else    { toast('Save failed','error'); _btn('btn-sf',false); }
+}
+
+async function adminDeleteStoreItem(iid) {
+  if (!confirm('Delete this store item?')) return;
+  DB.storeItems = DB.storeItems.filter(i=>(i.id||i._fsId)!==iid);
   await fsDelete('storeItems', iid);
   toast('Item deleted','success'); _cacheDB(); renderAdminStore();
 }
 
-// ---- Admin: Transactions ----
+// ================================================================
+// ADMIN — TOP-UP PACKAGE MANAGEMENT
+// ================================================================
+function renderAdminTopup() {
+  const games = _getGames();
+  const el = document.getElementById('admin-content');
+  el.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-weight:700;font-size:15px">🎮 Top-up Management</div>
+      <button class="admin-btn" onclick="renderAdminStore()">← Back to Store</button>
+    </div>
+    ${games.map(g => {
+      const gid = g.id;
+      return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:24px">${g.icon||'🎮'}</span>
+            <div>
+              <div style="font-weight:700">${g.name}</div>
+              <div style="font-size:11px;color:var(--dim)">${g.topup?.currency||'Points'} · ${(g.topup?.packages||[]).length} packages</div>
+            </div>
+          </div>
+          <div style="display:flex;gap:4px">
+            <button class="admin-btn success" onclick="adminEditTopup('${gid}')">📋 Full Editor</button>
+            <button class="admin-btn" onclick="adminEditGame('${gid}')">✏️ Game</button>
+            <button class="admin-btn gold" onclick="adminEditTopupMeta('${gid}')">💱 Meta</button>
+            <button class="admin-btn success" onclick="adminAddPackage('${gid}')">➕ Pkg</button>
+            <button class="admin-btn danger" onclick="adminDeleteGameSection('${gid}')">🗑️</button>
+          </div>
+        </div>
+        <div id="pkgs-${gid}">
+          ${(g.topup?.packages||[]).map((pkg,idx) => _renderPkgRow(gid,pkg,idx,(g.topup?.packages||[]).length)).join('')}
+        </div>
+      </div>`;
+    }).join('')}
+    <button class="btn-create" onclick="adminAddGame()" style="border-style:solid;color:var(--gold);margin-top:8px">➕ Add New Game</button>
+  `;
+}
+
+function _renderPkgRow(gid, pkg, idx, total) {
+  return `
+  <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)" id="pkg-row-${gid}-${idx}">
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:600">${pkg.label||pkg.amount+' pts'}</div>
+      <div style="font-size:11px;color:var(--dim)">${pkg.amount} · ${pkg.price} AC${pkg.bonus?' · '+pkg.bonus:''}</div>
+    </div>
+    <div style="display:flex;gap:4px;flex-shrink:0">
+      <button class="admin-btn" style="padding:4px 7px" data-gid="${gid}" data-idx="${idx}" data-dir="-1" onclick="adminMovePkg(this)" ${idx===0?'disabled style="opacity:.3"':''}>↑</button>
+      <button class="admin-btn" style="padding:4px 7px" data-gid="${gid}" data-idx="${idx}" data-dir="1"  onclick="adminMovePkg(this)" ${idx===total-1?'disabled style="opacity:.3"':''}>↓</button>
+      <button class="admin-btn" onclick="adminEditPackage('${gid}',${idx})">✏️</button>
+      <button class="admin-btn danger" onclick="adminDeletePackage('${gid}',${idx})">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function adminAddPackage(gid) {
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">➕ Add Package</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Label</label><input class="form-input" id="pkg-label" placeholder="e.g. Starter Pack"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Amount *</label><input class="form-input" type="number" id="pkg-amount" placeholder="1000" min="1"></div>
+      <div class="form-group"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="pkg-price" placeholder="100" min="1"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Bonus Text</label><input class="form-input" id="pkg-bonus" placeholder="e.g. +10% Bonus"></div>
+    <button class="btn-primary" id="btn-pkg" onclick="savePkg('${gid}',null)">Add Package</button>
+  `);
+}
+function adminEditPackage(gid, idx) {
+  const game = _getGames().find(g=>g.id===gid); if(!game) return;
+  const pkg  = (game.topup?.packages||[])[idx];  if(!pkg) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">✏️ Edit Package</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Label</label><input class="form-input" id="pkg-label" value="${pkg.label||''}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Amount</label><input class="form-input" type="number" id="pkg-amount" value="${pkg.amount||0}"></div>
+      <div class="form-group"><label class="form-label">Price (AC)</label><input class="form-input" type="number" id="pkg-price" value="${pkg.price||0}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Bonus Text</label><input class="form-input" id="pkg-bonus" value="${pkg.bonus||''}"></div>
+    <button class="btn-primary" id="btn-pkg" onclick="savePkg('${gid}',${idx})">Save Package</button>
+  `);
+}
+async function savePkg(gid, idx) {
+  const amount = Number(_v('pkg-amount'));
+  const price  = Number(_v('pkg-price'));
+  if (!amount||!price) { toast('Enter amount and price','error'); return; }
+  _btn('btn-pkg', true);
+  const game = _getGameObj(gid); if(!game) return;
+  if (!game.topup) game.topup = { currency:'Points', packages:[] };
+  if (!game.topup.packages) game.topup.packages = [];
+  const pkg = { label:_v('pkg-label').trim(), amount, price, bonus:_v('pkg-bonus').trim() };
+  if (idx===null) game.topup.packages.push(pkg);
+  else            game.topup.packages[idx] = pkg;
+  await _saveGame(gid, game);
+  toast(idx===null?'Package added!':'Package updated!','success');
+  closeModal(); renderAdminTopup();
+}
+async function adminDeletePackage(gid, idx) {
+  if (!confirm('Delete this package?')) return;
+  const game = _getGameObj(gid); if(!game) return;
+  game.topup.packages = (game.topup.packages||[]).filter((_,i)=>i!==idx);
+  await _saveGame(gid, game);
+  toast('Package deleted','success'); renderAdminTopup();
+}
+async function adminMovePkg(btn) {
+  const gid = btn.dataset.gid;
+  const idx = parseInt(btn.dataset.idx);
+  const dir = parseInt(btn.dataset.dir);
+  const game = _getGameObj(gid); if(!game) return;
+  const pkgs = game.topup?.packages||[];
+  const newIdx = idx+dir;
+  if (newIdx<0||newIdx>=pkgs.length) return;
+  [pkgs[idx],pkgs[newIdx]] = [pkgs[newIdx],pkgs[idx]];
+  await _saveGame(gid, game);
+  renderAdminTopup();
+}
+
+function adminEditTopupMeta(gid) {
+  const game = _getGameObj(gid); if(!game) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">💱 Top-up Meta — ${game.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Currency Code</label><input class="form-input" id="tm-currency" value="${game.topup?.currency||''}" placeholder="e.g. VP, UC, Diamonds"></div>
+    <div class="form-group"><label class="form-label">Currency Label</label><input class="form-input" id="tm-label" value="${game.topup?.label||''}" placeholder="e.g. Valorant Points"></div>
+    <div class="form-group"><label class="form-label">Instructions</label><textarea class="form-input" id="tm-instr" rows="3" style="resize:vertical">${game.topup?.instructions||''}</textarea></div>
+    <div class="form-group"><label class="form-label">Delivery Note</label><input class="form-input" id="tm-note" value="${game.topup?.note||''}" placeholder="e.g. Delivered within 24h"></div>
+    <button class="btn-primary" id="btn-tm" onclick="saveTopupMeta('${gid}')">Save</button>
+  `);
+}
+async function saveTopupMeta(gid) {
+  _btn('btn-tm', true);
+  const game = _getGameObj(gid); if(!game) return;
+  if (!game.topup) game.topup = { packages:[] };
+  game.topup.currency     = _v('tm-currency').trim();
+  game.topup.label        = _v('tm-label').trim();
+  game.topup.instructions = _v('tm-instr').trim();
+  game.topup.note         = _v('tm-note').trim();
+  await _saveGame(gid, game);
+  toast('Top-up meta saved ✅','success'); closeModal(); renderAdminTopup();
+}
+
+function adminEditGame(gid) {
+  const game = _getGameObj(gid); if(!game) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">🎮 Edit Game</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Game Name *</label><input class="form-input" id="eg-name" value="${game.name||''}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="eg-icon" value="${game.icon||'🎮'}" maxlength="4"></div>
+      <div class="form-group"><label class="form-label">Genre</label><input class="form-input" id="eg-genre" value="${game.genre||''}"></div>
+    </div>
+    <button class="btn-primary" id="btn-eg" onclick="saveEditGame('${gid}')">Save</button>
+  `);
+}
+async function saveEditGame(gid) {
+  const name = _v('eg-name').trim();
+  if (!name) { toast('Enter game name','error'); return; }
+  _btn('btn-eg', true);
+  const game = _getGameObj(gid); if(!game) return;
+  game.name  = name;
+  game.icon  = _v('eg-icon').trim()||'🎮';
+  game.genre = _v('eg-genre').trim();
+  await _saveGame(gid, game);
+  toast('Game updated ✅','success'); _cacheDB(); closeModal(); renderAdminTopup();
+}
+
+function adminAddGame() {
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">➕ Add New Game</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Game Name *</label><input class="form-input" id="ag-name" placeholder="e.g. Genshin Impact"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="ag-icon" placeholder="🎮" maxlength="4"></div>
+      <div class="form-group"><label class="form-label">Currency</label><input class="form-input" id="ag-cur" placeholder="e.g. Primogems"></div>
+    </div>
+    <button class="btn-primary" id="btn-ag" onclick="saveAddGame()">Add Game</button>
+  `);
+}
+async function saveAddGame() {
+  const name = _v('ag-name').trim();
+  if (!name) { toast('Enter game name','error'); return; }
+  _btn('btn-ag', true);
+  const id   = name.toLowerCase().replace(/\s+/g,'_');
+  const game = { id, name, icon:_v('ag-icon')||'🎮', genre:'', topup:{ currency:_v('ag-cur')||'Points', packages:[] }};
+  DB.games.push(game);
+  await fsSet('games', id, game);
+  toast('Game added! 🎮','success'); _cacheDB(); closeModal(); renderAdminTopup();
+}
+
+async function adminDeleteGameSection(gid) {
+  if (!confirm(`Delete the entire "${gid}" game and all its packages?`)) return;
+  DB.games = DB.games.filter(g=>g.id!==gid);
+  await fsDelete('games', gid);
+  toast('Game section deleted','success'); _cacheDB(); renderAdminTopup();
+}
+
+// helpers
+function _getGameObj(gid) {
+  let g = DB.games.find(g=>g.id===gid);
+  if (!g) { g = DEFAULT_GAMES.find(g=>g.id===gid); }
+  return g || null;
+}
+async function _saveGame(gid, game) {
+  const idx = DB.games.findIndex(g=>g.id===gid);
+  if (idx>=0) DB.games[idx]=game;
+  else DB.games.push(game);
+  await fsSet('games', gid, game);
+  _cacheDB();
+}
+
+// ================================================================
+// ADMIN — TRANSACTIONS
+// ================================================================
 function renderAdminTransactions() {
   const el      = document.getElementById('admin-content');
-  const all     = [...DB.transactions].sort((a,b) => new Date(b.date) - new Date(a.date));
-  const pending = all.filter(t => t.status === 'pending').length;
+  const all     = [...DB.transactions].sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const pending = all.filter(t=>t.status==='pending');
   el.innerHTML = `
-    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
-      <span style="font-size:14px;font-weight:700">All Transactions</span>
-      ${pending ? `<span style="background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3);padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">${pending} pending</span>` : ''}
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:14px;font-weight:700">Transactions</span>
+      ${pending.length ? `<span style="background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3);padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">${pending.length} pending</span>` : ''}
+      <span style="font-size:12px;color:var(--dim);margin-left:auto">${all.length} total</span>
     </div>
+    ${pending.length ? `
+    <div style="margin-bottom:16px">
+      <div style="font-size:12px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">⏳ Pending Review</div>
+      ${pending.map(t => _txCard(t, true)).join('')}
+    </div>
+    <div class="divider"></div>` : ''}
+    <div style="font-size:12px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">📋 All Transactions</div>
     <div style="overflow-x:auto">
-      <table class="tx-table" style="min-width:550px">
+      <table class="tx-table" style="min-width:500px">
         <thead><tr><th>Player</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
-        <tbody>
-          ${all.map(t => `
-            <tr>
-              <td style="font-weight:600">${t.uname||'—'}</td>
-              <td style="text-transform:capitalize">${t.type||'—'}</td>
-              <td class="text-gold">${t.amount||0} AC</td>
-              <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
-              <td style="color:var(--dim);font-size:11px">${t.date ? t.date.split('T')[0] : '—'}</td>
-              <td>
-                ${t.status === 'pending'
-                  ? `<div style="display:flex;gap:4px">
-                      <button class="admin-btn success" onclick="approveTx('${t.id||t._fsId}')">✅</button>
-                      <button class="admin-btn danger"  onclick="rejectTx('${t.id||t._fsId}')">❌</button>
-                    </div>`
-                  : '<span style="color:var(--dim);font-size:11px">—</span>'}
-              </td>
-            </tr>`
-          ).join('')}
+        <tbody>${all.map(t=>`
+          <tr>
+            <td style="font-weight:600">${t.uname||'—'}</td>
+            <td style="text-transform:capitalize">${t.type||'—'}</td>
+            <td class="text-gold">${t.amount||0} AC</td>
+            <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
+            <td style="color:var(--dim);font-size:11px">${t.date?t.date.split('T')[0]:'—'}</td>
+            <td>${t.status==='pending'
+              ? `<div style="display:flex;gap:4px"><button class="admin-btn success" onclick="approveTx('${t.id||t._fsId}')">✅</button><button class="admin-btn danger" onclick="rejectTx('${t.id||t._fsId}')">❌</button></div>`
+              : '<span style="color:var(--dim2)">—</span>'}</td>
+          </tr>`).join('')}
         </tbody>
       </table>
-    </div>`;
+    </div>
+  `;
+}
+
+function _txCard(t, actions) {
+  const txid = t.id||t._fsId;
+  return `
+  <div style="background:var(--panel);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div>
+        <span style="font-weight:700">${t.uname||'—'}</span>
+        <span style="font-size:11px;color:var(--dim);margin-left:8px;text-transform:capitalize">${t.type}</span>
+      </div>
+      <span style="font-size:18px;font-weight:900;color:var(--gold)">${t.amount} AC</span>
+    </div>
+    ${t.proof ? `<div style="margin-bottom:8px"><img src="${t.proof}" style="max-height:80px;border-radius:6px;object-fit:cover;cursor:pointer" onclick="window.open('${t.proof}')"></div>` : ''}
+    <div style="font-size:11px;color:var(--dim);margin-bottom:${actions?'10px':'0'}">${t.date?t.date.split('T')[0]:'—'} ${t.method?'· via '+t.method:''} ${t.ref?'· '+t.ref:''}</div>
+    ${actions ? `<div style="display:flex;gap:8px">
+      <button class="btn-join" style="padding:10px;font-size:12px" onclick="approveTx('${txid}')">✅ Approve</button>
+      <button class="btn-details" style="color:var(--red);border-color:rgba(248,113,113,.3)" onclick="rejectTx('${txid}')">❌ Reject</button>
+    </div>` : ''}
+  </div>`;
 }
 
 async function approveTx(txid) {
-  const tx = DB.transactions.find(t => (t.id||t._fsId) === txid); if (!tx) return;
+  const tx = DB.transactions.find(t=>(t.id||t._fsId)===txid); if(!tx) return;
   tx.status = 'approved';
   const tasks = [fsSet('transactions', txid, tx)];
-  if (tx.type === 'deposit') {
-    const p = DB.players.find(pp => _pid(pp) === tx.uid);
+  if (tx.type==='deposit') {
+    const p = DB.players.find(pp=>_pid(pp)===tx.uid);
+    if (p) { p.balance=(p.balance||0)+tx.amount; tasks.push(fsSet('players',_pid(p),p)); if(_pid(p)===DB.me?.id){DB.me.balance=p.balance;renderDash();} }
+  } else if (tx.type==='withdraw') {
+    const p = DB.players.find(pp=>_pid(pp)===tx.uid);
     if (p) {
-      p.balance = (p.balance||0) + tx.amount;
-      tasks.push(fsSet('players', _pid(p), p));
-      if (_pid(p) === DB.me?.id) DB.me.balance = p.balance;
+      if ((p.balance||0)<tx.amount) { toast('Player has insufficient funds!','error'); return; }
+      p.balance=(p.balance||0)-tx.amount; tasks.push(fsSet('players',_pid(p),p));
+      if(_pid(p)===DB.me?.id){DB.me.balance=p.balance;renderDash();}
     }
   }
   await Promise.all(tasks);
@@ -3203,58 +3828,439 @@ async function approveTx(txid) {
 }
 
 async function rejectTx(txid) {
-  const tx = DB.transactions.find(t => (t.id||t._fsId) === txid); if (!tx) return;
+  const tx = DB.transactions.find(t=>(t.id||t._fsId)===txid); if(!tx) return;
   tx.status = 'rejected';
   await fsSet('transactions', txid, tx);
   toast('Transaction rejected','info'); _cacheDB(); renderAdminTransactions();
 }
 
-// ---- Admin: Notifications ----
+// ================================================================
+// ADMIN — NOTIFICATIONS
+// ================================================================
 function renderAdminNotifications() {
   const el = document.getElementById('admin-content');
+  const notifTypes = [
+    { val:'system', label:'🔧 System' }, { val:'promo',  label:'🎁 Promo' },
+    { val:'admin',  label:'📣 Admin'  }, { val:'warning',label:'⚠️ Warning' }
+  ];
   el.innerHTML = `
     <div class="card" style="margin-bottom:14px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:12px">📢 Broadcast Notification</div>
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px">📢 Send Notification</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group"><label class="form-label">Target</label>
+          <select class="form-input" id="notif-target" onchange="toggleNotifTarget()">
+            <option value="all">📣 All Players</option>
+            <option value="specific">👤 Specific Player</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Type</label>
+          <select class="form-input" id="notif-type">
+            ${notifTypes.map(t=>`<option value="${t.val}">${t.label}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div id="notif-target-uid" style="display:none" class="form-group">
+        <label class="form-label">Player UID or Name</label>
+        <input class="form-input" id="notif-uid" placeholder="Enter exact UID or player name">
+      </div>
       <div class="form-group"><label class="form-label">Title *</label><input class="form-input" id="notif-title" placeholder="Notification title"></div>
       <div class="form-group"><label class="form-label">Message *</label><textarea class="form-input" id="notif-body" rows="3" style="resize:vertical" placeholder="Your message..."></textarea></div>
-      <button class="btn-primary" id="btn-notif" onclick="sendNotification()">Send to All Players</button>
+      <button class="btn-primary" id="btn-notif" onclick="adminSendNotif()">📢 Send</button>
     </div>
-    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Sent (${DB.notifications.length})</div>
-    ${DB.notifications.map(n => `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:700">Sent Notifications (${DB.notifications.length})</div>
+    </div>
+    ${DB.notifications.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(n => `
       <div class="notif-item">
-        <div style="display:flex;align-items:center;justify-content:space-between">
-          <div class="notif-title">${n.title||'—'}</div>
-          <button class="admin-btn danger" style="flex-shrink:0" onclick="deleteNotification('${n.id||n._fsId}')">🗑️</button>
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1">
+            <div class="notif-title">${n.title||'—'}</div>
+            <div class="notif-body">${n.body||''}</div>
+            <div class="notif-date" style="margin-top:6px">${n.date?n.date.split('T')[0]:'—'} · Read by ${(n.readBy||[]).length} player(s)${n.targetUid?' · DM to 1 player':''}</div>
+          </div>
+          <button class="admin-btn danger" style="flex-shrink:0" onclick="adminDeleteNotif('${n.id||n._fsId}')">🗑️</button>
         </div>
-        <div class="notif-body">${n.body||''}</div>
-        <div class="notif-date">${n.date ? n.date.split('T')[0] : '—'}</div>
       </div>`
-    ).join('') || '<div class="empty-state" style="padding:24px"><p>No notifications sent</p></div>'}
+    ).join('')||'<div class="empty-state" style="padding:24px"><p>No notifications sent yet</p></div>'}
   `;
 }
 
-async function sendNotification() {
-  const title = _v('notif-title').trim();
-  const body  = _v('notif-body').trim();
-  if (!title || !body) { toast('Fill title and message','error'); return; }
-  _btn('btn-notif', true);
-  const id    = 'notif_' + Date.now();
-  const notif = { id, title, body, date:new Date().toISOString(), readBy:[] };
-  DB.notifications.push(notif);
-  const ok = await fsSet('notifications', id, notif);
-  if (ok) { toast('Notification sent to all players! 📢','success'); _cacheDB(); updateNotifDot(); renderAdminNotifications(); }
-  else    { toast('Error sending notification','error'); _btn('btn-notif', false); }
+function toggleNotifTarget() {
+  const v = _v('notif-target');
+  const el = document.getElementById('notif-target-uid');
+  if (el) el.style.display = v==='specific' ? 'block' : 'none';
 }
 
-async function deleteNotification(nid) {
-  DB.notifications = DB.notifications.filter(n => (n.id||n._fsId) !== nid);
+async function adminSendNotif() {
+  const title  = _v('notif-title').trim();
+  const body   = _v('notif-body').trim();
+  const target = _v('notif-target');
+  const type   = _v('notif-type');
+  if (!title||!body) { toast('Fill title and message','error'); return; }
+  _btn('btn-notif', true);
+  const typeIcons = { admin:'📣', system:'🔧', promo:'🎁', warning:'⚠️' };
+  const fullTitle = `${typeIcons[type]||'📣'} ${title}`;
+
+  if (target==='specific') {
+    const uid = _v('notif-uid').trim();
+    const p   = DB.players.find(pp=>pp.uid===uid||pp.name===uid);
+    if (!p) { toast('Player not found','error'); _btn('btn-notif',false); return; }
+    const id    = 'notif_'+Date.now();
+    const notif = { id, title:fullTitle, body, date:new Date().toISOString(), readBy:[], targetUid:_pid(p), type };
+    DB.notifications.push(notif);
+    await fsSet('notifications', id, notif);
+    toast(`DM sent to ${p.name} 📨`,'success');
+  } else {
+    const id    = 'notif_'+Date.now();
+    const notif = { id, title:fullTitle, body, date:new Date().toISOString(), readBy:[], type };
+    DB.notifications.push(notif);
+    await fsSet('notifications', id, notif);
+    toast(`Sent to all ${DB.players.length} players 📢`,'success');
+    updateNotifDot();
+  }
+  _cacheDB(); renderAdminNotifications();
+}
+
+async function adminDeleteNotif(nid) {
+  DB.notifications = DB.notifications.filter(n=>(n.id||n._fsId)!==nid);
   await fsDelete('notifications', nid);
   toast('Notification deleted','info'); _cacheDB(); renderAdminNotifications();
 }
 
 // ================================================================
-// MODAL & TOAST
+// ADMIN — INLINE TOP-UP EDITOR  (adminEditTopup)
 // ================================================================
+function adminEditTopup(gid) {
+  const game = _getGameObj(gid); if (!game) return;
+  openModal(`
+    <div class="modal-close-row">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:26px">${game.icon||'🎮'}</span>
+        <div><div style="font-weight:800;font-size:15px">${game.name}</div>
+        <div style="font-size:11px;color:var(--dim)">${(game.topup?.packages||[]).length} packages · ${game.topup?.currency||'Points'}</div></div>
+      </div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
+
+    <div style="background:var(--panel);border-radius:var(--radius);padding:12px;margin-bottom:14px;border:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:10px">Currency Info</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group" style="margin-bottom:8px"><label class="form-label">Currency Code</label>
+          <input class="form-input" id="eti-currency" value="${game.topup?.currency||''}" placeholder="VP, UC, Diamonds...">
+        </div>
+        <div class="form-group" style="margin-bottom:8px"><label class="form-label">Currency Label</label>
+          <input class="form-input" id="eti-label" value="${game.topup?.label||''}" placeholder="Valorant Points...">
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:8px"><label class="form-label">Instructions shown to buyer</label>
+        <textarea class="form-input" id="eti-instr" rows="2" style="resize:vertical">${game.topup?.instructions||''}</textarea>
+      </div>
+      <div class="form-group" style="margin-bottom:8px"><label class="form-label">Delivery Note</label>
+        <input class="form-input" id="eti-note" value="${game.topup?.note||''}" placeholder="e.g. Delivered within 24h">
+      </div>
+      <button class="admin-btn success" id="btn-eti-meta" onclick="saveInlineTopupMeta('${gid}')">💾 Save Meta</button>
+    </div>
+
+    <div style="font-size:11px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">Packages</div>
+    <div id="eti-pkg-list">
+      ${(game.topup?.packages||[]).map((pkg,idx,arr) => `
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700">${pkg.label||pkg.amount+' '+game.topup?.currency}</div>
+            <div style="font-size:11px;color:var(--dim)">${pkg.amount} · ${pkg.price} AC${pkg.bonus?' · '+pkg.bonus:''}</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0">
+            <button class="admin-btn" style="padding:4px 6px" onclick="adminMovePkgInline('${gid}',${idx},-1)" ${idx===0?'disabled':''}>↑</button>
+            <button class="admin-btn" style="padding:4px 6px" onclick="adminMovePkgInline('${gid}',${idx},1)" ${idx===arr.length-1?'disabled':''}>↓</button>
+            <button class="admin-btn" onclick="adminEditPkgInline('${gid}',${idx})">✏️</button>
+            <button class="admin-btn danger" onclick="adminDeletePkgInline('${gid}',${idx})">🗑️</button>
+          </div>
+        </div>`).join('')||'<div style="font-size:12px;color:var(--dim);padding:12px 0">No packages yet</div>'}
+    </div>
+
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-top:12px">
+      <div style="font-size:11px;color:var(--g1);font-weight:700;margin-bottom:10px">➕ Add Package</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group" style="margin-bottom:6px"><label class="form-label">Label</label><input class="form-input" id="eti-pkg-label" placeholder="Starter Pack"></div>
+        <div class="form-group" style="margin-bottom:6px"><label class="form-label">Amount *</label><input class="form-input" type="number" id="eti-pkg-amount" placeholder="1000"></div>
+        <div class="form-group" style="margin-bottom:6px"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="eti-pkg-price" placeholder="100"></div>
+        <div class="form-group" style="margin-bottom:6px"><label class="form-label">Bonus Text</label><input class="form-input" id="eti-pkg-bonus" placeholder="+10% Bonus"></div>
+      </div>
+      <button class="btn-primary" id="btn-eti-pkg" onclick="addPkgInline('${gid}')">Add Package</button>
+    </div>
+  `);
+}
+
+async function saveInlineTopupMeta(gid) {
+  _btn('btn-eti-meta', true);
+  const game = _getGameObj(gid); if (!game) return;
+  if (!game.topup) game.topup = { packages:[] };
+  game.topup.currency     = _v('eti-currency').trim();
+  game.topup.label        = _v('eti-label').trim();
+  game.topup.instructions = _v('eti-instr').trim();
+  game.topup.note         = _v('eti-note').trim();
+  await _saveGame(gid, game);
+  toast('Meta saved ✅','success');
+  document.getElementById('btn-eti-meta').innerHTML = '✅ Saved';
+  setTimeout(()=>{ const b=document.getElementById('btn-eti-meta'); if(b) b.innerHTML='💾 Save Meta'; },1500);
+}
+
+async function addPkgInline(gid) {
+  const amount = Number(_v('eti-pkg-amount'));
+  const price  = Number(_v('eti-pkg-price'));
+  if (!amount||!price) { toast('Enter amount and price','error'); return; }
+  _btn('btn-eti-pkg', true);
+  const game = _getGameObj(gid); if (!game) return;
+  if (!game.topup) game.topup = { packages:[] };
+  game.topup.packages.push({ label:_v('eti-pkg-label').trim(), amount, price, bonus:_v('eti-pkg-bonus').trim() });
+  await _saveGame(gid, game);
+  toast('Package added! ✅','success');
+  // Refresh the modal
+  adminEditTopup(gid);
+}
+
+async function adminMovePkgInline(gid, idx, dir) {
+  const game = _getGameObj(gid); if (!game) return;
+  const pkgs = game.topup?.packages||[];
+  const ni = idx+dir;
+  if (ni<0||ni>=pkgs.length) return;
+  [pkgs[idx],pkgs[ni]]=[pkgs[ni],pkgs[idx]];
+  await _saveGame(gid, game);
+  adminEditTopup(gid);
+}
+
+function adminEditPkgInline(gid, idx) {
+  const game = _getGameObj(gid); if (!game) return;
+  const pkg  = (game.topup?.packages||[])[idx]; if (!pkg) return;
+  // Swap out the inline add form to show edit form
+  const addZone = document.querySelector('#eti-pkg-list');
+  if (!addZone) return;
+  // Find the row and replace inline
+  const rows = addZone.querySelectorAll('div[style*="border-bottom"]');
+  const row  = rows[idx]; if (!row) return;
+  row.outerHTML = `
+    <div style="background:rgba(74,222,128,.05);border:1px solid var(--border2);border-radius:var(--radius);padding:10px;margin-bottom:4px" id="eti-edit-row">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:8px">
+        <input class="form-input" id="eir-label"  value="${pkg.label||''}"  placeholder="Label">
+        <input class="form-input" id="eir-amount" value="${pkg.amount||0}" type="number" placeholder="Amount">
+        <input class="form-input" id="eir-price"  value="${pkg.price||0}"  type="number" placeholder="Price (AC)">
+        <input class="form-input" id="eir-bonus"  value="${pkg.bonus||''}" placeholder="Bonus text">
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="admin-btn success" onclick="saveEditPkgInline('${gid}',${idx})">💾 Save</button>
+        <button class="admin-btn" onclick="adminEditTopup('${gid}')">✕ Cancel</button>
+      </div>
+    </div>`;
+}
+
+async function saveEditPkgInline(gid, idx) {
+  const game = _getGameObj(gid); if (!game) return;
+  const pkgs = game.topup?.packages||[];
+  pkgs[idx] = {
+    label:  (document.getElementById('eir-label')?.value||'').trim(),
+    amount: Number(document.getElementById('eir-amount')?.value||0),
+    price:  Number(document.getElementById('eir-price')?.value||0),
+    bonus:  (document.getElementById('eir-bonus')?.value||'').trim()
+  };
+  await _saveGame(gid, game);
+  toast('Package updated ✅','success');
+  adminEditTopup(gid);
+}
+
+async function adminDeletePkgInline(gid, idx) {
+  if (!confirm('Delete this package?')) return;
+  const game = _getGameObj(gid); if (!game) return;
+  game.topup.packages = (game.topup.packages||[]).filter((_,i)=>i!==idx);
+  await _saveGame(gid, game);
+  toast('Package deleted','success');
+  adminEditTopup(gid);
+}
+
+// ================================================================
+// ADMIN — SETTINGS (payment methods, platform config)
+// ================================================================
+function renderAdminSettings() {
+  const el = document.getElementById('admin-content');
+  const methods = DB.paymentMethods || [];
+  el.innerHTML = `
+    <!-- PLATFORM STATS SUMMARY -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:12px">📊 Platform Stats</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
+        ${[
+          ['👥','Total Players',       DB.players.length,                                     'var(--g1)'],
+          ['🚫','Banned',              DB.players.filter(p=>p.banned).length,                 'var(--red)'],
+          ['🏆','Tournaments',         DB.tournaments.length,                                  'var(--g1)'],
+          ['🔓','Open Tournaments',    DB.tournaments.filter(t=>t.status==='open').length,     'var(--gold)'],
+          ['🛒','Store Items',         DB.storeItems.length,                                   'var(--g1)'],
+          ['🎮','Games',               _getGames().length,                                     'var(--g1)'],
+          ['💰','Transactions',        DB.transactions.length,                                  'var(--dim)'],
+          ['⏳','Pending Tx',          DB.transactions.filter(t=>t.status==='pending').length, 'var(--red)'],
+          ['💎','Total AC Issued',     DB.players.reduce((s,p)=>(s+(p.balance||0)),0).toLocaleString()+' AC', 'var(--gold)'],
+          ['🔔','Notifications',       DB.notifications.length,                                'var(--dim)'],
+        ].map(([icon,label,val,color])=>`
+          <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:8px">
+            <span>${icon}</span>
+            <div><div style="font-size:15px;font-weight:800;color:${color}">${val}</div><div style="font-size:10px;color:var(--dim)">${label}</div></div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- PAYMENT METHODS -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div style="font-size:13px;font-weight:700">💳 Payment Methods</div>
+        <button class="admin-btn success" onclick="adminAddPayEntry()">➕ Add Method</button>
+      </div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:12px">These appear on the Deposit screen so players know where to send payment.</div>
+      <div id="pay-methods-list">
+        ${methods.map((m,i) => `
+          <div style="background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
+            <span style="font-size:22px">${m.icon||'💳'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:13px">${m.name}</div>
+              <div style="font-size:12px;font-family:monospace;color:var(--g1)">${m.number}</div>
+              ${m.note ? `<div style="font-size:11px;color:var(--dim)">${m.note}</div>` : ''}
+            </div>
+            <div style="display:flex;gap:4px;flex-shrink:0">
+              <button class="admin-btn" onclick="adminEditPayEntry(${i})">✏️</button>
+              <button class="admin-btn danger" onclick="adminDeletePayEntry(${i})">🗑️</button>
+            </div>
+          </div>`).join('') || '<div style="font-size:12px;color:var(--dim);padding:8px 0">No payment methods added yet. Players won\'t see deposit instructions.</div>'}
+      </div>
+    </div>
+
+    <!-- PLATFORM CONFIG -->
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;margin-bottom:12px">⚙️ Platform Config</div>
+      ${[
+        ['Min Deposit (AC)', 'cfg-min-dep',    DB.config?.minDeposit||10,    'number'],
+        ['Min Withdraw (AC)','cfg-min-wd',     DB.config?.minWithdraw||10,   'number'],
+        ['Name Change Days', 'cfg-name-days',  DB.config?.nameDays||30,      'number'],
+        ['Platform Name',    'cfg-plat-name',  DB.config?.platformName||'Fair Play', 'text'],
+      ].map(([label,id,val,type])=>`
+        <div class="form-group" style="margin-bottom:10px">
+          <label class="form-label">${label}</label>
+          <input class="form-input" type="${type}" id="${id}" value="${val}">
+        </div>`).join('')}
+      <button class="btn-primary" id="btn-cfg" onclick="saveAdminConfig()">💾 Save Config</button>
+    </div>
+
+    <!-- DANGER ZONE -->
+    <div class="card" style="border-color:rgba(248,113,113,.2);margin-bottom:14px">
+      <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:12px">🚨 Danger Zone</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="admin-btn danger" onclick="adminPurgeTransactions()">🗑️ Purge Old Transactions</button>
+        <button class="admin-btn danger" onclick="adminResetAllNotifs()">🔔 Clear All Notifications</button>
+        <button class="admin-btn danger" onclick="adminForceRefresh()">🔄 Force Data Refresh</button>
+      </div>
+    </div>
+  `;
+}
+
+function adminAddPayEntry() {
+  _openPayEntryModal(null, null);
+}
+function adminEditPayEntry(idx) {
+  const m = (DB.paymentMethods||[])[idx];
+  _openPayEntryModal(m, idx);
+}
+function _openPayEntryModal(m, idx) {
+  const PAY_ICONS = ['💳','📱','🏦','💵','🔑','💸','💹','🎰'];
+  openModal(`
+    <div class="modal-close-row">
+      <div class="modal-title">${idx===null?'➕ Add Payment Method':'✏️ Edit Payment Method'}</div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Method Name *</label>
+        <input class="form-input" id="pm-name" value="${m?.name||''}" placeholder="e.g. bKash, Nagad, Bank">
+      </div>
+      <div class="form-group"><label class="form-label">Icon (emoji)</label>
+        <input class="form-input" id="pm-icon" value="${m?.icon||'💳'}" maxlength="4">
+      </div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Account Number / Address *</label>
+        <input class="form-input" id="pm-number" value="${m?.number||''}" placeholder="01XXXXXXXXX">
+      </div>
+      <div class="form-group"><label class="form-label">Account Holder</label>
+        <input class="form-input" id="pm-holder" value="${m?.holder||''}" placeholder="Your Name">
+      </div>
+      <div class="form-group"><label class="form-label">Min Amount (AC)</label>
+        <input class="form-input" type="number" id="pm-min" value="${m?.min||10}" min="1">
+      </div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Instructions / Note</label>
+        <textarea class="form-input" id="pm-note" rows="2" style="resize:vertical" placeholder="e.g. Send payment and upload screenshot">${m?.note||''}</textarea>
+      </div>
+    </div>
+    <button class="btn-primary" id="btn-pm" onclick="savePayEntry(${idx})">💾 Save Method</button>
+  `);
+}
+
+async function savePayEntry(idx) {
+  const name   = _v('pm-name').trim();
+  const number = _v('pm-number').trim();
+  if (!name||!number) { toast('Enter name and account number','error'); return; }
+  _btn('btn-pm', true);
+  if (!DB.paymentMethods) DB.paymentMethods = [];
+  const entry = {
+    name, number, icon:_v('pm-icon')||'💳',
+    holder:_v('pm-holder').trim(), min:Number(_v('pm-min'))||10,
+    note:_v('pm-note').trim()
+  };
+  if (idx===null) DB.paymentMethods.push(entry);
+  else            DB.paymentMethods[idx] = entry;
+  await fsSet('_meta','paymentMethods',{ methods: DB.paymentMethods });
+  toast(`Payment method ${idx===null?'added':'updated'} ✅`,'success');
+  _cacheDB(); closeModal(); renderAdminSettings();
+}
+
+async function adminDeletePayEntry(idx) {
+  if (!confirm('Remove this payment method?')) return;
+  DB.paymentMethods = (DB.paymentMethods||[]).filter((_,i)=>i!==idx);
+  await fsSet('_meta','paymentMethods',{ methods: DB.paymentMethods });
+  toast('Removed','info'); _cacheDB(); renderAdminSettings();
+}
+
+async function saveAdminConfig() {
+  _btn('btn-cfg', true);
+  if (!DB.config) DB.config = {};
+  DB.config.minDeposit   = Number(_v('cfg-min-dep'))||10;
+  DB.config.minWithdraw  = Number(_v('cfg-min-wd'))||10;
+  DB.config.nameDays     = Number(_v('cfg-name-days'))||30;
+  DB.config.platformName = _v('cfg-plat-name').trim()||'Fair Play';
+  await fsSet('_meta','config', DB.config);
+  toast('Config saved ✅','success'); _cacheDB();
+  document.getElementById('btn-cfg').innerHTML = '✅ Saved!';
+  setTimeout(()=>{ const b=document.getElementById('btn-cfg'); if(b) b.innerHTML='💾 Save Config'; }, 1500);
+}
+
+async function adminPurgeTransactions() {
+  const cutoff = new Date(Date.now() - 30*24*60*60*1000);
+  const toDelete = DB.transactions.filter(t=>t.status!=='pending' && new Date(t.date||0) < cutoff);
+  if (!toDelete.length) { toast('No old transactions to purge','info'); return; }
+  if (!confirm(`Delete ${toDelete.length} transactions older than 30 days?`)) return;
+  for (const t of toDelete) await fsDelete('transactions', t.id||t._fsId);
+  DB.transactions = DB.transactions.filter(t=>t.status==='pending'||new Date(t.date||0)>=cutoff);
+  toast(`Purged ${toDelete.length} old transactions`,'success'); _cacheDB(); renderAdminSettings();
+}
+
+async function adminResetAllNotifs() {
+  if (!confirm('Delete ALL notifications? This cannot be undone.')) return;
+  for (const n of DB.notifications) await fsDelete('notifications', n.id||n._fsId);
+  DB.notifications = [];
+  toast('All notifications cleared','success'); _cacheDB(); renderAdminSettings();
+}
+
+async function adminForceRefresh() {
+  localStorage.removeItem('fp_db_v2');
+  toast('Cache cleared, refreshing...','info');
+  setTimeout(async () => {
+    await fbLoadAll();
+    _refreshUI();
+    renderAdmin();
+    toast('Data refreshed ✅','success');
+  }, 500);
+}
 function openModal(html) {
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal-overlay').classList.add('show');
