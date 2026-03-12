@@ -1219,778 +1219,860 @@ img{display:block;max-width:100%}
 
 </div><!-- /app-screen -->
 
+
 <script>
-// ============================================================
+'use strict';
+// ================================================================
 // CONFIG
-// ============================================================
-const FB_API_KEY = 'AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw';
-const FB_PROJECT = 'ff-booyah-eb33c';
-const ADMIN_EMAIL = 'zihadmoon8@gmail.com';
-const AUTH_BASE = `https://identitytoolkit.googleapis.com/v1/accounts`;
-const FS_BASE = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
+// ================================================================
+const FB_API_KEY   = 'AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw';
+const FB_PROJECT   = 'ff-booyah-eb33c';
+const ADMIN_EMAIL  = 'zihadmoon8@gmail.com';
+const AUTH_URL     = 'https://identitytoolkit.googleapis.com/v1/accounts';
+const TOKEN_URL    = 'https://securetoken.googleapis.com/v1/token';
+const FS_BASE      = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
+const LS_KEY       = 'fp_db_v2';
+const LS_SESSION   = 'fp_session_v2';
 
-// ============================================================
-// DB
-// ============================================================
+// ================================================================
+// STATE
+// ================================================================
 let DB = {
-  me: null,
-  players: [],
-  tournaments: [],
-  teams: [],
-  guilds: [],
-  badges: [],
-  transactions: [],
-  storeItems: [],
-  games: [],
-  notifications: []
+  me:null, players:[], tournaments:[], teams:[], guilds:[],
+  badges:[], transactions:[], storeItems:[], games:[], notifications:[]
 };
+let S = { token:null, refresh:null, uid:null, email:null }; // session
+let _tFilter    = 'all';
+let _lbSort     = 'wins';
+let _storeCat   = 'topup';
+let _storeGame  = null;
+let _walletTab  = 'deposit';
+let _adminTab   = 'players';
+let _syncTimer  = null;
+let _busy       = false; // prevent double-submit
 
-let session = {
-  token: null, refresh: null, uid: null, email: null, name: null
-};
-
-let _tFilter = 'all';
-let _lbSort = 'wins';
-let _storeCat = 'topup';
-let _storeGame = null;
-let _walletTab = 'deposit';
-let _adminTab = 'players';
-let _syncTimer = null;
-
-// ============================================================
+// ================================================================
 // INIT
-// ============================================================
+// ================================================================
 window.addEventListener('DOMContentLoaded', async () => {
-  // Check saved session
-  const t = localStorage.getItem('fb_token');
-  const uid = localStorage.getItem('fb_uid');
-  const email = localStorage.getItem('fb_email');
-  const name = localStorage.getItem('fb_name');
-  const refresh = localStorage.getItem('fb_refresh');
-  
-  if (t && uid) {
-    session = { token: t, refresh, uid, email, name };
-    await _enterApp({ token: t, uid, email, displayName: name });
-  } else {
-    hideLoading();
-    showLoginScreen();
+  const saved = _loadSession();
+  if (saved && saved.refresh) {
+    S = saved;
+    // Always refresh the token on load so it's fresh
+    const ok = await _refreshToken();
+    if (ok) {
+      _showLoading('Loading your arena...');
+      await _enterApp();
+      return;
+    }
   }
+  _hideLoading();
+  _showLogin();
 });
 
-function hideLoading() {
-  document.getElementById('loading-screen').style.display = 'none';
+// ================================================================
+// SESSION HELPERS
+// ================================================================
+function _saveSession() {
+  localStorage.setItem(LS_SESSION, JSON.stringify(S));
+  localStorage.setItem('fb_uid',   S.uid);
+  localStorage.setItem('fb_email', S.email);
 }
-function showLoginScreen() {
-  document.getElementById('login-screen').style.display = 'flex';
+function _loadSession() {
+  try { return JSON.parse(localStorage.getItem(LS_SESSION)); } catch { return null; }
 }
-function showAppScreen() {
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('app-screen').classList.add('active');
+function _clearSession() {
+  localStorage.removeItem(LS_SESSION);
+  ['fb_token','fb_refresh','fb_uid','fb_email','fb_name'].forEach(k=>localStorage.removeItem(k));
 }
 
-// ============================================================
+async function _refreshToken() {
+  if (!S.refresh) return false;
+  try {
+    const r = await fetch(`${TOKEN_URL}?key=${FB_API_KEY}`, {
+      method:'POST',
+      headers:{'Content-Type':'application/x-www-form-urlencoded'},
+      body:`grant_type=refresh_token&refresh_token=${encodeURIComponent(S.refresh)}`
+    });
+    const d = await r.json();
+    if (d.id_token) {
+      S.token   = d.id_token;
+      S.refresh = d.refresh_token;
+      S.uid     = d.user_id;
+      _saveSession();
+      return true;
+    }
+  } catch(e) { console.warn('Token refresh failed:', e); }
+  return false;
+}
+
+// ================================================================
+// FIRESTORE HELPERS
+// ================================================================
+
+// Firestore REST: no auth header needed with open rules.
+// We pass token only when available (some rules may require it).
+function _fsHeaders() {
+  const h = { 'Content-Type': 'application/json' };
+  if (S.token) h['Authorization'] = `Bearer ${S.token}`;
+  return h;
+}
+
+async function _fsRequest(url, options = {}) {
+  options.headers = _fsHeaders();
+  let r = await fetch(url, options);
+  // If 401/403 try refreshing token once
+  if ((r.status === 401 || r.status === 403) && S.refresh) {
+    const ok = await _refreshToken();
+    if (ok) {
+      options.headers = _fsHeaders();
+      r = await fetch(url, options);
+    }
+  }
+  return r;
+}
+
+async function fsGet(col, docId) {
+  try {
+    const r = await _fsRequest(`${FS_BASE}/${col}/${encodeURIComponent(docId)}`);
+    if (!r.ok) return null;
+    return _doc2obj(await r.json());
+  } catch(e) { console.warn('fsGet error:', e); return null; }
+}
+
+async function fsSet(col, docId, data) {
+  try {
+    const url  = `${FS_BASE}/${col}/${encodeURIComponent(docId)}`;
+    const body = JSON.stringify({ fields: _obj2fs(data) });
+    const r    = await _fsRequest(url, { method:'PATCH', body });
+    return r.ok;
+  } catch(e) { console.warn('fsSet error:', e); return false; }
+}
+
+async function fsList(col) {
+  try {
+    const r = await _fsRequest(`${FS_BASE}/${col}?pageSize=300`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.documents || []).map(_doc2obj).filter(Boolean);
+  } catch(e) { console.warn('fsList error:', e); return []; }
+}
+
+async function fsDelete(col, docId) {
+  try {
+    const r = await _fsRequest(`${FS_BASE}/${col}/${encodeURIComponent(docId)}`, { method:'DELETE' });
+    return r.ok;
+  } catch(e) { return false; }
+}
+
+// ---- Firestore <-> JS conversion ----
+function _doc2obj(doc) {
+  if (!doc || !doc.fields) return null;
+  const obj = {};
+  for (const [k, v] of Object.entries(doc.fields)) obj[k] = _fsVal(v);
+  if (doc.name) obj._fsId = doc.name.split('/').pop();
+  return obj;
+}
+function _fsVal(v) {
+  if (v.stringValue  !== undefined) return v.stringValue;
+  if (v.integerValue !== undefined) return parseInt(v.integerValue);
+  if (v.doubleValue  !== undefined) return parseFloat(v.doubleValue);
+  if (v.booleanValue !== undefined) return v.booleanValue;
+  if (v.nullValue    !== undefined) return null;
+  if (v.arrayValue)  return (v.arrayValue.values || []).map(_fsVal);
+  if (v.mapValue)    return Object.fromEntries(Object.entries(v.mapValue.fields || {}).map(([k,mv])=>[k,_fsVal(mv)]));
+  return null;
+}
+function _obj2fs(obj) {
+  const f = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (v === undefined) continue;
+    f[k] = _toFsV(v);
+  }
+  return f;
+}
+function _toFsV(v) {
+  if (v === null || v === undefined) return { nullValue: null };
+  if (typeof v === 'boolean')        return { booleanValue: v };
+  if (typeof v === 'number')         return Number.isInteger(v) ? { integerValue: String(v) } : { doubleValue: v };
+  if (typeof v === 'string')         return { stringValue: v };
+  if (Array.isArray(v))              return { arrayValue: { values: v.map(_toFsV) } };
+  if (typeof v === 'object')         return { mapValue: { fields: _obj2fs(v) } };
+  return { stringValue: String(v) };
+}
+
+// ================================================================
+// LOAD ALL DATA
+// ================================================================
+async function fbLoadAll() {
+  // Try to load from localStorage cache first for instant display
+  try {
+    const cached = localStorage.getItem(LS_KEY);
+    if (cached) {
+      const c = JSON.parse(cached);
+      Object.assign(DB, c);
+      DB.me = DB.players.find(p => _pid(p) === S.uid) || null;
+    }
+  } catch(e) {}
+
+  // Then fetch fresh from Firestore
+  try {
+    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications] =
+      await Promise.all([
+        fsList('players'), fsList('tournaments'), fsList('teams'), fsList('guilds'),
+        fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications')
+      ]);
+
+    DB.players       = players.filter(Boolean);
+    DB.tournaments   = tournaments.filter(Boolean);
+    DB.teams         = teams.filter(Boolean);
+    DB.guilds        = guilds.filter(Boolean);
+    DB.transactions  = transactions.filter(Boolean);
+    DB.storeItems    = storeItems.filter(Boolean);
+    DB.games         = games.filter(Boolean);
+    DB.notifications = notifications.filter(Boolean);
+    DB.me            = DB.players.find(p => _pid(p) === S.uid) || null;
+
+    // Load avatars for players (non-blocking)
+    _loadAvatars();
+
+    // Cache to localStorage
+    _cacheDB();
+  } catch(e) { console.warn('fbLoadAll error:', e); }
+}
+
+async function _loadAvatars() {
+  for (const p of DB.players) {
+    if (!p.avatarCustom) {
+      const av = await fsGet('avatars', _pid(p));
+      if (av && av.data) { p.avatarCustom = av.data; _cacheDB(); }
+    }
+  }
+}
+
+function _cacheDB() {
+  try {
+    const toSave = {
+      players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
+      guilds:DB.guilds, transactions:DB.transactions, storeItems:DB.storeItems,
+      games:DB.games, notifications:DB.notifications
+    };
+    localStorage.setItem(LS_KEY, JSON.stringify(toSave));
+  } catch(e) {}
+}
+
+// Helper: get the canonical ID of a player doc (Firebase UID)
+function _pid(p) { return p?.id || p?._fsId || null; }
+
+// ================================================================
 // AUTH
-// ============================================================
+// ================================================================
 function lpSwitch(tab) {
-  document.querySelectorAll('.login-tab').forEach((t,i) => t.classList.toggle('active', (i===0&&tab==='signin')||(i===1&&tab==='signup')));
+  document.querySelectorAll('.login-tab').forEach((t,i) =>
+    t.classList.toggle('active', (i===0&&tab==='signin')||(i===1&&tab==='signup'))
+  );
   document.getElementById('form-signin').classList.toggle('active', tab==='signin');
   document.getElementById('form-signup').classList.toggle('active', tab==='signup');
 }
 
 async function lpSignIn() {
-  const email = document.getElementById('si-email').value.trim();
-  const pass = document.getElementById('si-pass').value;
+  if (_busy) return;
+  const email = _v('si-email').trim();
+  const pass  = _v('si-pass');
   const errEl = document.getElementById('signin-err');
-  errEl.classList.remove('show');
-  if (!email||!pass){showErr(errEl,'Please fill all fields');return;}
+  _hideErr(errEl);
+  if (!email || !pass) { _showErr(errEl,'Please fill all fields'); return; }
+
+  _setBusy(true);
   try {
-    const r = await fetch(`${AUTH_BASE}:signInWithPassword?key=${FB_API_KEY}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,password:pass,returnSecureToken:true})
+    const r = await fetch(`${AUTH_URL}:signInWithPassword?key=${FB_API_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password:pass, returnSecureToken:true })
     });
     const d = await r.json();
-    if(d.error){showErr(errEl,d.error.message.replace(/_/g,' '));return;}
-    session = {token:d.idToken,refresh:d.refreshToken,uid:d.localId,email:d.email,name:d.displayName||email.split('@')[0]};
+    if (d.error) { _showErr(errEl, _friendlyAuthErr(d.error.message)); return; }
+    S = { token:d.idToken, refresh:d.refreshToken, uid:d.localId, email:d.email };
     _saveSession();
-    document.getElementById('loading-screen').style.display='flex';
-    await _enterApp(session);
-  } catch(e){showErr(errEl,'Network error. Try again.');}
+    _showLoading('Signing in...');
+    await _enterApp();
+  } catch(e) {
+    _showErr(errEl, 'Network error. Check your connection.');
+  } finally { _setBusy(false); }
 }
 
 async function lpSignUp() {
-  const name = document.getElementById('su-name').value.trim();
-  const email = document.getElementById('su-email').value.trim();
-  const phone = document.getElementById('su-phone').value.trim();
-  const pass = document.getElementById('su-pass').value;
-  const pass2 = document.getElementById('su-pass2').value;
+  if (_busy) return;
+  const name  = _v('su-name').trim();
+  const email = _v('su-email').trim();
+  const phone = _v('su-phone').trim();
+  const pass  = _v('su-pass');
+  const pass2 = _v('su-pass2');
   const errEl = document.getElementById('signup-err');
-  errEl.classList.remove('show');
-  if(!name||!email||!pass){showErr(errEl,'Please fill all required fields');return;}
-  if(pass!==pass2){showErr(errEl,'Passwords do not match');return;}
-  if(pass.length<6){showErr(errEl,'Password must be at least 6 characters');return;}
+  _hideErr(errEl);
+
+  if (!name || !email || !pass)     { _showErr(errEl,'Fill required fields'); return; }
+  if (pass !== pass2)               { _showErr(errEl,'Passwords do not match'); return; }
+  if (pass.length < 6)              { _showErr(errEl,'Password min 6 characters'); return; }
+
+  _setBusy(true);
   try {
-    const r = await fetch(`${AUTH_BASE}:signUp?key=${FB_API_KEY}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email,password:pass,returnSecureToken:true})
+    const r = await fetch(`${AUTH_URL}:signUp?key=${FB_API_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ email, password:pass, returnSecureToken:true })
     });
     const d = await r.json();
-    if(d.error){showErr(errEl,d.error.message.replace(/_/g,' '));return;}
-    session = {token:d.idToken,refresh:d.refreshToken,uid:d.localId,email,name};
+    if (d.error) { _showErr(errEl, _friendlyAuthErr(d.error.message)); return; }
+    S = { token:d.idToken, refresh:d.refreshToken, uid:d.localId, email };
     _saveSession();
-    // Create player doc
+
+    // Create player profile
     const uid8 = 'FP-' + Math.random().toString(36).substr(2,8).toUpperCase();
     const playerDoc = {
       id:d.localId, uid:uid8, name, email, phone:phone||'',
       balance:0, wins:0, losses:0, tournaments:0,
-      badges:[], gameProfiles:[], role:'player',
+      badges:[], gameProfiles:[], role: email===ADMIN_EMAIL ? 'admin' : 'player',
       teamIds:[], guildId:'', joinedDate:new Date().toISOString(),
-      lastNameChange:null, _emojiIdx:0, banned:false
+      lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
     };
     await fsSet('players', d.localId, playerDoc);
-    document.getElementById('loading-screen').style.display='flex';
-    await _enterApp(session);
-  } catch(e){showErr(errEl,'Network error. Try again.');}
+    _showLoading('Creating your account...');
+    await _enterApp();
+  } catch(e) {
+    _showErr(errEl, 'Network error. Check your connection.');
+  } finally { _setBusy(false); }
 }
 
 async function lpForgotPw() {
-  const email = prompt('Enter your email to reset password:');
-  if(!email) return;
+  const email = prompt('Enter your email address:');
+  if (!email) return;
   try {
-    await fetch(`${AUTH_BASE}:sendOobCode?key=${FB_API_KEY}`,{
-      method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({requestType:'PASSWORD_RESET',email})
+    await fetch(`${AUTH_URL}:sendOobCode?key=${FB_API_KEY}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ requestType:'PASSWORD_RESET', email })
     });
-    toast('Password reset email sent!','success');
-  } catch(e){toast('Error sending reset email','error');}
+    toast('Reset email sent! Check your inbox.', 'success');
+  } catch(e) { toast('Failed to send reset email', 'error'); }
 }
 
-function showErr(el,msg){el.textContent=msg;el.classList.add('show');}
-function _saveSession(){
-  localStorage.setItem('fb_token',session.token);
-  localStorage.setItem('fb_refresh',session.refresh);
-  localStorage.setItem('fb_uid',session.uid);
-  localStorage.setItem('fb_email',session.email);
-  localStorage.setItem('fb_name',session.name);
-}
-
-async function doLogout() {
-  localStorage.clear();
-  session = {};
-  DB = {me:null,players:[],tournaments:[],teams:[],guilds:[],badges:[],transactions:[],storeItems:[],games:[],notifications:[]};
+function doLogout() {
+  if (_syncTimer) clearInterval(_syncTimer);
+  _clearSession();
+  DB = { me:null, players:[], tournaments:[], teams:[], guilds:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[] };
+  S  = { token:null, refresh:null, uid:null, email:null };
+  _storeGame = null;
   document.getElementById('app-screen').classList.remove('active');
-  document.getElementById('login-screen').style.display='flex';
+  _showLogin();
   closeDrawer();
-  toast('Signed out','info');
+  toast('Signed out', 'info');
 }
 
-// ============================================================
+function _friendlyAuthErr(msg) {
+  const map = {
+    'EMAIL_EXISTS':'Email already in use',
+    'INVALID_EMAIL':'Invalid email address',
+    'WEAK_PASSWORD':'Password too weak (min 6 chars)',
+    'USER_NOT_FOUND':'No account found with this email',
+    'WRONG_PASSWORD':'Incorrect password',
+    'INVALID_LOGIN_CREDENTIALS':'Incorrect email or password',
+    'TOO_MANY_ATTEMPTS_TRY_LATER':'Too many attempts, try later',
+    'USER_DISABLED':'Account disabled'
+  };
+  for (const [k,v] of Object.entries(map)) if (msg.includes(k)) return v;
+  return msg.replace(/_/g,' ').toLowerCase();
+}
+
+// ================================================================
 // ENTER APP
-// ============================================================
-async function _enterApp(user) {
-  document.getElementById('loading-screen').style.display='flex';
-  try {
-    await fbLoadAll(user.uid);
-    // Ensure player doc exists
-    if(!DB.me){
-      const uid8 = 'FP-'+Math.random().toString(36).substr(2,8).toUpperCase();
-      DB.me = {id:user.uid,uid:uid8,name:user.name||user.email.split('@')[0],email:user.email,
-        balance:0,wins:0,losses:0,tournaments:0,badges:[],gameProfiles:[],role:'player',
-        teamIds:[],guildId:'',joinedDate:new Date().toISOString(),lastNameChange:null,_emojiIdx:0,banned:false};
-      if(user.email===ADMIN_EMAIL) DB.me.role='admin';
-      await fsSet('players',user.uid,DB.me);
-    }
-    if(user.email===ADMIN_EMAIL) DB.me.role='admin';
-    session.name=DB.me.name;
-    localStorage.setItem('fb_name',DB.me.name);
-    hideLoading();
-    showAppScreen();
-    refreshAvatarBadges();
-    showPage('dashboard');
-    startAutoSync();
-    updateNotifDot();
-  } catch(e) {
-    console.error(e);
-    hideLoading();
-    showAppScreen();
-    refreshAvatarBadges();
-    showPage('dashboard');
+// ================================================================
+async function _enterApp() {
+  _showLoading('Loading arena data...');
+  await fbLoadAll();
+
+  // Ensure player doc exists
+  if (!DB.me) {
+    const uid8 = 'FP-' + Math.random().toString(36).substr(2,8).toUpperCase();
+    DB.me = {
+      id:S.uid, uid:uid8, name: S.email.split('@')[0], email:S.email, phone:'',
+      balance:0, wins:0, losses:0, tournaments:0,
+      badges:[], gameProfiles:[], role: S.email===ADMIN_EMAIL ? 'admin' : 'player',
+      teamIds:[], guildId:'', joinedDate:new Date().toISOString(),
+      lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
+    };
+    DB.players.push(DB.me);
+    await fsSet('players', S.uid, DB.me);
   }
+
+  // Always enforce admin role by email
+  if (S.email === ADMIN_EMAIL) DB.me.role = 'admin';
+
+  _hideLoading();
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').classList.add('active');
+  _refreshUI();
+  showPage('dashboard');
+
+  // Auto-refresh data every 60s
+  if (_syncTimer) clearInterval(_syncTimer);
+  _syncTimer = setInterval(async () => {
+    await fbLoadAll();
+    _refreshUI();
+    // Re-render current page
+    const activePg = document.querySelector('.page.active');
+    if (activePg) renderPage(activePg.id.replace('page-',''));
+  }, 60000);
+
+  updateNotifDot();
+  console.log('%c⚔ FAIR PLAY %cArena loaded', 'font-size:18px;font-weight:900;color:#4ade80','font-size:12px;color:#fbbf24');
 }
 
-function startAutoSync() {
-  if(_syncTimer) clearInterval(_syncTimer);
-  _syncTimer = setInterval(()=>fbLoadAll(session.uid), 30000);
+// ================================================================
+// UI HELPERS
+// ================================================================
+function _showLoading(msg) {
+  const el = document.getElementById('loading-screen');
+  el.style.display = 'flex';
+  const t = el.querySelector('.loading-text');
+  if (t) t.textContent = msg || 'Loading...';
 }
+function _hideLoading() { document.getElementById('loading-screen').style.display = 'none'; }
+function _showLogin()   { document.getElementById('login-screen').style.display = 'flex'; }
 
-// ============================================================
-// FIRESTORE REST API
-// ============================================================
-async function fsGet(col, docId) {
-  const url = `${FS_BASE}/${col}/${docId}`;
-  const r = await fetch(url, {headers:{'Authorization':`Bearer ${session.token}`}});
-  if(!r.ok) return null;
-  const d = await r.json();
-  return fsDocToObj(d);
-}
-
-async function fsSet(col, docId, data) {
-  const url = `${FS_BASE}/${col}/${docId}`;
-  const body = {fields: objToFsFields(data)};
-  const r = await fetch(url, {
-    method:'PATCH', headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.token}`},
-    body: JSON.stringify(body)
+function _v(id) { return document.getElementById(id)?.value || ''; }
+function _showErr(el, msg) { if(el){ el.textContent=msg; el.classList.add('show'); } }
+function _hideErr(el)      { if(el) el.classList.remove('show'); }
+function _setBusy(v) {
+  _busy = v;
+  document.querySelectorAll('.btn-primary').forEach(b => {
+    b.style.opacity = v ? '0.6' : '1';
+    b.style.pointerEvents = v ? 'none' : '';
   });
-  return r.ok;
 }
 
-async function fsList(col) {
-  const url = `${FS_BASE}/${col}?pageSize=200`;
-  const r = await fetch(url, {headers:{'Authorization':`Bearer ${session.token}`}});
-  if(!r.ok) return [];
-  const d = await r.json();
-  if(!d.documents) return [];
-  return d.documents.map(doc => fsDocToObj(doc));
+function _btn(id, loading) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (loading) { el.dataset.orig = el.innerHTML; el.innerHTML = '⏳ Please wait...'; el.disabled = true; }
+  else { if (el.dataset.orig) el.innerHTML = el.dataset.orig; el.disabled = false; }
 }
 
-async function fsDelete(col, docId) {
-  const url = `${FS_BASE}/${col}/${docId}`;
-  const r = await fetch(url, {method:'DELETE', headers:{'Authorization':`Bearer ${session.token}`}});
-  return r.ok;
+// ================================================================
+// AVATAR SYSTEM
+// ================================================================
+const EMOJIS = ['🐺','🔥','🌙','⚡','🐉','🦁','🎯','💀','🦅','🌊','🐯','🦊','🎭','🌟','🐍','🦋','🔮','⚔️','🛡️','🏹','💎','🌋','🎪','🤺','🌀','👾','🦄','🔱'];
+const SVG_AV = ['🗡️','🧙','🥷','🏹','🛡️','🔭','🥊','⚔️'];
+const SVG_NM = ['Swordsman','Mage','Ninja','Archer','Tank','Scout','Brawler','Commander'];
+
+function _avatarInner(p) {
+  if (!p) return '👤';
+  if (p.avatarCustom) return `<img src="${p.avatarCustom}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  if (p._svgIdx != null) return SVG_AV[p._svgIdx] || '👤';
+  return EMOJIS[p._emojiIdx ?? 0] || '👤';
 }
 
-async function fsAddDoc(col, data) {
-  const url = `${FS_BASE}/${col}`;
-  const r = await fetch(url, {
-    method:'POST', headers:{'Content-Type':'application/json','Authorization':`Bearer ${session.token}`},
-    body: JSON.stringify({fields: objToFsFields(data)})
-  });
-  const d = await r.json();
-  if(d.name) {
-    const id = d.name.split('/').pop();
-    return id;
-  }
-  return null;
+function _refreshUI() {
+  if (!DB.me) return;
+  const me = DB.me;
+  const inner = _avatarInner(me);
+  // Nav avatar
+  const nAv = document.getElementById('nav-avatar');
+  if (nAv) nAv.innerHTML = inner;
+  // Drawer
+  const dAv = document.getElementById('drawer-avatar');
+  if (dAv) dAv.innerHTML = inner;
+  const dNm = document.getElementById('drawer-name');
+  if (dNm) dNm.textContent = me.name || 'Player';
+  const dRl = document.getElementById('drawer-role');
+  if (dRl) dRl.textContent = me.role === 'admin' ? '⭐ Admin' : 'Player';
+  // Show/hide admin nav item
+  document.querySelectorAll('.admin-only').forEach(el =>
+    el.style.display = me.role === 'admin' ? 'flex' : 'none'
+  );
 }
 
-// Firestore doc → JS object
-function fsDocToObj(doc) {
-  if(!doc || !doc.fields) return null;
-  const obj = {};
-  for(const [k,v] of Object.entries(doc.fields)) {
-    obj[k] = fsVal(v);
-  }
-  // Extract ID from doc name
-  if(doc.name) obj._fsId = doc.name.split('/').pop();
-  return obj;
-}
-
-function fsVal(v) {
-  if(v.stringValue !== undefined) return v.stringValue;
-  if(v.integerValue !== undefined) return parseInt(v.integerValue);
-  if(v.doubleValue !== undefined) return parseFloat(v.doubleValue);
-  if(v.booleanValue !== undefined) return v.booleanValue;
-  if(v.nullValue !== undefined) return null;
-  if(v.arrayValue) return (v.arrayValue.values||[]).map(fsVal);
-  if(v.mapValue) {
-    const obj={};
-    for(const[k,mv] of Object.entries(v.mapValue.fields||{})) obj[k]=fsVal(mv);
-    return obj;
-  }
-  return null;
-}
-
-function objToFsFields(obj) {
-  const fields = {};
-  for(const [k,v] of Object.entries(obj)) {
-    if(v === undefined) continue;
-    fields[k] = toFsVal(v);
-  }
-  return fields;
-}
-
-function toFsVal(v) {
-  if(v === null || v === undefined) return {nullValue:null};
-  if(typeof v === 'boolean') return {booleanValue:v};
-  if(typeof v === 'number') {
-    if(Number.isInteger(v)) return {integerValue:String(v)};
-    return {doubleValue:v};
-  }
-  if(typeof v === 'string') return {stringValue:v};
-  if(Array.isArray(v)) return {arrayValue:{values:v.map(toFsVal)}};
-  if(typeof v === 'object') return {mapValue:{fields:objToFsFields(v)}};
-  return {stringValue:String(v)};
-}
-
-// ============================================================
-// LOAD ALL
-// ============================================================
-async function fbLoadAll(uid) {
-  try {
-    const [players, tournaments, teams, guilds, badges, transactions, storeItems, games, notifications] = await Promise.all([
-      fsList('players'),fsList('tournaments'),fsList('teams'),fsList('guilds'),
-      fsList('badges'),fsList('transactions'),fsList('storeItems'),fsList('games'),fsList('notifications')
-    ]);
-    DB.players = players.filter(Boolean);
-    DB.tournaments = tournaments.filter(Boolean);
-    DB.teams = teams.filter(Boolean);
-    DB.guilds = guilds.filter(Boolean);
-    DB.badges = badges.filter(Boolean);
-    DB.transactions = transactions.filter(Boolean);
-    DB.storeItems = storeItems.filter(Boolean);
-    DB.games = games.filter(Boolean);
-    DB.notifications = notifications.filter(Boolean);
-    DB.me = DB.players.find(p=>p.id===uid||p._fsId===uid) || null;
-    // Load avatars separately
-    if(DB.me) {
-      const av = await fsGet('avatars', uid);
-      if(av && av.data) DB.me.avatarCustom = av.data;
-    }
-    // Load avatars for other players (non-blocking)
-    DB.players.forEach(async p => {
-      if(p && p.id && !p.avatarCustom) {
-        const av = await fsGet('avatars', p.id);
-        if(av && av.data) p.avatarCustom = av.data;
-      }
-    });
-  } catch(e){ console.warn('Load error:', e); }
-}
-
-// ============================================================
+// ================================================================
 // NAVIGATION
-// ============================================================
+// ================================================================
 function showPage(name) {
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const pg = document.getElementById(`page-${name}`);
-  if(pg) pg.classList.add('active');
-  document.querySelectorAll('.bottom-nav-item').forEach(n=>{
-    n.classList.toggle('active', n.dataset.page===name);
-  });
-  document.querySelectorAll('.drawer-nav-item').forEach(n=>{
-    n.classList.toggle('active', n.textContent.toLowerCase().includes(name));
-  });
+  if (pg) pg.classList.add('active');
+  document.querySelectorAll('.bottom-nav-item').forEach(n =>
+    n.classList.toggle('active', n.dataset.page === name)
+  );
   closeDrawer();
   renderPage(name);
 }
 
-function navTo(name){showPage(name);}
+function navTo(name) { showPage(name); }
 
 function renderPage(name) {
-  switch(name) {
-    case 'dashboard': renderDash(); break;
-    case 'tournaments': renderTournaments(); break;
-    case 'teams': renderTeams(); break;
-    case 'guilds': renderGuilds(); break;
-    case 'leaderboard': renderLB(); break;
-    case 'search': renderSearch(); break;
-    case 'store': renderStore(); break;
-    case 'wallet': renderWallet(); break;
-    case 'profile': renderProfile(); break;
-    case 'admin': renderAdmin(); break;
-  }
+  const map = {
+    dashboard:  renderDash,
+    tournaments:renderTournaments,
+    teams:      renderTeams,
+    guilds:     renderGuilds,
+    leaderboard:renderLB,
+    search:     renderSearch,
+    store:      renderStore,
+    wallet:     renderWallet,
+    profile:    renderProfile,
+    admin:      renderAdmin
+  };
+  if (map[name]) map[name]();
 }
 
-function openDrawer(){
+function openDrawer() {
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('show');
 }
-function closeDrawer(){
+function closeDrawer() {
   document.getElementById('drawer').classList.remove('open');
   document.getElementById('drawer-overlay').classList.remove('show');
 }
 
-// ============================================================
-// AVATAR HELPERS
-// ============================================================
-const EMOJIS = ['🐺','🔥','🌙','⚡','🐉','🦁','🎯','💀','🦅','🌊','🐯','🦊','🎭','🌟','🐍','🦋','🔮','⚔️','🛡️','🏹','💎','🌋','🎪','🤺'];
-const SVG_AVATARS = ['🗡️','🧙','🥷','🏹','🛡️','🔭','🥊','⚔️'];
-const SVG_NAMES = ['Swordsman','Mage','Ninja','Archer','Tank','Scout','Brawler','Commander'];
-
-function getAvatar(player, size='40') {
-  if(!player) return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:${parseInt(size)*0.5}px">👤</div>`;
-  if(player.avatarCustom) {
-    return `<img src="${player.avatarCustom}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover">`;
-  }
-  if(player._svgIdx !== undefined && player._svgIdx !== null) {
-    return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:${parseInt(size)*0.5}px">${SVG_AVATARS[player._svgIdx]||'👤'}</div>`;
-  }
-  const idx = player._emojiIdx||0;
-  return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:${parseInt(size)*0.5}px">${EMOJIS[idx]||'👤'}</div>`;
-}
-
-function getAvatarEl(player) {
-  if(!player) return '👤';
-  if(player.avatarCustom) return `<img src="${player.avatarCustom}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-  if(player._svgIdx !== undefined && player._svgIdx !== null) return SVG_AVATARS[player._svgIdx]||'👤';
-  return EMOJIS[player._emojiIdx||0]||'👤';
-}
-
-function refreshAvatarBadges() {
-  if(!DB.me) return;
-  const me = DB.me;
-  // Nav avatar
-  const navAv = document.getElementById('nav-avatar');
-  if(navAv) navAv.innerHTML = getAvatarEl(me);
-  // Hero
-  const heroAv = document.getElementById('hero-avatar');
-  if(heroAv) heroAv.innerHTML = getAvatarEl(me);
-  // Drawer
-  const drawAv = document.getElementById('drawer-avatar');
-  if(drawAv) drawAv.innerHTML = getAvatarEl(me);
-  const drawName = document.getElementById('drawer-name');
-  if(drawName) drawName.textContent = me.name||'Player';
-  const drawRole = document.getElementById('drawer-role');
-  if(drawRole) drawRole.textContent = me.role==='admin'?'⭐ Admin':'Player';
-  // Show admin items
-  document.querySelectorAll('.admin-only').forEach(el=>{
-    el.style.display = me.role==='admin' ? 'flex' : 'none';
-  });
-}
-
-// ============================================================
+// ================================================================
 // DASHBOARD
-// ============================================================
+// ================================================================
 function renderDash() {
-  const me = DB.me;
-  if(!me) return;
-  document.getElementById('hero-name').textContent = me.name||'Player';
-  document.getElementById('hero-uid').textContent = me.uid||'—';
+  const me = DB.me; if (!me) return;
+  _refreshUI();
+  const wr = (me.wins && me.tournaments) ? Math.round((me.wins / me.tournaments) * 100) : 0;
+  const myGuild = DB.guilds.find(g => (g.memberIds||[]).includes(me.id));
+
+  document.getElementById('hero-name').textContent    = me.name || 'Player';
+  document.getElementById('hero-uid').textContent     = me.uid  || '—';
   document.getElementById('hero-balance').textContent = (me.balance||0).toLocaleString();
-  document.getElementById('wallet-balance').textContent = (me.balance||0).toLocaleString();
-  const heroAvEl = document.getElementById('hero-avatar');
-  if(heroAvEl) heroAvEl.innerHTML = getAvatarEl(me);
+
+  const hAv = document.getElementById('hero-avatar');
+  if (hAv) { hAv.innerHTML = _avatarInner(me); hAv.onclick = () => openAvatarPicker(me.id); }
+
   const badge = document.getElementById('hero-badge');
-  if(badge) { badge.textContent = me.role==='admin'?'ADMIN':'PLAYER'; badge.className = `badge-role ${me.role==='admin'?'admin':'player'}`; }
-  
-  const wr = me.wins&&me.tournaments ? Math.round((me.wins/me.tournaments)*100) : 0;
-  const myGuild = DB.guilds.find(g=>g.memberIds&&g.memberIds.includes(me.id));
+  if (badge) { badge.textContent = me.role==='admin' ? 'ADMIN' : 'PLAYER'; badge.className = `badge-role ${me.role==='admin'?'admin':'player'}`; }
+
   document.getElementById('dash-stats').innerHTML = `
     <div class="stat-card"><div class="stat-value">${me.wins||0}</div><div class="stat-label">Wins</div></div>
     <div class="stat-card"><div class="stat-value text-red">${me.losses||0}</div><div class="stat-label">Losses</div></div>
     <div class="stat-card"><div class="stat-value">${wr}%</div><div class="stat-label">Win Rate</div></div>
     <div class="stat-card"><div class="stat-value text-gold">${me.tournaments||0}</div><div class="stat-label">Events</div></div>
     <div class="stat-card"><div class="stat-value">${(me.badges||[]).length}</div><div class="stat-label">Badges</div></div>
-    <div class="stat-card"><div class="stat-value" style="font-size:14px">${myGuild?myGuild.tag||myGuild.name:'—'}</div><div class="stat-label">Guild</div></div>
+    <div class="stat-card"><div class="stat-value" style="font-size:14px">${myGuild ? (myGuild.tag||myGuild.name) : '—'}</div><div class="stat-label">Guild</div></div>
   `;
-  refreshAvatarBadges();
 }
 
-// ============================================================
+// ================================================================
 // TOURNAMENTS
-// ============================================================
+// ================================================================
 function setTFilter(f, el) {
   _tFilter = f;
-  document.querySelectorAll('#t-filter-tabs .filter-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('#t-filter-tabs .filter-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   renderTournaments();
 }
 
+const GEMOJI = { valorant:'🎯', 'street fighter 6':'🥊', 'free fire':'🔥', 'pubg mobile':'🪖', 'call of duty mobile':'💥', 'mobile legends':'⚔️' };
+function _gameEmoji(game) { return GEMOJI[(game||'').toLowerCase()] || '🎮'; }
+
 function renderTournaments() {
   const me = DB.me;
   let ts = [...DB.tournaments];
-  if(_tFilter==='open') ts = ts.filter(t=>t.status==='open');
-  if(_tFilter==='my') ts = ts.filter(t=>(t.players||[]).includes(me?.id));
+  if (_tFilter === 'open') ts = ts.filter(t => t.status === 'open');
+  if (_tFilter === 'my')   ts = ts.filter(t => (t.players||[]).includes(me?.id));
   ts.sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
-  
+
   const el = document.getElementById('tournaments-list');
-  if(!ts.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments found</p></div>';return;}
-  el.innerHTML = ts.map(t => renderTCard(t)).join('');
+  if (!ts.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments found</p></div>'; return; }
+  el.innerHTML = ts.map(t => _tCard(t)).join('');
 }
 
-const GAME_EMOJIS = {valorant:'🎯',sf6:'🥊',freefire:'🔥',pubg:'🪖',codm:'💥',ml:'⚔️',default:'🎮'};
-
-function renderTCard(t) {
+function _tCard(t) {
   const me = DB.me;
+  const tid      = t.id || t._fsId;
   const isJoined = (t.players||[]).includes(me?.id);
-  const isFull = (t.players||[]).length >= (t.maxPlayers||0);
-  const emoji = GAME_EMOJIS[t.game?.toLowerCase().replace(/\s/g,'')] || GAME_EMOJIS.default;
-  const statusCls = {open:'open',closed:'closed',upcoming:'upcoming'}[t.status]||'upcoming';
-  const slots = t.maxPlayers||16;
-  const joined = (t.players||[]).length;
-  const pct = Math.min(100, Math.round((joined/slots)*100));
-  
+  const isFull   = (t.players||[]).length >= (t.maxPlayers || 0);
+  const statusCls = { open:'open', closed:'closed', upcoming:'upcoming' }[t.status] || 'upcoming';
+  const slots    = t.maxPlayers || 16;
+  const joined   = (t.players||[]).length;
+  const pct      = Math.min(100, Math.round((joined/slots)*100));
+
   let actionBtn = '';
-  if(isJoined) actionBtn = `<div class="joined-badge">✅ Joined</div>`;
-  else if(t.status!=='open'||isFull) actionBtn = `<button class="btn-join" disabled>${isFull?'🔒 Full':'⏳ Closed'}</button>`;
-  else actionBtn = `<button class="btn-join" onclick="joinTSolo('${t.id||t._fsId}')">⚔️ Join Tournament</button>`;
-  
-  // Avatar stack
-  const samplePlayers = (t.players||[]).slice(0,4).map(pid => {
-    const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-    return `<div class="avatar-stack-item">${p ? getAvatarEl(p) : '👤'}</div>`;
+  if (isJoined)                          actionBtn = `<div class="joined-badge">✅ Joined</div>`;
+  else if (t.status !== 'open' || isFull) actionBtn = `<button class="btn-join" disabled>${isFull ? '🔒 Full' : '⏳ Closed'}</button>`;
+  else                                    actionBtn = `<button class="btn-join" onclick="joinTSolo('${tid}')">⚔️ Join</button>`;
+
+  const stack = (t.players||[]).slice(0,4).map(pid => {
+    const p = DB.players.find(pp => _pid(pp) === pid);
+    return `<div class="avatar-stack-item">${p ? _avatarInner(p) : '👤'}</div>`;
   }).join('');
-  
+
   return `
-    <div class="tc">
-      <div class="tc-hero">
-        ${t.logoIsImg&&t.logo ? `<img src="${t.logo}" class="tc-hero-img">` : `<div class="tc-hero-emoji">${emoji}</div>`}
-        <div class="tc-hero-overlay"></div>
-        <div class="tc-game-badge">${t.game||'Unknown'}</div>
-        <div class="tc-status-badge ${statusCls}">${(t.status||'').toUpperCase()}</div>
-        ${t.prize?`<div class="tc-prize-badge">🏆 ${t.prize}</div>`:''}
+  <div class="tc">
+    <div class="tc-hero">
+      ${t.logoIsImg && t.logo ? `<img src="${t.logo}" class="tc-hero-img">` : `<div class="tc-hero-emoji">${_gameEmoji(t.game)}</div>`}
+      <div class="tc-hero-overlay"></div>
+      <div class="tc-game-badge">${t.game||'Unknown'}</div>
+      <div class="tc-status-badge ${statusCls}">${(t.status||'upcoming').toUpperCase()}</div>
+      ${t.prize ? `<div class="tc-prize-badge">🏆 ${t.prize}</div>` : ''}
+    </div>
+    <div class="tc-body">
+      <div class="tc-name">${t.name||'Tournament'}</div>
+      <div class="tc-modes">${(t.modes||[]).map(m=>`<span class="tc-mode">${m}</span>`).join('')}</div>
+      <div class="tc-stats">
+        <div class="tc-stat"><div class="tc-stat-label">Date</div><div class="tc-stat-value">${t.date||'TBD'}</div></div>
+        <div class="tc-stat"><div class="tc-stat-label">Time</div><div class="tc-stat-value">${t.time||'TBD'}</div></div>
+        <div class="tc-stat"><div class="tc-stat-label">Format</div><div class="tc-stat-value">${t.format||'Solo'}</div></div>
+        <div class="tc-stat"><div class="tc-stat-label">Entry Fee</div><div class="tc-stat-value text-gold">${t.entryFee ? t.entryFee+' AC' : 'Free'}</div></div>
       </div>
-      <div class="tc-body">
-        <div class="tc-name">${t.name||'Tournament'}</div>
-        <div class="tc-modes">${(t.modes||[]).map(m=>`<span class="tc-mode">${m}</span>`).join('')}</div>
-        <div class="tc-stats">
-          <div class="tc-stat"><div class="tc-stat-label">Date</div><div class="tc-stat-value">${t.date||'TBD'}</div></div>
-          <div class="tc-stat"><div class="tc-stat-label">Time</div><div class="tc-stat-value">${t.time||'TBD'}</div></div>
-          <div class="tc-stat"><div class="tc-stat-label">Format</div><div class="tc-stat-value">${t.format||'Solo'}</div></div>
-          <div class="tc-stat"><div class="tc-stat-label">Entry Fee</div><div class="tc-stat-value text-gold">${t.entryFee?t.entryFee+' AC':'Free'}</div></div>
-        </div>
-        <div class="tc-players">
-          <div class="avatar-stack">${samplePlayers}</div>
-          <div class="tc-slot-info">${joined}/${slots} players</div>
-        </div>
-        <div class="tc-progress"><div class="tc-progress-bar" style="width:${pct}%"></div></div>
-        <div class="tc-actions">
-          ${actionBtn}
-          <button class="btn-details" onclick="viewTournament('${t.id||t._fsId}')">Details</button>
-        </div>
+      <div class="tc-players">
+        <div class="avatar-stack">${stack}</div>
+        <div class="tc-slot-info">${joined}/${slots} players</div>
+      </div>
+      <div class="tc-progress"><div class="tc-progress-bar" style="width:${pct}%"></div></div>
+      <div class="tc-actions">
+        ${actionBtn}
+        <button class="btn-details" onclick="viewTournament('${tid}')">Details</button>
       </div>
     </div>
-  `;
+  </div>`;
 }
 
 async function joinTSolo(tid) {
   const me = DB.me;
-  const t = DB.tournaments.find(t=>t.id===tid||t._fsId===tid);
-  if(!t||!me) return;
-  if((t.players||[]).includes(me.id)){toast('Already joined','info');return;}
-  if(t.entryFee && me.balance < t.entryFee){toast('Insufficient AC balance','error');return;}
+  const t  = DB.tournaments.find(t => (t.id||t._fsId) === tid);
+  if (!t || !me) return;
+  if ((t.players||[]).includes(me.id)) { toast('Already joined','info'); return; }
+  if (t.entryFee && me.balance < t.entryFee) { toast(`Need ${t.entryFee} AC to join`,'error'); return; }
+
   t.players = [...(t.players||[]), me.id];
-  if(t.entryFee) me.balance = (me.balance||0) - t.entryFee;
+  if (t.entryFee) me.balance = Math.max(0, (me.balance||0) - t.entryFee);
   me.tournaments = (me.tournaments||0) + 1;
-  const tid2 = t.id||t._fsId;
-  await Promise.all([fsSet('tournaments',tid2,t), fsSet('players',me.id,me)]);
-  toast('Joined tournament! ⚔️','success');
+
+  const [ok1, ok2] = await Promise.all([fsSet('tournaments', tid, t), fsSet('players', me.id, me)]);
+  if (ok1 && ok2) { toast('Joined tournament! ⚔️','success'); _cacheDB(); }
+  else toast('Error joining tournament','error');
   renderTournaments();
   renderDash();
 }
 
 function viewTournament(tid) {
-  const t = DB.tournaments.find(t=>t.id===tid||t._fsId===tid);
-  if(!t) return;
-  const emoji = GAME_EMOJIS[t.game?.toLowerCase().replace(/\s/g,'')] || '🎮';
+  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid);
+  if (!t) return;
+  const registered = (t.players||[]).map(pid => {
+    const p = DB.players.find(pp => _pid(pp) === pid);
+    return p ? `<div class="lb-row" style="cursor:default">
+      <div class="lb-avatar">${_avatarInner(p)}</div>
+      <div class="lb-info"><div class="lb-name">${p.name}</div><div class="lb-guild">${p.uid||''}</div></div>
+    </div>` : '';
+  }).join('');
+
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">${emoji} ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="tc-stats" style="grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">
+    <div class="modal-close-row"><div class="modal-title">${_gameEmoji(t.game)} ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="tc-stats" style="gap:8px;margin-bottom:12px">
       <div class="tc-stat"><div class="tc-stat-label">Game</div><div class="tc-stat-value">${t.game}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Status</div><div class="tc-stat-value">${t.status}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Date</div><div class="tc-stat-value">${t.date||'TBD'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Time</div><div class="tc-stat-value">${t.time||'TBD'}</div></div>
-      <div class="tc-stat"><div class="tc-stat-label">Format</div><div class="tc-stat-value">${t.format||'Solo'}</div></div>
+      <div class="tc-stat"><div class="tc-stat-label">Format</div><div class="tc-stat-value">${t.format||'—'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Prize</div><div class="tc-stat-value text-gold">${t.prize||'TBD'}</div></div>
-      <div class="tc-stat"><div class="tc-stat-label">Entry Fee</div><div class="tc-stat-value">${t.entryFee?t.entryFee+' AC':'Free'}</div></div>
+      <div class="tc-stat"><div class="tc-stat-label">Entry Fee</div><div class="tc-stat-value">${t.entryFee ? t.entryFee+' AC' : 'Free'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Players</div><div class="tc-stat-value">${(t.players||[]).length}/${t.maxPlayers||16}</div></div>
     </div>
-    ${t.description?`<p style="font-size:13px;color:var(--dim);line-height:1.6">${t.description}</p>`:''}
+    ${t.description ? `<p style="font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:12px">${t.description}</p>` : ''}
     <div class="divider"></div>
-    <div class="section-title" style="margin-bottom:8px">Registered Players</div>
-    <div style="display:flex;flex-direction:column;gap:6px">
-      ${(t.players||[]).map(pid=>{
-        const p=DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-        return p?`<div class="lb-row" style="cursor:default"><div class="lb-avatar">${getAvatarEl(p)}</div><div class="lb-info"><div class="lb-name">${p.name}</div><div class="lb-guild">${p.uid||''}</div></div></div>`:'';
-      }).join('')}
-      ${!(t.players||[]).length?'<div class="empty-state"><p>No players yet</p></div>':''}
-    </div>
+    <div class="section-title" style="margin-bottom:8px">Registered Players (${(t.players||[]).length})</div>
+    <div style="display:flex;flex-direction:column;gap:6px">${registered || '<div class="empty-state" style="padding:16px"><p>No players yet</p></div>'}</div>
   `);
 }
 
-// ============================================================
+// ================================================================
 // TEAMS
-// ============================================================
+// ================================================================
 function renderTeams() {
   const me = DB.me;
   const el = document.getElementById('teams-list');
-  if(!DB.teams.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">👥</div><p>No teams yet. Create one!</p></div>';return;}
-  el.innerHTML = `<div class="section-title mb-8">All Teams</div>` + DB.teams.map(t=>{
-    const isLeader = t.leaderId===me?.id;
+  if (!DB.teams.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><p>No teams yet</p></div>'; return; }
+  el.innerHTML = DB.teams.map(t => {
+    const tid      = t.id || t._fsId;
+    const isLeader = t.leaderId === me?.id;
     const isMember = (t.memberIds||[]).includes(me?.id);
-    const myBadge = isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : '';
     return `
-      <div class="team-card" onclick="viewTeam('${t.id||t._fsId}')">
-        <div class="team-logo">${t.logo||'👥'}</div>
-        <div class="team-info">
-          <div class="team-name">${t.name} ${myBadge}</div>
-          <div class="team-tag">[${t.tag||'???'}]</div>
-          <div class="team-members">${(t.memberIds||[]).length} member${(t.memberIds||[]).length!==1?'s':''}</div>
-        </div>
-        ${isMember&&!isLeader?`<button class="admin-btn danger" onclick="event.stopPropagation();leaveTeam('${t.id||t._fsId}')">Leave</button>`:''}
+    <div class="team-card" onclick="viewTeam('${tid}')">
+      <div class="team-logo">${t.logo||'👥'}</div>
+      <div class="team-info">
+        <div class="team-name">${t.name} ${isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : ''}</div>
+        <div class="team-tag">[${t.tag||'???'}]</div>
+        <div class="team-members">${(t.memberIds||[]).length} members</div>
       </div>
-    `;
+      ${isMember && !isLeader ? `<button class="admin-btn danger" onclick="event.stopPropagation();leaveTeam('${tid}')">Leave</button>` : ''}
+    </div>`;
   }).join('');
 }
 
 function openCreateTeam() {
   openModal(`
     <div class="modal-close-row"><div class="modal-title">👥 Create Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Team Name</label><input class="form-input" id="ct-name" placeholder="Enter team name"></div>
-    <div class="form-group"><label class="form-label">Tag (3-5 chars)</label><input class="form-input" id="ct-tag" placeholder="e.g. PRO" maxlength="5"></div>
-    <div class="form-group"><label class="form-label">Logo Emoji</label><input class="form-input" id="ct-logo" placeholder="e.g. 🔥" maxlength="4"></div>
-    <button class="btn-primary" onclick="createTeam()">Create Team</button>
+    <div class="form-group"><label class="form-label">Team Name *</label><input class="form-input" id="ct-name" placeholder="Enter team name"></div>
+    <div class="form-group"><label class="form-label">Tag (2-5 chars) *</label><input class="form-input" id="ct-tag" placeholder="e.g. PRO" maxlength="5"></div>
+    <div class="form-group"><label class="form-label">Logo Emoji</label><input class="form-input" id="ct-logo" placeholder="🔥" maxlength="4"></div>
+    <button class="btn-primary" id="btn-create-team" onclick="createTeam()">Create Team</button>
   `);
 }
 
 async function createTeam() {
-  const name=document.getElementById('ct-name')?.value.trim();
-  const tag=document.getElementById('ct-tag')?.value.trim().toUpperCase();
-  const logo=document.getElementById('ct-logo')?.value.trim()||'👥';
-  if(!name||!tag){toast('Please fill name and tag','error');return;}
+  const name = _v('ct-name').trim();
+  const tag  = _v('ct-tag').trim().toUpperCase();
+  const logo = _v('ct-logo').trim() || '👥';
+  if (!name || !tag) { toast('Enter name and tag','error'); return; }
+  _btn('btn-create-team', true);
   const me = DB.me;
-  const id = 'team_'+Date.now();
-  const team = {id,name,tag,logo,leaderId:me.id,memberIds:[me.id],createdAt:new Date().toISOString()};
-  me.teamIds = [...(me.teamIds||[]),id];
+  const id = 'team_' + Date.now();
+  const team = { id, name, tag, logo, leaderId:me.id, memberIds:[me.id], createdAt:new Date().toISOString() };
+  me.teamIds = [...(me.teamIds||[]), id];
   DB.teams.push(team);
-  await Promise.all([fsSet('teams',id,team), fsSet('players',me.id,me)]);
-  toast('Team created! 👥','success');
-  closeModal();
-  renderTeams();
+  const [ok1, ok2] = await Promise.all([fsSet('teams', id, team), fsSet('players', me.id, me)]);
+  if (ok1) { toast('Team created! 👥','success'); _cacheDB(); closeModal(); renderTeams(); }
+  else { toast('Error creating team','error'); _btn('btn-create-team', false); }
 }
 
 function openJoinTeam() {
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🔑 Join Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Team ID</label><input class="form-input" id="jt-id" placeholder="Enter team ID"></div>
-    <button class="btn-primary" onclick="joinTeamById()">Join</button>
+    <div class="form-group"><label class="form-label">Team ID</label><input class="form-input" id="jt-id" placeholder="Paste team ID..."></div>
+    <button class="btn-primary" id="btn-join-team" onclick="joinTeamById()">Join Team</button>
   `);
 }
 
 async function joinTeamById() {
-  const tid = document.getElementById('jt-id')?.value.trim();
-  const t = DB.teams.find(t=>t.id===tid||t._fsId===tid);
-  if(!t){toast('Team not found','error');return;}
+  const tid = _v('jt-id').trim();
+  const t   = DB.teams.find(t => (t.id||t._fsId) === tid);
+  if (!t) { toast('Team not found','error'); return; }
   const me = DB.me;
-  if((t.memberIds||[]).includes(me.id)){toast('Already in team','info');return;}
-  t.memberIds = [...(t.memberIds||[]),me.id];
-  me.teamIds = [...(me.teamIds||[]),t.id||t._fsId];
-  await Promise.all([fsSet('teams',t.id||t._fsId,t),fsSet('players',me.id,me)]);
-  toast('Joined team!','success');
-  closeModal();
-  renderTeams();
+  if ((t.memberIds||[]).includes(me.id)) { toast('Already in this team','info'); return; }
+  _btn('btn-join-team', true);
+  t.memberIds = [...(t.memberIds||[]), me.id];
+  me.teamIds  = [...(me.teamIds||[]), t.id||t._fsId];
+  await Promise.all([fsSet('teams', t.id||t._fsId, t), fsSet('players', me.id, me)]);
+  toast('Joined team!','success'); _cacheDB(); closeModal(); renderTeams();
 }
 
 async function leaveTeam(tid) {
-  const t = DB.teams.find(t=>t.id===tid||t._fsId===tid);
-  const me = DB.me;
-  if(!t) return;
-  t.memberIds = (t.memberIds||[]).filter(id=>id!==me.id);
-  me.teamIds = (me.teamIds||[]).filter(id=>id!==tid);
-  await Promise.all([fsSet('teams',tid,t),fsSet('players',me.id,me)]);
-  toast('Left team','info');
-  renderTeams();
+  const t  = DB.teams.find(t => (t.id||t._fsId) === tid);
+  const me = DB.me; if (!t) return;
+  t.memberIds = (t.memberIds||[]).filter(id => id !== me.id);
+  me.teamIds  = (me.teamIds||[]).filter(id => id !== tid);
+  await Promise.all([fsSet('teams', tid, t), fsSet('players', me.id, me)]);
+  toast('Left team','info'); _cacheDB(); renderTeams();
 }
 
 function viewTeam(tid) {
-  const t = DB.teams.find(t=>t.id===tid||t._fsId===tid);
-  if(!t) return;
-  const members = (t.memberIds||[]).map(mid=>{
-    const p=DB.players.find(pp=>pp.id===mid||pp._fsId===mid);
-    return p?`<div class="lb-row" style="cursor:default"><div class="lb-avatar">${getAvatarEl(p)}</div><div class="lb-info"><div class="lb-name">${p.name}${p.id===t.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div></div>`:'';
+  const t = DB.teams.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  const members = (t.memberIds||[]).map(mid => {
+    const p = DB.players.find(pp => _pid(pp) === mid);
+    return p ? `<div class="lb-row" style="cursor:default">
+      <div class="lb-avatar">${_avatarInner(p)}</div>
+      <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===t.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
+    </div>` : '';
   }).join('');
   openModal(`
     <div class="modal-close-row"><div class="modal-title">${t.logo||'👥'} ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div style="display:flex;gap:8px;margin-bottom:16px">
       <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Tag</div><div class="tc-stat-value">[${t.tag}]</div></div>
       <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Members</div><div class="tc-stat-value">${(t.memberIds||[]).length}</div></div>
+      <div class="tc-stat" style="flex:2"><div class="tc-stat-label">ID</div><div class="tc-stat-value" style="font-size:11px;font-family:monospace" onclick="navigator.clipboard.writeText('${tid}')">${tid} 📋</div></div>
     </div>
-    <div class="section-title" style="margin-bottom:8px">Members</div>
-    <div style="display:flex;flex-direction:column;gap:6px">${members||'<div class="empty-state"><p>No members</p></div>'}</div>
+    <div style="display:flex;flex-direction:column;gap:6px">${members || '<div class="empty-state" style="padding:16px"><p>No members</p></div>'}</div>
   `);
 }
 
-// ============================================================
+// ================================================================
 // GUILDS
-// ============================================================
+// ================================================================
 function renderGuilds() {
   const me = DB.me;
   const el = document.getElementById('guilds-list');
-  if(!DB.guilds.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🛡️</div><p>No guilds yet!</p></div>';return;}
-  el.innerHTML = DB.guilds.map(g=>{
-    const isLeader = g.leaderId===me?.id;
+  if (!DB.guilds.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🛡️</div><p>No guilds yet</p></div>'; return; }
+  el.innerHTML = DB.guilds.map(g => {
+    const gid      = g.id || g._fsId;
+    const isLeader = g.leaderId === me?.id;
     const isMember = (g.memberIds||[]).includes(me?.id);
-    const myBadge = isMember?`<span class="my-badge">${isLeader?'Leader':'Member'}</span>`:'';
     return `
-      <div class="team-card" onclick="viewGuild('${g.id||g._fsId}')">
-        <div class="team-logo">🛡️</div>
-        <div class="team-info">
-          <div class="team-name">${g.name} ${myBadge}</div>
-          <div class="team-tag">[${g.tag||'???'}]</div>
-          <div class="team-members">${g.description||''}</div>
-          <div class="team-members" style="margin-top:4px">${(g.memberIds||[]).length} members</div>
-        </div>
-        ${isMember&&!isLeader?`<button class="admin-btn danger" onclick="event.stopPropagation();leaveGuild('${g.id||g._fsId}')">Leave</button>`:''}
+    <div class="team-card" onclick="viewGuild('${gid}')">
+      <div class="team-logo">🛡️</div>
+      <div class="team-info">
+        <div class="team-name">${g.name} ${isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : ''}</div>
+        <div class="team-tag">[${g.tag||'???'}]</div>
+        <div class="team-members">${g.description||''}</div>
+        <div class="team-members" style="margin-top:2px">${(g.memberIds||[]).length} members</div>
       </div>
-    `;
+      ${isMember && !isLeader ? `<button class="admin-btn danger" onclick="event.stopPropagation();leaveGuild('${gid}')">Leave</button>` : ''}
+    </div>`;
   }).join('');
 }
 
 function openCreateGuild() {
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🛡️ Create Guild</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Guild Name</label><input class="form-input" id="cg-name" placeholder="Guild name"></div>
-    <div class="form-group"><label class="form-label">Tag</label><input class="form-input" id="cg-tag" placeholder="e.g. ALPHA" maxlength="6"></div>
+    <div class="form-group"><label class="form-label">Guild Name *</label><input class="form-input" id="cg-name" placeholder="Guild name"></div>
+    <div class="form-group"><label class="form-label">Tag (2-6 chars) *</label><input class="form-input" id="cg-tag" placeholder="e.g. ALPHA" maxlength="6"></div>
     <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="cg-desc" placeholder="Short description"></div>
-    <button class="btn-primary" onclick="createGuild()">Create Guild</button>
+    <button class="btn-primary" id="btn-cg" onclick="createGuild()">Create Guild</button>
   `);
 }
 
 async function createGuild() {
-  const name=document.getElementById('cg-name')?.value.trim();
-  const tag=document.getElementById('cg-tag')?.value.trim().toUpperCase();
-  const desc=document.getElementById('cg-desc')?.value.trim()||'';
-  if(!name||!tag){toast('Fill name and tag','error');return;}
-  const me=DB.me;
-  if(me.guildId){toast('You are already in a guild','error');return;}
-  const id='guild_'+Date.now();
-  const guild={id,name,tag,description:desc,leaderId:me.id,memberIds:[me.id],createdAt:new Date().toISOString()};
-  me.guildId=id;
+  const name = _v('cg-name').trim();
+  const tag  = _v('cg-tag').trim().toUpperCase();
+  const desc = _v('cg-desc').trim();
+  if (!name || !tag) { toast('Fill name and tag','error'); return; }
+  const me = DB.me;
+  if (me.guildId) { toast('You are already in a guild','error'); return; }
+  _btn('btn-cg', true);
+  const id    = 'guild_' + Date.now();
+  const guild = { id, name, tag, description:desc, leaderId:me.id, memberIds:[me.id], createdAt:new Date().toISOString() };
+  me.guildId  = id;
   DB.guilds.push(guild);
-  await Promise.all([fsSet('guilds',id,guild),fsSet('players',me.id,me)]);
-  toast('Guild created! 🛡️','success');
-  closeModal();
-  renderGuilds();
+  await Promise.all([fsSet('guilds', id, guild), fsSet('players', me.id, me)]);
+  toast('Guild created! 🛡️','success'); _cacheDB(); closeModal(); renderGuilds();
 }
 
 function openJoinGuild() {
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🔑 Join Guild</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Guild ID</label><input class="form-input" id="jg-id" placeholder="Enter guild ID"></div>
-    <button class="btn-primary" onclick="joinGuildById()">Join</button>
+    <div class="form-group"><label class="form-label">Guild ID</label><input class="form-input" id="jg-id" placeholder="Paste guild ID..."></div>
+    <button class="btn-primary" id="btn-jg" onclick="joinGuildById()">Join Guild</button>
   `);
 }
 
 async function joinGuildById() {
-  const gid=document.getElementById('jg-id')?.value.trim();
-  const g=DB.guilds.find(g=>g.id===gid||g._fsId===gid);
-  if(!g){toast('Guild not found','error');return;}
-  const me=DB.me;
-  if(me.guildId){toast('Already in a guild','error');return;}
-  g.memberIds=[...(g.memberIds||[]),me.id];
-  me.guildId=g.id||g._fsId;
-  await Promise.all([fsSet('guilds',g.id||g._fsId,g),fsSet('players',me.id,me)]);
-  toast('Joined guild!','success');
-  closeModal();
-  renderGuilds();
+  const gid = _v('jg-id').trim();
+  const g   = DB.guilds.find(g => (g.id||g._fsId) === gid);
+  if (!g) { toast('Guild not found','error'); return; }
+  const me = DB.me;
+  if (me.guildId) { toast('Already in a guild','error'); return; }
+  _btn('btn-jg', true);
+  g.memberIds = [...(g.memberIds||[]), me.id];
+  me.guildId  = g.id || g._fsId;
+  await Promise.all([fsSet('guilds', g.id||g._fsId, g), fsSet('players', me.id, me)]);
+  toast('Joined guild!','success'); _cacheDB(); closeModal(); renderGuilds();
 }
 
 async function leaveGuild(gid) {
-  const g=DB.guilds.find(g=>g.id===gid||g._fsId===gid);
-  const me=DB.me;
-  if(!g) return;
-  g.memberIds=(g.memberIds||[]).filter(id=>id!==me.id);
-  me.guildId='';
-  await Promise.all([fsSet('guilds',gid,g),fsSet('players',me.id,me)]);
-  toast('Left guild','info');
-  renderGuilds();
+  const g  = DB.guilds.find(g => (g.id||g._fsId) === gid);
+  const me = DB.me; if (!g) return;
+  g.memberIds = (g.memberIds||[]).filter(id => id !== me.id);
+  me.guildId  = '';
+  await Promise.all([fsSet('guilds', gid, g), fsSet('players', me.id, me)]);
+  toast('Left guild','info'); _cacheDB(); renderGuilds();
 }
 
 function viewGuild(gid) {
-  const g=DB.guilds.find(g=>g.id===gid||g._fsId===gid);
-  if(!g) return;
-  const leader=DB.players.find(p=>p.id===g.leaderId||p._fsId===g.leaderId);
-  const members=(g.memberIds||[]).map(mid=>{
-    const p=DB.players.find(pp=>pp.id===mid||pp._fsId===mid);
-    return p?`<div class="lb-row" style="cursor:default"><div class="lb-avatar">${getAvatarEl(p)}</div><div class="lb-info"><div class="lb-name">${p.name}${p.id===g.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div></div>`:'';
+  const g = DB.guilds.find(g => (g.id||g._fsId) === gid); if (!g) return;
+  const leader  = DB.players.find(p => _pid(p) === g.leaderId);
+  const members = (g.memberIds||[]).map(mid => {
+    const p = DB.players.find(pp => _pid(pp) === mid);
+    return p ? `<div class="lb-row" style="cursor:default">
+      <div class="lb-avatar">${_avatarInner(p)}</div>
+      <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===g.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
+    </div>` : '';
   }).join('');
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🛡️ ${g.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
@@ -1999,401 +2081,415 @@ function viewGuild(gid) {
       <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Leader</div><div class="tc-stat-value">${leader?.name||'—'}</div></div>
       <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Members</div><div class="tc-stat-value">${(g.memberIds||[]).length}</div></div>
     </div>
-    ${g.description?`<p style="font-size:13px;color:var(--dim);margin-bottom:12px">${g.description}</p>`:''}
-    <div class="section-title" style="margin-bottom:8px">Members</div>
+    ${g.description ? `<p style="font-size:13px;color:var(--dim);margin-bottom:12px">${g.description}</p>` : ''}
+    <div style="font-size:11px;color:var(--dim2);font-family:monospace;margin-bottom:12px" onclick="navigator.clipboard.writeText('${gid}')">ID: ${gid} 📋</div>
     <div style="display:flex;flex-direction:column;gap:6px">${members}</div>
   `);
 }
 
-// ============================================================
+// ================================================================
 // LEADERBOARD
-// ============================================================
+// ================================================================
 function setLBSort(key, el) {
   _lbSort = key;
-  document.querySelectorAll('.lb-sort-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.lb-sort-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   renderLB();
 }
 
 function renderLB() {
   const me = DB.me;
-  let players = DB.players.filter(p=>!p.banned);
-  
-  if(_lbSort==='wins') players.sort((a,b)=>(b.wins||0)-(a.wins||0));
-  else if(_lbSort==='wr') players.sort((a,b)=>{
-    const wa=(a.wins&&a.tournaments)?a.wins/a.tournaments:0;
-    const wb=(b.wins&&b.tournaments)?b.wins/b.tournaments:0;
-    return wb-wa;
-  });
-  else players.sort((a,b)=>(b.tournaments||0)-(a.tournaments||0));
-  
-  const getScore = p => {
-    if(_lbSort==='wins') return p.wins||0;
-    if(_lbSort==='wr') return p.wins&&p.tournaments?Math.round((p.wins/p.tournaments)*100)+'%':'0%';
-    return p.tournaments||0;
+  let players = DB.players.filter(p => !p.banned);
+
+  const score = (p) => {
+    if (_lbSort === 'wins')   return p.wins || 0;
+    if (_lbSort === 'wr')     return (p.wins && p.tournaments) ? (p.wins / p.tournaments) : 0;
+    return p.tournaments || 0;
   };
-  const scoreLabel = _lbSort==='wins'?'wins':_lbSort==='wr'?'wr':'events';
-  
-  const top3 = players.slice(0,3);
-  const rest = players.slice(3);
-  const myRank = players.findIndex(p=>p.id===me?.id||p._fsId===me?.id) + 1;
-  
-  // Podium order: 2nd, 1st, 3rd
-  const podiumOrder = [top3[1], top3[0], top3[2]].filter(Boolean);
-  const podiumColors = ['silver','gold','bronze'];
-  
-  const podiumHtml = `
-    <div class="podium">
-      ${podiumOrder.map((p,i)=>{
-        if(!p) return '<div class="podium-slot"></div>';
-        const realRank = podiumOrder[i]===top3[0]?1:podiumOrder[i]===top3[1]?2:3;
-        const guild = DB.guilds.find(g=>(g.memberIds||[]).includes(p.id));
-        const isMe = p.id===me?.id||p._fsId===me?.id;
-        return `
-          <div class="podium-slot" style="${isMe?'animation:pulse 2s ease infinite':''}">
-            <div class="podium-avatar" style="border-color:var(--${podiumColors[i]});box-shadow:0 0 ${i===1?20:10}px rgba(${i===1?'251,191,36':i===0?'148,163,184':'205,124,66'},.${i===1?4:2})">${getAvatarEl(p)}</div>
-            <div class="podium-name">${p.name}</div>
-            <div class="podium-score">${getScore(p)}</div>
-            <div class="podium-base">${realRank===1?'🥇 1st':realRank===2?'🥈 2nd':'🥉 3rd'}</div>
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `;
-  
+  players.sort((a,b) => score(b) - score(a));
+
+  const fmtScore = (p) => {
+    if (_lbSort === 'wins')   return p.wins || 0;
+    if (_lbSort === 'wr')     return (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100)+'%' : '0%';
+    return p.tournaments || 0;
+  };
+
+  const top3  = players.slice(0, 3);
+  const rest  = players.slice(3);
+  const myRank = players.findIndex(p => _pid(p) === me?.id) + 1;
+
+  // Podium: 2nd (silver), 1st (gold), 3rd (bronze)
+  const podiumSlots = [
+    { p: top3[1], rank:2, color:'silver', h:50, col:'148,163,184' },
+    { p: top3[0], rank:1, color:'gold',   h:70, col:'251,191,36'  },
+    { p: top3[2], rank:3, color:'bronze', h:36, col:'205,124,66'  }
+  ];
+
+  const podiumHtml = `<div class="podium">
+    ${podiumSlots.map(({p,rank,color,h,col}) => {
+      if (!p) return '<div class="podium-slot"></div>';
+      const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+      const isMe  = _pid(p) === me?.id;
+      const rankLabel = rank===1?'🥇 1st':rank===2?'🥈 2nd':'🥉 3rd';
+      const sz = rank===1?68:rank===2?56:52;
+      return `
+      <div class="podium-slot" style="${isMe?'animation:pulse 2s ease infinite':''}">
+        <div class="podium-avatar" style="width:${sz}px;height:${sz}px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${sz*0.45}px;overflow:hidden;border:3px solid var(--${color});box-shadow:0 0 ${rank===1?20:12}px rgba(${col},.4);margin-bottom:8px">${_avatarInner(p)}</div>
+        <div class="podium-name" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:12px;font-weight:700">${p.name}</div>
+        <div class="podium-score" style="color:var(--${color});font-size:12px;font-weight:800;font-family:monospace">${fmtScore(p)}</div>
+        <div class="podium-base" style="width:100%;border-radius:8px 8px 0 0;height:${h}px;background:linear-gradient(180deg,rgba(${col},.18),rgba(${col},.08));border-top:2px solid rgba(${col},.4);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--${color});margin-top:8px">${rankLabel}</div>
+      </div>`;
+    }).join('')}
+  </div>`;
+
   const myBanner = myRank > 3 ? `
     <div class="my-rank-banner">
       <div><div class="my-rank-label">My Rank</div><div class="my-rank-num">#${myRank}</div></div>
-      <div style="font-size:13px;font-weight:700">${getScore(me)}<span style="font-size:11px;color:var(--dim)"> ${scoreLabel}</span></div>
-    </div>
-  ` : '';
-  
-  const listHtml = rest.map((p,i)=>{
-    const rank = i+4;
-    const guild = DB.guilds.find(g=>(g.memberIds||[]).includes(p.id));
-    const isMe = p.id===me?.id||p._fsId===me?.id;
-    const wr = p.wins&&p.tournaments?Math.round((p.wins/p.tournaments)*100):0;
+      <div style="font-size:13px;font-weight:700">${fmtScore(me)}</div>
+    </div>` : '';
+
+  const listHtml = rest.map((p, i) => {
+    const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+    const isMe  = _pid(p) === me?.id;
+    const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
     return `
-      <div class="lb-row ${isMe?'me':''}" onclick="viewPlayerModal('${p.id||p._fsId}')" style="animation-delay:${i*0.04}s">
-        <div class="lb-rank">#${rank}</div>
-        <div class="lb-avatar">${getAvatarEl(p)}</div>
-        <div class="lb-info">
-          <div class="lb-name">${p.name}${p.role==='admin'?'<span class="badge-role admin" style="font-size:8px;padding:1px 5px">A</span>':''}</div>
-          <div class="lb-guild">${guild?'['+guild.tag+'] ':''}${p.wins||0}W ${p.losses||0}L ${wr}%WR</div>
-        </div>
-        <div class="lb-stat-val">${getScore(p)}</div>
+    <div class="lb-row ${isMe?'me':''}" onclick="viewPlayerModal('${_pid(p)}')" style="animation-delay:${i*0.03}s">
+      <div class="lb-rank">#${i+4}</div>
+      <div class="lb-avatar">${_avatarInner(p)}</div>
+      <div class="lb-info">
+        <div class="lb-name">${p.name}${p.role==='admin'?'<span class="badge-role admin" style="font-size:7px;padding:1px 4px;margin-left:4px">A</span>':''}</div>
+        <div class="lb-guild">${guild?'['+guild.tag+'] ':''}${p.wins||0}W ${p.losses||0}L ${wr}%WR</div>
       </div>
-    `;
+      <div class="lb-stat-val">${fmtScore(p)}</div>
+    </div>`;
   }).join('');
-  
-  document.getElementById('lb-content').innerHTML = podiumHtml + myBanner + `<div class="lb-list">${listHtml}</div>`;
+
+  document.getElementById('lb-content').innerHTML = podiumHtml + myBanner + `<div class="lb-list">${listHtml || ''}</div>`;
 }
 
-// ============================================================
+// ================================================================
 // SEARCH
-// ============================================================
-function renderSearch(){
-  document.getElementById('search-results').innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div><p>Start typing to search players</p></div>';
+// ================================================================
+function renderSearch() {
+  const el = document.getElementById('search-results');
+  el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>Type to search players</p></div>';
 }
 
 function doSearch() {
-  const q = document.getElementById('search-input')?.value.trim().toLowerCase();
+  const q  = (_v('search-input')||'').trim().toLowerCase();
   const el = document.getElementById('search-results');
-  if(!q){el.innerHTML='<div class="empty-state"><div class="empty-icon">🔍</div><p>Start typing to search</p></div>';return;}
-  const results = DB.players.filter(p=>
-    p.name?.toLowerCase().includes(q)||p.uid?.toLowerCase().includes(q)||p.email?.toLowerCase().includes(q)
+  if (!q) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div><p>Type to search players</p></div>'; return; }
+  const results = DB.players.filter(p =>
+    p.name?.toLowerCase().includes(q) || p.uid?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q)
   );
-  if(!results.length){el.innerHTML='<div class="empty-state"><p>No players found</p></div>';return;}
-  el.innerHTML = results.map(p=>{
-    const guild=DB.guilds.find(g=>(g.memberIds||[]).includes(p.id));
-    const wr=p.wins&&p.tournaments?Math.round((p.wins/p.tournaments)*100):0;
+  if (!results.length) { el.innerHTML = '<div class="empty-state"><p>No players found</p></div>'; return; }
+  el.innerHTML = results.map(p => {
+    const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+    const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
     return `
-      <div class="lb-row" onclick="viewPlayerModal('${p.id||p._fsId}')" style="margin-bottom:6px;cursor:pointer">
-        <div class="lb-avatar">${getAvatarEl(p)}</div>
-        <div class="lb-info">
-          <div class="lb-name">${p.name}</div>
-          <div class="lb-guild">${guild?'['+guild.tag+'] ':''}${p.uid||''}</div>
-          <div style="font-size:11px;color:var(--dim);margin-top:2px">${p.wins||0}W ${p.losses||0}L ${wr}%WR</div>
-        </div>
+    <div class="lb-row" onclick="viewPlayerModal('${_pid(p)}')" style="margin-bottom:6px">
+      <div class="lb-avatar">${_avatarInner(p)}</div>
+      <div class="lb-info">
+        <div class="lb-name">${p.name}</div>
+        <div class="lb-guild">${guild?'['+guild.tag+'] ':''}${p.uid||''}</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:2px">${p.wins||0}W ${p.losses||0}L ${wr}%WR</div>
       </div>
-    `;
+    </div>`;
   }).join('');
 }
 
-// ============================================================
+// ================================================================
 // STORE
-// ============================================================
+// ================================================================
+const DEFAULT_GAMES = [
+  { id:'valorant',  name:'Valorant',            icon:'🎯', topup:{ currency:'VP',     packages:[{amount:475,price:50,label:'Starter'},{amount:1000,price:100,label:'Player'},{amount:2050,price:195,label:'Fighter'},{amount:3650,price:340,label:'Champion'},{amount:5350,price:480,label:'Legend'}] }},
+  { id:'sf6',       name:'Street Fighter 6',    icon:'🥊', topup:{ currency:'FC',     packages:[{amount:250,price:30,label:'Basic'},{amount:600,price:70,label:'Fighter'},{amount:1200,price:130,label:'Pro'},{amount:2500,price:260,label:'Master'}] }},
+  { id:'freefire',  name:'Free Fire',            icon:'🔥', topup:{ currency:'Diamonds',packages:[{amount:100,price:25,label:'Starter'},{amount:310,price:75,label:'Regular'},{amount:520,price:120,label:'Mid'},{amount:1060,price:240,label:'Big'},{amount:2180,price:480,label:'Mega'}] }},
+  { id:'pubg',      name:'PUBG Mobile',          icon:'🪖', topup:{ currency:'UC',    packages:[{amount:60,price:20,label:'Tiny'},{amount:325,price:100,label:'Small'},{amount:660,price:195,label:'Medium'},{amount:1800,price:520,label:'Large'}] }},
+  { id:'codm',      name:'Call of Duty Mobile',  icon:'💥', topup:{ currency:'CP',    packages:[{amount:80,price:20,label:'Starter'},{amount:400,price:95,label:'Player'},{amount:800,price:185,label:'Fighter'},{amount:2000,price:450,label:'Elite'}] }},
+  { id:'ml',        name:'Mobile Legends',       icon:'⚔️', topup:{ currency:'Diamonds',packages:[{amount:86,price:25,label:'Small'},{amount:172,price:50,label:'Medium'},{amount:257,price:75,label:'Regular'},{amount:706,price:200,label:'Large'},{amount:2195,price:600,label:'Mega'}] }},
+];
+
+function _getGames() { return DB.games.length ? DB.games : DEFAULT_GAMES; }
+
 function setStoreCat(cat, el) {
   _storeCat = cat;
-  document.querySelectorAll('#store-cat-tabs .filter-tab').forEach(t=>t.classList.remove('active'));
+  _storeGame = null;
+  document.querySelectorAll('#store-cat-tabs .filter-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
-  document.getElementById('store-game-tabs').style.display = cat==='topup'?'flex':'none';
+  document.getElementById('store-game-tabs').style.display = cat === 'topup' ? 'flex' : 'none';
   renderStore();
 }
 
-function setStoreGame(game) {
-  _storeGame = game;
+function renderStore() {
+  const search   = (_v('store-search-input')||'').trim().toLowerCase();
+  const games    = _getGames();
+  const gameTabs = document.getElementById('store-game-tabs');
+  const content  = document.getElementById('store-content');
+
+  if (_storeCat === 'topup') {
+    if (!_storeGame) _storeGame = games[0]?.id;
+
+    // Render game tabs (avoid inline onclick referencing stale `_storeGame`)
+    gameTabs.innerHTML = games.map(g => `
+      <div class="game-tab ${g.id === _storeGame ? 'active' : ''}"
+           onclick="selectStoreGame('${g.id}')">${g.icon||'🎮'} ${g.name}</div>
+    `).join('');
+
+    const game   = games.find(g => g.id === _storeGame) || games[0];
+    const pkgs   = game?.topup?.packages || [];
+    const cur    = game?.topup?.currency || 'Points';
+    const note   = game?.topup?.note || '';
+    const instrs = game?.topup?.instructions || `Purchase ${cur} for your ${game?.name} account.`;
+
+    const filtered = pkgs.filter(p =>
+      !search || String(p.amount).includes(search) || (p.label||'').toLowerCase().includes(search)
+    );
+
+    content.innerHTML = `
+      <p style="font-size:12px;color:var(--dim);margin-bottom:12px;line-height:1.5">${instrs}</p>
+      ${note ? `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--gold);margin-bottom:12px">${note}</div>` : ''}
+      <div class="store-grid">
+        ${filtered.map(p => `
+          <div class="topup-card" onclick="openTopup('${game.id}','${p.amount}','${p.price}','${p.label||''}','${cur}')">
+            <div class="topup-amount">${Number(p.amount).toLocaleString()}</div>
+            <div class="topup-label">${cur}</div>
+            ${p.bonus ? `<div class="topup-bonus">${p.bonus} Bonus</div>` : ''}
+            <div class="topup-price">${p.price} <span>AC</span></div>
+          </div>`
+        ).join('') || '<div class="empty-state" style="grid-column:span 2;padding:20px"><p>No packages found</p></div>'}
+      </div>`;
+  } else {
+    let items = DB.storeItems.filter(i => (i.cat||'cosmetics') === _storeCat);
+    if (search) items = items.filter(i => i.name?.toLowerCase().includes(search) || i.desc?.toLowerCase().includes(search));
+    if (!items.length) { content.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><p>No items available</p></div>'; return; }
+    content.innerHTML = `<div class="store-grid">${items.map(i => {
+      const iid = i.id || i._fsId;
+      return `
+      <div class="store-card" onclick="openStoreBuy('${iid}')">
+        ${i.badgeType ? `<div class="store-badge ${i.badgeType==='HOT'?'hot':'best'}">${i.badgeType}</div>` : ''}
+        <span class="store-icon">${i.icon||'📦'}</span>
+        <div class="store-name">${i.name}</div>
+        <div class="store-desc">${i.desc||''}</div>
+        <div class="store-price">${i.price} <span>AC</span></div>
+      </div>`;
+    }).join('')}</div>`;
+  }
+}
+
+function selectStoreGame(gameId) {
+  _storeGame = gameId;
   renderStore();
 }
 
 function filterStore() { renderStore(); }
 
-function renderStore() {
-  const search = document.getElementById('store-search-input')?.value.trim().toLowerCase()||'';
-  const el = document.getElementById('store-content');
-  const gameTabs = document.getElementById('store-game-tabs');
-  
-  if(_storeCat==='topup') {
-    // Game tabs
-    const games = DB.games.length ? DB.games : [{id:'valorant',name:'Valorant',icon:'🎯'},{id:'sf6',name:'Street Fighter 6',icon:'🥊'},{id:'freefire',name:'Free Fire',icon:'🔥'},{id:'pubg',name:'PUBG Mobile',icon:'🪖'},{id:'codm',name:'Call of Duty Mobile',icon:'💥'},{id:'ml',name:'Mobile Legends',icon:'⚔️'}];
-    if(!_storeGame) _storeGame = games[0]?.id;
-    gameTabs.innerHTML = games.map(g=>`
-      <div class="game-tab ${g.id===_storeGame?'active':''}" onclick="setStoreGame('${g.id}');this.closest('.game-tabs').querySelectorAll('.game-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">${g.icon||'🎮'} ${g.name}</div>
-    `).join('');
-    
-    const game = games.find(g=>g.id===_storeGame)||games[0];
-    const pkgs = game?.topup?.packages||[
-      {amount:500,label:'Starter Pack',price:50,bonus:''},
-      {amount:1000,label:'Player Pack',price:95,bonus:'+5%'},
-      {amount:2000,label:'Fighter Pack',price:180,bonus:'+10%'},
-      {amount:5000,label:'Champion Pack',price:420,bonus:'+15%'},
-      {amount:10000,label:'Legend Pack',price:800,bonus:'+20%'},
-      {amount:20000,label:'God Pack',price:1500,bonus:'+25%'},
-    ];
-    const currency = game?.topup?.currency||'Points';
-    el.innerHTML = `
-      <p style="font-size:12px;color:var(--dim);margin-bottom:12px">${game?.topup?.instructions||`Top up your ${game?.name||'game'} account directly.`}</p>
-      <div class="store-grid">
-        ${pkgs.filter(p=>!search||(p.label?.toLowerCase().includes(search)||String(p.amount).includes(search))).map(p=>`
-          <div class="topup-card" onclick="openTopup('${_storeGame}','${p.amount}','${p.price}','${p.label||''}')">
-            <div class="topup-amount">${Number(p.amount).toLocaleString()}</div>
-            <div class="topup-label">${currency}</div>
-            ${p.bonus?`<div class="topup-bonus">${p.bonus} Bonus</div>`:''}
-            <div class="topup-price">${p.price} <span>AC</span></div>
-          </div>
-        `).join('')}
-      </div>
-    `;
-  } else {
-    let items = DB.storeItems.filter(i=>i.cat===_storeCat||(i.cat||'cosmetics')===_storeCat);
-    if(search) items = items.filter(i=>i.name?.toLowerCase().includes(search)||i.desc?.toLowerCase().includes(search));
-    if(!items.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">🛒</div><p>No items available</p></div>';return;}
-    el.innerHTML = `<div class="store-grid">${items.map(i=>`
-      <div class="store-card" onclick="openStoreBuy('${i.id||i._fsId}')">
-        ${i.badgeType?`<div class="store-badge ${i.badgeType==='HOT'?'hot':'best'}">${i.badgeType}</div>`:''}
-        <span class="store-icon">${i.icon||'📦'}</span>
-        <div class="store-name">${i.name}</div>
-        <div class="store-desc">${i.desc||''}</div>
-        <div class="store-price">${i.price} <span>AC</span></div>
-      </div>
-    `).join('')}</div>`;
-  }
-}
-
-function openTopup(gameId, amount, price, label) {
-  const me = DB.me;
-  const game = DB.games.find(g=>g.id===gameId)||{name:gameId,topup:{currency:'Points'}};
-  const gp = (me?.gameProfiles||[]).find(p=>p.game===gameId);
+function openTopup(gameId, amount, price, label, currency) {
+  const me   = DB.me;
+  const game = _getGames().find(g => g.id === gameId);
+  const gp   = (me?.gameProfiles||[]).find(p => p.game === gameId);
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">Top-up ${game.name||gameId}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div style="background:var(--panel);border-radius:var(--radius);padding:14px;margin-bottom:16px;text-align:center">
-      <div style="font-size:28px;font-weight:900;color:var(--g1)">${Number(amount).toLocaleString()}</div>
-      <div style="font-size:12px;color:var(--dim)">${game.topup?.currency||'Points'} — ${label}</div>
-      <div style="font-size:18px;font-weight:700;color:var(--gold);margin-top:8px">${price} AC</div>
+    <div class="modal-close-row"><div class="modal-title">${game?.icon||'🎮'} Top-up ${game?.name||gameId}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div style="background:var(--panel);border-radius:var(--radius);padding:16px;margin-bottom:16px;text-align:center">
+      <div style="font-size:32px;font-weight:900;color:var(--g1)">${Number(amount).toLocaleString()}</div>
+      <div style="font-size:12px;color:var(--dim)">${currency||'Points'} — ${label}</div>
+      <div style="font-size:22px;font-weight:800;color:var(--gold);margin-top:8px">${price} AC</div>
     </div>
-    <div class="form-group"><label class="form-label">Your Game Username / UID</label><input class="form-input" id="topup-uid" value="${gp?.username||''}" placeholder="Enter your in-game ID"></div>
-    <p style="font-size:12px;color:var(--dim);margin-bottom:16px">Your AC balance: <b style="color:var(--gold)">${me?.balance||0} AC</b></p>
-    <button class="btn-primary" onclick="confirmTopup('${gameId}','${amount}','${price}')">Confirm Purchase — ${price} AC</button>
+    <div class="form-group">
+      <label class="form-label">Your In-Game Username / UID</label>
+      <input class="form-input" id="topup-uid" value="${gp?.username||''}" placeholder="Enter your in-game username or UID">
+    </div>
+    <div style="background:var(--panel);border-radius:var(--radius);padding:10px 12px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--dim)">Your Balance</span>
+      <span style="font-weight:800;color:var(--gold)">${me?.balance||0} AC</span>
+    </div>
+    ${(me?.balance||0) < Number(price) ? '<div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--red);margin-bottom:12px;text-align:center">⚠️ Insufficient balance. Deposit AC first.</div>' : ''}
+    <button class="btn-primary" id="btn-topup" onclick="confirmTopup('${gameId}','${amount}','${price}')" ${(me?.balance||0) < Number(price) ? 'style="opacity:.5;pointer-events:none"' : ''}>Confirm — ${price} AC</button>
   `);
 }
 
 async function confirmTopup(gameId, amount, price) {
   const me = DB.me;
-  const uid = document.getElementById('topup-uid')?.value.trim();
-  if(!uid){toast('Enter your game username/UID','error');return;}
-  if((me?.balance||0) < Number(price)){toast('Insufficient AC balance','error');return;}
+  const uid = _v('topup-uid').trim();
+  if (!uid) { toast('Enter your game username/UID','error'); return; }
+  if ((me?.balance||0) < Number(price)) { toast('Insufficient balance','error'); return; }
+  _btn('btn-topup', true);
   me.balance = (me.balance||0) - Number(price);
-  // Save game profile
-  me.gameProfiles = me.gameProfiles||[];
-  const idx = me.gameProfiles.findIndex(p=>p.game===gameId);
-  if(idx>=0) me.gameProfiles[idx].username=uid;
-  else me.gameProfiles.push({game:gameId,username:uid});
-  // Create transaction
-  const tx = {id:'tx_'+Date.now(),uid:me.id,uname:me.name,type:'topup',amount:Number(price),game:gameId,gameUid:uid,status:'pending',date:new Date().toISOString()};
+  me.gameProfiles = me.gameProfiles || [];
+  const idx = me.gameProfiles.findIndex(p => p.game === gameId);
+  if (idx >= 0) me.gameProfiles[idx].username = uid;
+  else me.gameProfiles.push({ game:gameId, username:uid });
+  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'topup', amount:Number(price), game:gameId, gameUid:uid, status:'pending', date:new Date().toISOString() };
   DB.transactions.push(tx);
-  await Promise.all([fsSet('players',me.id,me),fsSet('transactions',tx.id,tx)]);
-  toast('Top-up request submitted! ✅','success');
-  closeModal();
-  renderDash();
+  await Promise.all([fsSet('players', me.id, me), fsSet('transactions', tx.id, tx)]);
+  toast('Top-up submitted! Pending admin approval.','success');
+  _cacheDB(); closeModal(); renderDash();
 }
 
-function openStoreBuy(itemId) {
-  const item = DB.storeItems.find(i=>i.id===itemId||i._fsId===itemId);
-  if(!item) return;
-  const me = DB.me;
+function openStoreBuy(iid) {
+  const item = DB.storeItems.find(i => (i.id||i._fsId) === iid); if (!item) return;
+  const me   = DB.me;
   openModal(`
     <div class="modal-close-row"><div class="modal-title">${item.icon||'📦'} ${item.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <p style="font-size:13px;color:var(--dim);margin-bottom:16px">${item.desc||''}</p>
-    ${item.instructions?`<div style="background:var(--panel);border-radius:var(--radius);padding:12px;margin-bottom:16px;font-size:12px;color:var(--dim)">${item.instructions}</div>`:''}
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-      <div>Your balance: <b style="color:var(--gold)">${me?.balance||0} AC</b></div>
-      <div style="font-size:20px;font-weight:800;color:var(--gold)">${item.price} AC</div>
+    <p style="font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.5">${item.desc||''}</p>
+    ${item.instructions ? `<div style="background:var(--panel);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--dim);margin-bottom:14px">${item.instructions}</div>` : ''}
+    <div style="display:flex;justify-content:space-between;margin-bottom:16px;align-items:center">
+      <span style="font-size:12px;color:var(--dim)">Your Balance: <b style="color:var(--gold)">${me?.balance||0} AC</b></span>
+      <span style="font-size:20px;font-weight:800;color:var(--gold)">${item.price} AC</span>
     </div>
-    <button class="btn-primary" onclick="buyStoreItem('${itemId}')">Purchase — ${item.price} AC</button>
+    <button class="btn-primary" id="btn-buy" onclick="buyStoreItem('${iid}')">Purchase — ${item.price} AC</button>
   `);
 }
 
-async function buyStoreItem(itemId) {
-  const item = DB.storeItems.find(i=>i.id===itemId||i._fsId===itemId);
-  const me = DB.me;
-  if(!item||!me) return;
-  if(me.balance < item.price){toast('Insufficient balance','error');return;}
+async function buyStoreItem(iid) {
+  const item = DB.storeItems.find(i => (i.id||i._fsId) === iid);
+  const me   = DB.me; if (!item || !me) return;
+  if ((me.balance||0) < item.price) { toast('Insufficient balance','error'); return; }
+  _btn('btn-buy', true);
   me.balance -= item.price;
-  const tx={id:'tx_'+Date.now(),uid:me.id,uname:me.name,type:'purchase',amount:item.price,item:item.name,status:'approved',date:new Date().toISOString()};
+  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'purchase', amount:item.price, item:item.name, status:'approved', date:new Date().toISOString() };
   DB.transactions.push(tx);
-  await Promise.all([fsSet('players',me.id,me),fsSet('transactions',tx.id,tx)]);
-  toast('Purchased! ✅','success');
-  closeModal();
+  await Promise.all([fsSet('players', me.id, me), fsSet('transactions', tx.id, tx)]);
+  toast('Purchased successfully! ✅','success');
+  _cacheDB(); closeModal(); renderDash();
 }
 
-// ============================================================
+// ================================================================
 // WALLET
-// ============================================================
+// ================================================================
 function renderWallet() {
-  document.getElementById('wallet-balance').textContent = (DB.me?.balance||0).toLocaleString();
+  const me = DB.me;
+  const balEl = document.getElementById('wallet-balance');
+  if (balEl) balEl.textContent = (me?.balance||0).toLocaleString();
   renderWalletContent();
 }
 
 function setWalletTab(tab, el) {
   _walletTab = tab;
-  document.querySelectorAll('.wallet-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.wallet-tab').forEach(t => t.classList.remove('active'));
   el.classList.add('active');
   renderWalletContent();
 }
 
 function renderWalletContent() {
   const el = document.getElementById('wallet-content');
-  if(_walletTab==='deposit') {
+  if (_walletTab === 'deposit') {
     el.innerHTML = `
-      <div class="form-group"><label class="form-label">Amount (AC)</label><input class="form-input" type="number" id="dep-amount" placeholder="Enter amount" min="10"></div>
+      <div class="form-group"><label class="form-label">Amount (AC) *</label><input class="form-input" type="number" id="dep-amount" placeholder="Min 10 AC" min="10"></div>
       <div class="form-group">
         <label class="form-label">Payment Screenshot</label>
         <div class="upload-zone" onclick="document.getElementById('dep-proof').click()">
           <input type="file" id="dep-proof" accept="image/*" onchange="handleDepProof(this)">
-          <div id="dep-proof-preview">📸<br><span style="font-size:12px;color:var(--dim)">Click to upload payment proof</span></div>
+          <div id="dep-proof-preview" style="pointer-events:none">📸<br><span style="font-size:12px;color:var(--dim)">Click to upload payment proof</span></div>
         </div>
       </div>
-      <button class="btn-primary" onclick="submitDeposit()">Submit Deposit Request</button>
-    `;
-  } else if(_walletTab==='withdraw') {
+      <button class="btn-primary" id="btn-dep" onclick="submitDeposit()">Submit Deposit Request</button>`;
+  } else if (_walletTab === 'withdraw') {
     el.innerHTML = `
-      <div class="form-group"><label class="form-label">Amount (AC)</label><input class="form-input" type="number" id="wd-amount" placeholder="Enter amount" min="10"></div>
-      <div class="form-group">
-        <label class="form-label">Withdrawal Method</label>
+      <div class="form-group"><label class="form-label">Amount (AC) *</label><input class="form-input" type="number" id="wd-amount" placeholder="Min 10 AC" min="10"></div>
+      <div class="form-group"><label class="form-label">Method</label>
         <select class="form-input" id="wd-method">
-          <option value="bkash">bKash</option>
-          <option value="nagad">Nagad</option>
-          <option value="rocket">Rocket</option>
-          <option value="bank">Bank Transfer</option>
+          <option value="bkash">bKash</option><option value="nagad">Nagad</option>
+          <option value="rocket">Rocket</option><option value="bank">Bank Transfer</option>
         </select>
       </div>
-      <div class="form-group"><label class="form-label">Account Number / Reference</label><input class="form-input" id="wd-ref" placeholder="Your account number"></div>
-      <button class="btn-primary" onclick="submitWithdraw()">Submit Withdrawal Request</button>
-    `;
+      <div class="form-group"><label class="form-label">Account Number / Reference *</label><input class="form-input" id="wd-ref" placeholder="Your account number"></div>
+      <button class="btn-primary" id="btn-wd" onclick="submitWithdraw()">Submit Withdrawal Request</button>`;
   } else {
-    const myTx = DB.transactions.filter(t=>t.uid===DB.me?.id).sort((a,b)=>new Date(b.date)-new Date(a.date));
-    if(!myTx.length){el.innerHTML='<div class="empty-state"><div class="empty-icon">📋</div><p>No transactions yet</p></div>';return;}
-    el.innerHTML = `
-      <div style="overflow-x:auto">
-        <table class="tx-table" style="min-width:100%">
-          <thead><tr><th>Type</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
-          <tbody>${myTx.map(t=>`
-            <tr>
-              <td style="font-weight:600">${t.type||'—'}</td>
-              <td class="text-gold">${t.amount||0} AC</td>
-              <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
-              <td style="color:var(--dim);font-size:11px">${t.date?t.date.split('T')[0]:'—'}</td>
-            </tr>
-          `).join('')}</tbody>
-        </table>
-      </div>
-    `;
+    const myTx = DB.transactions.filter(t => t.uid === DB.me?.id).sort((a,b) => new Date(b.date) - new Date(a.date));
+    if (!myTx.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>No transactions yet</p></div>'; return; }
+    el.innerHTML = `<div style="overflow-x:auto">
+      <table class="tx-table" style="min-width:100%">
+        <thead><tr><th>Type</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody>${myTx.map(t => `
+          <tr>
+            <td style="font-weight:600;text-transform:capitalize">${t.type||'—'}</td>
+            <td class="text-gold">${t.amount||0} AC</td>
+            <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
+            <td style="color:var(--dim);font-size:11px">${t.date ? t.date.split('T')[0] : '—'}</td>
+          </tr>`
+        ).join('')}</tbody>
+      </table>
+    </div>`;
   }
 }
 
 function handleDepProof(input) {
-  const file = input.files[0];
-  if(!file) return;
+  const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
     const prev = document.getElementById('dep-proof-preview');
-    if(prev) prev.innerHTML = `<img src="${e.target.result}" style="max-height:150px;border-radius:8px;object-fit:cover">`;
+    if (prev) prev.innerHTML = `<img src="${e.target.result}" style="max-height:120px;border-radius:8px">`;
   };
   reader.readAsDataURL(file);
 }
 
 async function submitDeposit() {
-  const amount = document.getElementById('dep-amount')?.value;
-  const proofInput = document.getElementById('dep-proof');
-  if(!amount||Number(amount)<10){toast('Enter valid amount (min 10)','error');return;}
+  const amount = Number(_v('dep-amount'));
+  if (!amount || amount < 10) { toast('Minimum deposit is 10 AC','error'); return; }
+  _btn('btn-dep', true);
   const me = DB.me;
   let proof = '';
-  if(proofInput?.files[0]) {
-    proof = await new Promise(res=>{const r=new FileReader();r.onload=e=>res(e.target.result);r.readAsDataURL(proofInput.files[0]);});
+  const fi = document.getElementById('dep-proof');
+  if (fi?.files[0]) {
+    proof = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(fi.files[0]); });
   }
-  const tx = {id:'tx_'+Date.now(),uid:me.id,uname:me.name,type:'deposit',amount:Number(amount),status:'pending',proof,date:new Date().toISOString()};
+  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'deposit', amount, status:'pending', proof, date:new Date().toISOString() };
   DB.transactions.push(tx);
-  await fsSet('transactions',tx.id,tx);
-  toast('Deposit request submitted! ✅','success');
-  renderWalletContent();
+  const ok = await fsSet('transactions', tx.id, tx);
+  if (ok) { toast('Deposit request submitted! ✅','success'); _cacheDB(); renderWalletContent(); }
+  else    { toast('Error submitting deposit','error'); _btn('btn-dep', false); }
 }
 
 async function submitWithdraw() {
-  const amount = document.getElementById('wd-amount')?.value;
-  const method = document.getElementById('wd-method')?.value;
-  const ref = document.getElementById('wd-ref')?.value;
-  if(!amount||Number(amount)<10){toast('Enter valid amount','error');return;}
+  const amount = Number(_v('wd-amount'));
+  const method = _v('wd-method');
+  const ref    = _v('wd-ref').trim();
+  if (!amount || amount < 10) { toast('Minimum withdrawal is 10 AC','error'); return; }
+  if (!ref)                   { toast('Enter account number','error'); return; }
   const me = DB.me;
-  if(me.balance < Number(amount)){toast('Insufficient balance','error');return;}
-  const tx={id:'tx_'+Date.now(),uid:me.id,uname:me.name,type:'withdraw',amount:Number(amount),method,ref,status:'pending',date:new Date().toISOString()};
+  if ((me?.balance||0) < amount) { toast('Insufficient balance','error'); return; }
+  _btn('btn-wd', true);
+  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'withdraw', amount, method, ref, status:'pending', date:new Date().toISOString() };
   DB.transactions.push(tx);
-  await fsSet('transactions',tx.id,tx);
-  toast('Withdrawal request submitted!','success');
-  renderWalletContent();
+  const ok = await fsSet('transactions', tx.id, tx);
+  if (ok) { toast('Withdrawal request submitted!','success'); _cacheDB(); renderWalletContent(); }
+  else    { toast('Error submitting withdrawal','error'); _btn('btn-wd', false); }
 }
 
-// ============================================================
+// ================================================================
 // PROFILE
-// ============================================================
+// ================================================================
 function renderProfile() {
-  const me = DB.me;
-  if(!me) return;
-  const wr = me.wins&&me.tournaments?Math.round((me.wins/me.tournaments)*100):0;
-  const myGuild = DB.guilds.find(g=>(g.memberIds||[]).includes(me.id));
-  const myTeams = DB.teams.filter(t=>(t.memberIds||[]).includes(me.id));
-  const canChangeName = !me.lastNameChange || (Date.now()-new Date(me.lastNameChange).getTime())>30*24*60*60*1000;
-  const badgeDefs = {
-    owner:{emoji:'👑',name:'Owner'},tournament:{emoji:'🏆',name:'Tournament Winner'},
-    winner:{emoji:'🥇',name:'Champion'},veteran:{emoji:'⚔️',name:'Veteran'},
-    legend:{emoji:'🌟',name:'Legend'},newbie:{emoji:'🌱',name:'Newcomer'}
+  const me = DB.me; if (!me) return;
+  const wr       = (me.wins && me.tournaments) ? Math.round((me.wins/me.tournaments)*100) : 0;
+  const myGuild  = DB.guilds.find(g => (g.memberIds||[]).includes(me.id));
+  const myTeams  = DB.teams.filter(t => (t.memberIds||[]).includes(me.id));
+  const canName  = !me.lastNameChange || (Date.now() - new Date(me.lastNameChange).getTime()) > 30*24*60*60*1000;
+  const badgeDefs= {
+    owner:{emoji:'👑',name:'Owner'}, tournament:{emoji:'🏆',name:'Tournament Winner'},
+    winner:{emoji:'🥇',name:'Champion'}, veteran:{emoji:'⚔️',name:'Veteran'},
+    legend:{emoji:'🌟',name:'Legend'}, newbie:{emoji:'🌱',name:'Newcomer'}
   };
-  const gameNames = {valorant:'Valorant',sf6:'Street Fighter 6',freefire:'Free Fire',pubg:'PUBG Mobile',codm:'COD Mobile',ml:'Mobile Legends'};
-  
+  const gameNames= { valorant:'Valorant', sf6:'Street Fighter 6', freefire:'Free Fire', pubg:'PUBG Mobile', codm:'COD Mobile', ml:'Mobile Legends' };
+
   document.getElementById('profile-content').innerHTML = `
     <div class="profile-header">
       <div class="profile-avatar-wrap">
-        <div class="profile-avatar" onclick="openAvatarPicker('${me.id}')">${getAvatarEl(me)}</div>
+        <div class="profile-avatar" onclick="openAvatarPicker('${me.id}')">${_avatarInner(me)}</div>
         <div class="profile-avatar-edit" onclick="openAvatarPicker('${me.id}')">✏️</div>
       </div>
       <div class="profile-name">
         ${me.name||'Player'}
-        ${canChangeName?`<span class="profile-edit-btn" onclick="editName()">✏️</span>`:''}
-        ${me.role==='admin'?'<span class="badge-role admin">ADMIN</span>':''}
+        ${canName ? `<span class="profile-edit-btn" onclick="editName()" title="Change name">✏️</span>` : ''}
+        ${me.role==='admin' ? '<span class="badge-role admin">ADMIN</span>' : ''}
       </div>
-      ${!canChangeName?'<div style="font-size:10px;color:var(--dim);margin-top:4px">⏳ Name change on cooldown</div>':'<div style="font-size:10px;color:var(--g1);margin-top:4px">✅ Name change available</div>'}
+      <div style="font-size:10px;margin-top:4px;${canName?'color:var(--g1)':'color:var(--dim)'}">
+        ${canName ? '✅ Name change available' : '⏳ Name change on cooldown (30 days)'}
+      </div>
       <div class="profile-email">${me.email||''}</div>
-      <div class="profile-uid" onclick="copyUID()">🆔 ${me.uid||'—'} 📋</div>
-      <div class="profile-join">Joined ${me.joinedDate?me.joinedDate.split('T')[0]:'—'}</div>
+      <div class="profile-uid" style="cursor:pointer" onclick="copyUID()" title="Click to copy">🆔 ${me.uid||'—'} 📋</div>
+      <div class="profile-join">Joined ${me.joinedDate ? me.joinedDate.split('T')[0] : '—'}</div>
       <div class="profile-stats">
         <div class="profile-stat"><div class="profile-stat-val">${me.wins||0}</div><div class="profile-stat-lbl">Wins</div></div>
         <div class="profile-stat"><div class="profile-stat-val text-red">${me.losses||0}</div><div class="profile-stat-lbl">Losses</div></div>
@@ -2402,63 +2498,60 @@ function renderProfile() {
         <div class="profile-stat"><div class="profile-stat-val">${me.balance||0}</div><div class="profile-stat-lbl">AC</div></div>
       </div>
     </div>
-    
-    ${me.banned?`<div class="banned-banner">⚠️ Your account is banned. Contact admin.</div>`:''}
-    
-    <div class="card mb-12 mt-12">
+
+    ${me.banned ? '<div class="banned-banner">⚠️ Your account is suspended. Contact admin.</div>' : ''}
+
+    <div class="card" style="margin-bottom:12px">
       <div class="section-header"><div class="section-title">🏅 Badges</div></div>
       <div class="badges-grid">
-        ${(me.badges||[]).length?me.badges.map(b=>{const bd=badgeDefs[b]||{emoji:'🏅',name:b};return `<div class="badge-item"><span class="badge-emoji">${bd.emoji}</span>${bd.name}</div>`;}).join(''):'<div style="font-size:12px;color:var(--dim)">No badges yet</div>'}
+        ${(me.badges||[]).length
+          ? me.badges.map(b => { const bd=badgeDefs[b]||{emoji:'🏅',name:b}; return `<div class="badge-item"><span class="badge-emoji">${bd.emoji}</span>${bd.name}</div>`; }).join('')
+          : '<div style="font-size:12px;color:var(--dim);padding:4px">No badges yet — keep competing!</div>'}
       </div>
     </div>
-    
-    <div class="card mb-12">
-      <div class="section-header"><div class="section-title">👥 My Teams</div><div class="section-action" onclick="showPage('teams')">View All</div></div>
-      ${myTeams.length?myTeams.map(t=>`
-        <div class="team-card" style="margin-bottom:6px">
-          <div class="team-logo">${t.logo||'👥'}</div>
-          <div class="team-info"><div class="team-name">${t.name}</div><div class="team-tag">[${t.tag}]</div></div>
-        </div>
-      `).join(''):'<div style="font-size:12px;color:var(--dim)">No teams yet</div>'}
-    </div>
-    
-    <div class="card mb-12">
+
+    <div class="card" style="margin-bottom:12px">
       <div class="section-header"><div class="section-title">🎮 Game Profiles</div><div class="section-action" onclick="openAddGameProfile()">+ Add</div></div>
       <div class="game-profile-list">
-        ${(me.gameProfiles||[]).length?(me.gameProfiles).map(gp=>`
-          <div class="game-profile-item">
-            <div class="gp-game"><span>${GAME_EMOJIS[gp.game]||'🎮'}</span>${gameNames[gp.game]||gp.game}</div>
-            <div class="gp-username">${gp.username}</div>
-          </div>
-        `).join(''):'<div style="font-size:12px;color:var(--dim)">No game profiles linked</div>'}
+        ${(me.gameProfiles||[]).length
+          ? me.gameProfiles.map(gp => `
+            <div class="game-profile-item">
+              <div class="gp-game">${_gameEmoji(gp.game)} ${gameNames[gp.game]||gp.game}</div>
+              <div class="gp-username">${gp.username}</div>
+            </div>`).join('')
+          : '<div style="font-size:12px;color:var(--dim)">No game profiles linked yet</div>'}
       </div>
     </div>
-    
-    ${myGuild?`
-    <div class="card mb-12">
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="section-header"><div class="section-title">👥 My Teams</div><div class="section-action" onclick="showPage(\'teams\')">View All</div></div>
+      ${myTeams.length
+        ? myTeams.map(t => `<div class="team-card" style="margin-bottom:6px;cursor:default"><div class="team-logo">${t.logo||'👥'}</div><div class="team-info"><div class="team-name">${t.name}</div><div class="team-tag">[${t.tag}]</div></div></div>`).join('')
+        : '<div style="font-size:12px;color:var(--dim)">No teams joined</div>'}
+    </div>
+
+    ${myGuild ? `
+    <div class="card" style="margin-bottom:12px">
       <div class="section-header"><div class="section-title">🛡️ My Guild</div></div>
-      <div class="team-card" style="margin:0">
+      <div class="team-card" style="cursor:default">
         <div class="team-logo">🛡️</div>
-        <div class="team-info">
-          <div class="team-name">${myGuild.name}</div>
-          <div class="team-tag">[${myGuild.tag}]</div>
-          <div class="team-members">${(myGuild.memberIds||[]).length} members</div>
-        </div>
+        <div class="team-info"><div class="team-name">${myGuild.name}</div><div class="team-tag">[${myGuild.tag}]</div><div class="team-members">${(myGuild.memberIds||[]).length} members</div></div>
       </div>
-    </div>`:''}
+    </div>` : ''}
   `;
 }
 
 async function editName() {
   const me = DB.me;
-  const newName = prompt('Enter new name (30-day cooldown after change):',me.name);
-  if(!newName||newName.trim()===me.name) return;
-  me.name = newName.trim();
+  const newName = prompt('Enter new display name:', me.name);
+  if (!newName || newName.trim() === me.name) return;
+  const trimmed = newName.trim();
+  if (trimmed.length < 2) { toast('Name too short (min 2 chars)','error'); return; }
+  me.name = trimmed;
   me.lastNameChange = new Date().toISOString();
-  await fsSet('players',me.id,me);
-  refreshAvatarBadges();
-  toast('Name updated!','success');
-  renderProfile();
+  const ok = await fsSet('players', me.id, me);
+  if (ok) { toast('Name updated! ✅','success'); _cacheDB(); _refreshUI(); renderProfile(); }
+  else toast('Error updating name','error');
 }
 
 function openAddGameProfile() {
@@ -2466,659 +2559,172 @@ function openAddGameProfile() {
     <div class="modal-close-row"><div class="modal-title">🎮 Add Game Profile</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div class="form-group"><label class="form-label">Game</label>
       <select class="form-input" id="gp-game">
-        <option value="valorant">🎯 Valorant (Riot ID)</option>
+        <option value="valorant">🎯 Valorant (Riot ID: Name#TAG)</option>
         <option value="sf6">🥊 Street Fighter 6 (CFN)</option>
         <option value="freefire">🔥 Free Fire (UID)</option>
         <option value="pubg">🪖 PUBG Mobile (UID)</option>
-        <option value="codm">💥 COD Mobile (UID)</option>
+        <option value="codm">💥 Call of Duty Mobile (UID)</option>
         <option value="ml">⚔️ Mobile Legends (UID)</option>
       </select>
     </div>
-    <div class="form-group"><label class="form-label">Username / UID</label><input class="form-input" id="gp-username" placeholder="e.g. Name#TAG or 123456789"></div>
-    <button class="btn-primary" onclick="saveGameProfile()">Save</button>
+    <div class="form-group"><label class="form-label">Username / UID</label><input class="form-input" id="gp-username" placeholder="e.g. Player#1234 or 123456789"></div>
+    <button class="btn-primary" id="btn-gp" onclick="saveGameProfile()">Save Profile</button>
   `);
 }
 
 async function saveGameProfile() {
-  const game = document.getElementById('gp-game')?.value;
-  const username = document.getElementById('gp-username')?.value.trim();
-  if(!username){toast('Enter username/UID','error');return;}
+  const game     = _v('gp-game');
+  const username = _v('gp-username').trim();
+  if (!username) { toast('Enter username or UID','error'); return; }
+  _btn('btn-gp', true);
   const me = DB.me;
-  me.gameProfiles = me.gameProfiles||[];
-  const idx = me.gameProfiles.findIndex(p=>p.game===game);
-  if(idx>=0) me.gameProfiles[idx].username=username;
-  else me.gameProfiles.push({game,username});
-  await fsSet('players',me.id,me);
-  toast('Game profile saved!','success');
-  closeModal();
-  renderProfile();
+  me.gameProfiles = me.gameProfiles || [];
+  const idx = me.gameProfiles.findIndex(p => p.game === game);
+  if (idx >= 0) me.gameProfiles[idx].username = username;
+  else me.gameProfiles.push({ game, username });
+  const ok = await fsSet('players', me.id, me);
+  if (ok) { toast('Game profile saved!','success'); _cacheDB(); closeModal(); renderProfile(); }
+  else    { toast('Error saving profile','error'); _btn('btn-gp', false); }
 }
 
-// ============================================================
+// ================================================================
 // AVATAR PICKER
-// ============================================================
+// ================================================================
 function openAvatarPicker(pid) {
-  const isMe = pid===DB.me?.id;
-  let activeAvatarTab = 'emoji';
-  
-  const renderAvatarTabs = (tab) => {
-    activeAvatarTab = tab;
-    const content = document.getElementById('avatar-picker-content');
-    if(!content) return;
-    if(tab==='emoji') {
-      content.innerHTML = `<div class="emoji-grid">${EMOJIS.map((e,i)=>`<div class="emoji-opt" onclick="pickEmoji(${i},'${pid}')">${e}</div>`).join('')}</div>`;
-    } else if(tab==='svg') {
-      content.innerHTML = `<div class="svg-grid">${SVG_AVATARS.map((s,i)=>`<div class="svg-opt" onclick="pickSvg(${i},'${pid}')" title="${SVG_NAMES[i]}">${s}<div style="font-size:9px;margin-top:2px;color:var(--dim)">${SVG_NAMES[i]}</div></div>`).join('')}</div>`;
-    } else {
-      content.innerHTML = `
-        <div class="upload-zone" onclick="document.getElementById('av-upload').click()">
-          <input type="file" id="av-upload" accept="image/*" onchange="pickCustom(this,'${pid}')">
-          <div>📷<br><span style="font-size:13px;color:var(--dim)">Upload photo (max 3MB)</span></div>
-        </div>
-      `;
-    }
-    document.querySelectorAll('.avatar-tab').forEach(t=>t.classList.toggle('active',t.dataset.tab===tab));
-  };
-  
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🎨 Choose Avatar</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div class="avatar-tabs">
-      <div class="avatar-tab active" data-tab="emoji" onclick="document.querySelectorAll('.avatar-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');renderAvatarContent('emoji','${pid}')">Emoji</div>
-      <div class="avatar-tab" data-tab="svg" onclick="document.querySelectorAll('.avatar-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');renderAvatarContent('svg','${pid}')">Character</div>
-      <div class="avatar-tab" data-tab="custom" onclick="document.querySelectorAll('.avatar-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active');renderAvatarContent('custom','${pid}')">Photo</div>
+      <div class="avatar-tab active" id="avtab-emoji" onclick="switchAvTab('emoji','${pid}')">Emoji</div>
+      <div class="avatar-tab" id="avtab-svg"   onclick="switchAvTab('svg','${pid}')">Character</div>
+      <div class="avatar-tab" id="avtab-photo" onclick="switchAvTab('photo','${pid}')">Photo</div>
     </div>
-    <div id="avatar-picker-content">
-      <div class="emoji-grid">${EMOJIS.map((e,i)=>`<div class="emoji-opt" onclick="pickEmoji(${i},'${pid}')">${e}</div>`).join('')}</div>
+    <div id="av-content">
+      <div class="emoji-grid">
+        ${EMOJIS.map((e,i) => `<div class="emoji-opt" onclick="pickEmoji(${i},'${pid}')">${e}</div>`).join('')}
+      </div>
     </div>
   `);
 }
 
-function renderAvatarContent(tab, pid) {
-  const content = document.getElementById('avatar-picker-content');
-  if(!content) return;
-  if(tab==='emoji') {
-    content.innerHTML = `<div class="emoji-grid">${EMOJIS.map((e,i)=>`<div class="emoji-opt" onclick="pickEmoji(${i},'${pid}')">${e}</div>`).join('')}</div>`;
-  } else if(tab==='svg') {
-    content.innerHTML = `<div class="svg-grid">${SVG_AVATARS.map((s,i)=>`<div class="svg-opt" onclick="pickSvg(${i},'${pid}')" title="${SVG_NAMES[i]}">${s}<div style="font-size:9px;margin-top:4px;color:var(--dim)">${SVG_NAMES[i]}</div></div>`).join('')}</div>`;
+function switchAvTab(tab, pid) {
+  document.querySelectorAll('.avatar-tab').forEach(t => t.classList.remove('active'));
+  const el = document.getElementById(`avtab-${tab}`); if (el) el.classList.add('active');
+  const content = document.getElementById('av-content'); if (!content) return;
+
+  if (tab === 'emoji') {
+    content.innerHTML = `<div class="emoji-grid">
+      ${EMOJIS.map((e,i) => `<div class="emoji-opt" onclick="pickEmoji(${i},'${pid}')">${e}</div>`).join('')}
+    </div>`;
+  } else if (tab === 'svg') {
+    content.innerHTML = `<div class="svg-grid">
+      ${SVG_AV.map((s,i) => `<div class="svg-opt" onclick="pickSvg(${i},'${pid}')">${s}<div style="font-size:9px;margin-top:4px;color:var(--dim)">${SVG_NM[i]}</div></div>`).join('')}
+    </div>`;
   } else {
-    content.innerHTML = `<div class="upload-zone" onclick="document.getElementById('av-upload').click()"><input type="file" id="av-upload" accept="image/*" onchange="pickCustom(this,'${pid}')"><div>📷<br><span style="font-size:13px;color:var(--dim)">Upload photo (max 3MB)</span></div></div>`;
+    content.innerHTML = `<div class="upload-zone" onclick="document.getElementById('av-file-input').click()">
+      <input type="file" id="av-file-input" accept="image/*" style="display:none" onchange="pickCustom(this,'${pid}')">
+      <div>📷<br><span style="font-size:13px;color:var(--dim)">Tap to upload photo (max 3MB)</span></div>
+    </div>`;
   }
 }
 
 async function pickEmoji(i, pid) {
-  const p = pid===DB.me?.id ? DB.me : DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p._emojiIdx = i;
-  p._svgIdx = undefined;
+  const p = _findPlayer(pid); if (!p) return;
+  p._emojiIdx   = i;
+  p._svgIdx     = null;
   p.avatarCustom = '';
-  await fsSet('players', p.id||pid, p);
-  if(p.id===DB.me?.id) refreshAvatarBadges();
-  closeModal();
-  toast('Avatar updated!','success');
-  renderDash();
-  renderProfile();
+  await fsSet('players', pid, p);
+  _afterAvatarChange(pid);
 }
 
 async function pickSvg(i, pid) {
-  const p = pid===DB.me?.id ? DB.me : DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p._svgIdx = i;
+  const p = _findPlayer(pid); if (!p) return;
+  p._svgIdx     = i;
   p.avatarCustom = '';
-  await fsSet('players', p.id||pid, p);
-  if(p.id===DB.me?.id) refreshAvatarBadges();
-  closeModal();
-  toast('Avatar updated!','success');
-  renderDash();
-  renderProfile();
+  await fsSet('players', pid, p);
+  _afterAvatarChange(pid);
 }
 
 async function pickCustom(input, pid) {
-  const file = input.files[0];
-  if(!file) return;
-  if(file.size > 3*1024*1024){toast('Image too large (max 3MB)','error');return;}
-  const reader = new FileReader();
-  reader.onload = async e => {
-    const data = e.target.result;
-    const p = pid===DB.me?.id ? DB.me : DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-    if(!p) return;
-    p.avatarCustom = data;
-    p._svgIdx = undefined;
-    await Promise.all([fsSet('players',p.id||pid,p), fsSet('avatars',p.id||pid,{data})]);
-    if(p.id===DB.me?.id) refreshAvatarBadges();
-    closeModal();
-    toast('Avatar updated!','success');
-    renderDash();
-    renderProfile();
-  };
-  reader.readAsDataURL(file);
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 3 * 1024 * 1024) { toast('Image too large (max 3MB)','error'); return; }
+  const data = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(file); });
+  const p = _findPlayer(pid); if (!p) return;
+  p.avatarCustom = data;
+  p._svgIdx      = null;
+  await Promise.all([fsSet('players', pid, p), fsSet('avatars', pid, { uid:pid, data })]);
+  _afterAvatarChange(pid);
 }
 
-// ============================================================
-// ADMIN PANEL
-// ============================================================
-function renderAdmin() {
-  if(DB.me?.role!=='admin'){document.getElementById('admin-content').innerHTML='<div class="empty-state"><p>Access denied</p></div>';return;}
-  renderAdminContent();
+function _findPlayer(pid) {
+  if (pid === DB.me?.id) return DB.me;
+  return DB.players.find(p => _pid(p) === pid) || null;
 }
 
-function setAdminTab(tab, el) {
-  _adminTab = tab;
-  document.querySelectorAll('.admin-tab').forEach(t=>t.classList.remove('active'));
-  el.classList.add('active');
-  renderAdminContent();
-}
-
-function renderAdminContent() {
-  const el = document.getElementById('admin-content');
-  if(_adminTab==='players') renderAdminPlayers();
-  else if(_adminTab==='tournaments') renderAdminTournaments();
-  else if(_adminTab==='store') renderAdminStore();
-  else if(_adminTab==='transactions') renderAdminTransactions();
-  else if(_adminTab==='notifications') renderAdminNotifications();
-}
-
-function renderAdminPlayers() {
-  const el = document.getElementById('admin-content');
-  const search = document.getElementById('admin-player-search')?.value?.toLowerCase()||'';
-  let players = DB.players;
-  if(search) players = players.filter(p=>p.name?.toLowerCase().includes(search)||p.email?.toLowerCase().includes(search));
-  el.innerHTML = `
-    <div class="search-box" style="margin-bottom:12px">
-      <span class="search-icon">🔍</span>
-      <input type="text" id="admin-player-search" placeholder="Search players..." oninput="renderAdminPlayers()">
-    </div>
-    <div style="font-size:12px;color:var(--dim);margin-bottom:12px">${players.length} players</div>
-    ${players.map(p=>`
-      <div class="admin-player-card">
-        <div class="admin-player-top">
-          <div class="admin-player-avatar">${getAvatarEl(p)}</div>
-          <div>
-            <div class="admin-player-name">${p.name||'—'} ${p.role==='admin'?'<span class="badge-role admin" style="font-size:8px">ADMIN</span>':''} ${p.banned?'<span style="font-size:10px;color:var(--red)">BANNED</span>':''}</div>
-            <div class="admin-player-email">${p.email||''} | ${p.uid||''}</div>
-          </div>
-        </div>
-        <div class="admin-actions">
-          <button class="admin-btn success" onclick="adminGiveCoins('${p.id||p._fsId}')">💰 Coins</button>
-          <button class="admin-btn" onclick="adminAdjustStats('${p.id||p._fsId}')">📊 Stats</button>
-          <button class="admin-btn" onclick="adminManageBadges('${p.id||p._fsId}')">🏅 Badges</button>
-          <button class="admin-btn" onclick="adminEditUID('${p.id||p._fsId}')">🔑 UID</button>
-          <button class="admin-btn" onclick="adminUnlockName('${p.id||p._fsId}')">🔓 Name</button>
-          <button class="admin-btn" onclick="viewPlayerModal('${p.id||p._fsId}')">👁️ View</button>
-          ${p.banned?`<button class="admin-btn success" onclick="adminBan('${p.id||p._fsId}',false)">✅ Unban</button>`:`<button class="admin-btn danger" onclick="adminBan('${p.id||p._fsId}',true)">🚫 Ban</button>`}
-          ${p.role!=='admin'?`<button class="admin-btn gold" onclick="adminPromote('${p.id||p._fsId}',true)">👑 Promote</button>`:`<button class="admin-btn" onclick="adminPromote('${p.id||p._fsId}',false)">⬇ Demote</button>`}
-          ${p.email!==ADMIN_EMAIL?`<button class="admin-btn danger" onclick="adminDeletePlayer('${p.id||p._fsId}')">🗑️ Delete</button>`:''}
-        </div>
-      </div>
-    `).join('')}
-  `;
-}
-
-async function adminGiveCoins(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  const amount = prompt(`Give coins to ${p.name}. Enter amount (use - to deduct):`);
-  if(!amount) return;
-  p.balance = (p.balance||0) + Number(amount);
-  if(p.balance<0) p.balance=0;
-  await fsSet('players',pid,p);
-  if(pid===DB.me?.id){DB.me.balance=p.balance;renderDash();}
-  toast(`Gave ${amount} AC to ${p.name}`,'success');
-  renderAdminPlayers();
-}
-
-async function adminAdjustStats(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">📊 Adjust Stats — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Wins</label><input class="form-input" id="as-wins" type="number" value="${p.wins||0}"></div>
-    <div class="form-group"><label class="form-label">Losses</label><input class="form-input" id="as-losses" type="number" value="${p.losses||0}"></div>
-    <div class="form-group"><label class="form-label">Events</label><input class="form-input" id="as-events" type="number" value="${p.tournaments||0}"></div>
-    <button class="btn-primary" onclick="saveAdminStats('${pid}')">Save</button>
-  `);
-}
-
-async function saveAdminStats(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p.wins = Number(document.getElementById('as-wins')?.value)||0;
-  p.losses = Number(document.getElementById('as-losses')?.value)||0;
-  p.tournaments = Number(document.getElementById('as-events')?.value)||0;
-  await fsSet('players',pid,p);
-  toast('Stats updated','success');
+function _afterAvatarChange(pid) {
+  _cacheDB();
   closeModal();
-  renderAdminPlayers();
+  toast('Avatar updated! ✅','success');
+  _refreshUI();
+  // Re-render current active page
+  const activePg = document.querySelector('.page.active');
+  if (activePg) renderPage(activePg.id.replace('page-',''));
 }
 
-async function adminManageBadges(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  const badgeList = ['owner','tournament','winner','veteran','legend','newbie'];
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">🏅 Badges — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    ${badgeList.map(b=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span>${b}</span>
-        ${(p.badges||[]).includes(b)?`<button class="admin-btn danger" onclick="adminToggleBadge('${pid}','${b}',false)">Remove</button>`:`<button class="admin-btn success" onclick="adminToggleBadge('${pid}','${b}',true)">Add</button>`}
-      </div>
-    `).join('')}
-  `);
-}
-
-async function adminToggleBadge(pid, badge, add) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p.badges = p.badges||[];
-  if(add) { if(!p.badges.includes(badge)) p.badges.push(badge); }
-  else p.badges = p.badges.filter(b=>b!==badge);
-  await fsSet('players',pid,p);
-  toast(`Badge ${add?'added':'removed'}`,'success');
-  adminManageBadges(pid);
-}
-
-async function adminEditUID(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  const newUID = prompt('Enter new UID:',p.uid||'');
-  if(!newUID) return;
-  p.uid = newUID;
-  await fsSet('players',pid,p);
-  toast('UID updated','success');
-  renderAdminPlayers();
-}
-
-async function adminUnlockName(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p.lastNameChange = null;
-  await fsSet('players',pid,p);
-  toast('Name cooldown unlocked','success');
-}
-
-async function adminBan(pid, ban) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p.banned = ban;
-  await fsSet('players',pid,p);
-  toast(ban?'Player banned':'Player unbanned', ban?'error':'success');
-  renderAdminPlayers();
-}
-
-async function adminPromote(pid, promote) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  p.role = promote?'admin':'player';
-  await fsSet('players',pid,p);
-  toast(promote?'Player promoted to admin':'Player demoted','success');
-  renderAdminPlayers();
-}
-
-function adminDeletePlayer(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">🗑️ Delete Player</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <p style="font-size:14px;margin-bottom:16px">Are you sure you want to delete <b>${p.name}</b>? This cannot be undone.</p>
-    <div style="display:flex;gap:8px">
-      <button class="btn-primary" style="background:var(--red2)" onclick="confirmDeletePlayer('${pid}')">Yes, Delete</button>
-      <button class="btn-details" onclick="closeModal()">Cancel</button>
-    </div>
-  `);
-}
-
-async function confirmDeletePlayer(pid) {
-  DB.players = DB.players.filter(p=>p.id!==pid&&p._fsId!==pid);
-  await fsDelete('players',pid);
-  toast('Player deleted','success');
-  closeModal();
-  renderAdminPlayers();
-}
-
-function renderAdminTournaments() {
-  const el = document.getElementById('admin-content');
-  el.innerHTML = `
-    <button class="btn-create" onclick="openCreateTournament()" style="border-style:solid;color:var(--g1)">➕ Create Tournament</button>
-    ${DB.tournaments.map(t=>`
-      <div class="card" style="margin-bottom:8px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div style="font-weight:700">${t.name}</div>
-          <span class="tc-status-badge ${t.status||'upcoming'}" style="position:static">${(t.status||'upcoming').toUpperCase()}</span>
-        </div>
-        <div style="font-size:12px;color:var(--dim);margin-bottom:10px">${t.game} | ${(t.players||[]).length}/${t.maxPlayers||16} players | ${t.entryFee?t.entryFee+' AC':'Free'}</div>
-        <div class="admin-actions">
-          <button class="admin-btn success" onclick="adminSetTStatus('${t.id||t._fsId}','open')">✅ Open</button>
-          <button class="admin-btn" onclick="adminSetTStatus('${t.id||t._fsId}','upcoming')">⏳ Upcoming</button>
-          <button class="admin-btn danger" onclick="adminSetTStatus('${t.id||t._fsId}','closed')">🔒 Close</button>
-          <button class="admin-btn" onclick="adminEditTournament('${t.id||t._fsId}')">✏️ Edit</button>
-          <button class="admin-btn" onclick="adminRecordWins('${t.id||t._fsId}')">📊 Record</button>
-          <button class="admin-btn danger" onclick="adminDeleteT('${t.id||t._fsId}')">🗑️ Delete</button>
-        </div>
-      </div>
-    `).join('')||'<div class="empty-state"><p>No tournaments</p></div>'}
-  `;
-}
-
-async function adminSetTStatus(tid, status) {
-  const t = DB.tournaments.find(t=>t.id===tid||t._fsId===tid);
-  if(!t) return;
-  t.status = status;
-  await fsSet('tournaments',tid,t);
-  toast(`Status set to ${status}`,'success');
-  renderAdminTournaments();
-}
-
-function openCreateTournament() {
-  const GAME_LIST = ['Valorant','Street Fighter 6','Free Fire','PUBG Mobile','Call of Duty Mobile','Mobile Legends'];
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">➕ Create Tournament</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="nt-name" placeholder="Tournament name"></div>
-    <div class="form-group"><label class="form-label">Game</label>
-      <select class="form-input" id="nt-game">${GAME_LIST.map(g=>`<option>${g}</option>`).join('')}</select>
-    </div>
-    <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="nt-date"></div>
-    <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" id="nt-time"></div>
-    <div class="form-group"><label class="form-label">Format</label><input class="form-input" id="nt-format" placeholder="e.g. Solo, Duo, Squad"></div>
-    <div class="form-group"><label class="form-label">Max Players</label><input class="form-input" type="number" id="nt-max" value="16"></div>
-    <div class="form-group"><label class="form-label">Entry Fee (AC, 0=free)</label><input class="form-input" type="number" id="nt-fee" value="0"></div>
-    <div class="form-group"><label class="form-label">Prize Pool</label><input class="form-input" id="nt-prize" placeholder="e.g. 5000 AC"></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="nt-desc" placeholder="Tournament description..." rows="3" style="resize:vertical"></textarea></div>
-    <button class="btn-primary" onclick="createTournament()">Create Tournament</button>
-  `);
-}
-
-async function createTournament() {
-  const name=document.getElementById('nt-name')?.value.trim();
-  const game=document.getElementById('nt-game')?.value;
-  const date=document.getElementById('nt-date')?.value;
-  const time=document.getElementById('nt-time')?.value;
-  const format=document.getElementById('nt-format')?.value||'Solo';
-  const maxPlayers=Number(document.getElementById('nt-max')?.value)||16;
-  const entryFee=Number(document.getElementById('nt-fee')?.value)||0;
-  const prize=document.getElementById('nt-prize')?.value||'';
-  const description=document.getElementById('nt-desc')?.value||'';
-  if(!name||!game){toast('Fill tournament name and game','error');return;}
-  const id='t_'+Date.now();
-  const t={id,name,game,date,time,format,maxPlayers,entryFee,prize,description,status:'upcoming',players:[],modes:[format],createdAt:new Date().toISOString()};
-  DB.tournaments.push(t);
-  await fsSet('tournaments',id,t);
-  toast('Tournament created!','success');
-  closeModal();
-  renderAdminTournaments();
-}
-
-async function adminDeleteT(tid) {
-  if(!confirm('Delete this tournament?')) return;
-  DB.tournaments = DB.tournaments.filter(t=>t.id!==tid&&t._fsId!==tid);
-  await fsDelete('tournaments',tid);
-  toast('Tournament deleted','success');
-  renderAdminTournaments();
-}
-
-function adminEditTournament(tid) {
-  const t = DB.tournaments.find(t=>t.id===tid||t._fsId===tid);
-  if(!t) return;
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">✏️ Edit Tournament</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="et-name" value="${t.name||''}"></div>
-    <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="et-date" value="${t.date||''}"></div>
-    <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" id="et-time" value="${t.time||''}"></div>
-    <div class="form-group"><label class="form-label">Prize</label><input class="form-input" id="et-prize" value="${t.prize||''}"></div>
-    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="et-desc" rows="3" style="resize:vertical">${t.description||''}</textarea></div>
-    <button class="btn-primary" onclick="saveTournamentEdit('${tid}')">Save</button>
-  `);
-}
-
-async function saveTournamentEdit(tid) {
-  const t = DB.tournaments.find(t=>t.id===tid||t._fsId===tid);
-  if(!t) return;
-  t.name = document.getElementById('et-name')?.value||t.name;
-  t.date = document.getElementById('et-date')?.value||t.date;
-  t.time = document.getElementById('et-time')?.value||t.time;
-  t.prize = document.getElementById('et-prize')?.value||t.prize;
-  t.description = document.getElementById('et-desc')?.value||t.description;
-  await fsSet('tournaments',tid,t);
-  toast('Tournament updated','success');
-  closeModal();
-  renderAdminTournaments();
-}
-
-function adminRecordWins(tid) {
-  const t = DB.tournaments.find(t=>t.id===tid||t._fsId===tid);
-  if(!t) return;
-  const players = (t.players||[]).map(pid=>DB.players.find(p=>p.id===pid||p._fsId===pid)).filter(Boolean);
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">📊 Record Results — ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    ${players.map(p=>`
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:30px;height:30px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px">${getAvatarEl(p)}</div>
-          <span style="font-size:13px;font-weight:600">${p.name}</span>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="admin-btn success" onclick="adminRecordResult('${p.id||p._fsId}','${t.id||t._fsId}','win')">Win</button>
-          <button class="admin-btn danger" onclick="adminRecordResult('${p.id||p._fsId}','${t.id||t._fsId}','loss')">Loss</button>
-        </div>
-      </div>
-    `).join('')||'<div class="empty-state"><p>No players registered</p></div>'}
-  `);
-}
-
-async function adminRecordResult(pid, tid, result) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  if(result==='win') p.wins=(p.wins||0)+1;
-  else p.losses=(p.losses||0)+1;
-  await fsSet('players',pid,p);
-  toast(`${result==='win'?'Win':'Loss'} recorded for ${p.name}`,'success');
-}
-
-function renderAdminStore() {
-  const el = document.getElementById('admin-content');
-  el.innerHTML = `
-    <button class="btn-create" onclick="openAddStoreItem()" style="border-style:solid;color:var(--g1)">➕ Add Store Item</button>
-    <div style="font-size:12px;color:var(--dim);margin-bottom:8px">${DB.storeItems.length} items</div>
-    ${DB.storeItems.map(i=>`
-      <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:24px">${i.icon||'📦'}</span>
-        <div style="flex:1"><div style="font-weight:700">${i.name}</div><div style="font-size:12px;color:var(--dim)">${i.cat} | ${i.price} AC</div></div>
-        <button class="admin-btn danger" onclick="adminDeleteItem('${i.id||i._fsId}')">🗑️</button>
-      </div>
-    `).join('')||'<div class="empty-state"><p>No items</p></div>'}
-  `;
-}
-
-function openAddStoreItem() {
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">➕ Add Store Item</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="si-name" placeholder="Item name"></div>
-    <div class="form-group"><label class="form-label">Category</label>
-      <select class="form-input" id="si-cat"><option value="cosmetics">Cosmetics</option><option value="bundles">Bundles</option></select>
-    </div>
-    <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="si-icon" placeholder="🎭" maxlength="4"></div>
-    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="si-desc" placeholder="Item description"></div>
-    <div class="form-group"><label class="form-label">Price (AC)</label><input class="form-input" type="number" id="si-price" placeholder="100"></div>
-    <div class="form-group"><label class="form-label">Badge</label>
-      <select class="form-input" id="si-badge"><option value="">None</option><option value="HOT">HOT</option><option value="BEST VALUE">BEST VALUE</option></select>
-    </div>
-    <button class="btn-primary" onclick="saveStoreItem()">Add Item</button>
-  `);
-}
-
-async function saveStoreItem() {
-  const name=document.getElementById('si-name')?.value.trim();
-  const cat=document.getElementById('si-cat')?.value;
-  const icon=document.getElementById('si-icon')?.value||'📦';
-  const desc=document.getElementById('si-desc')?.value||'';
-  const price=Number(document.getElementById('si-price')?.value)||0;
-  const badgeType=document.getElementById('si-badge')?.value||'';
-  if(!name){toast('Enter item name','error');return;}
-  const id='item_'+Date.now();
-  const item={id,name,cat,icon,desc,price,badgeType,createdAt:new Date().toISOString()};
-  DB.storeItems.push(item);
-  await fsSet('storeItems',id,item);
-  toast('Item added!','success');
-  closeModal();
-  renderAdminStore();
-}
-
-async function adminDeleteItem(iid) {
-  if(!confirm('Delete this item?')) return;
-  DB.storeItems = DB.storeItems.filter(i=>i.id!==iid&&i._fsId!==iid);
-  await fsDelete('storeItems',iid);
-  toast('Item deleted','success');
-  renderAdminStore();
-}
-
-function renderAdminTransactions() {
-  const el = document.getElementById('admin-content');
-  const pending = DB.transactions.filter(t=>t.status==='pending');
-  const all = [...DB.transactions].sort((a,b)=>new Date(b.date)-new Date(a.date));
-  el.innerHTML = `
-    <div style="margin-bottom:12px"><b style="color:var(--gold)">${pending.length}</b> pending transactions</div>
-    <div style="overflow-x:auto">
-      <table class="tx-table" style="min-width:100%">
-        <thead><tr><th>Player</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
-        <tbody>${all.map(t=>`
-          <tr>
-            <td style="font-weight:600">${t.uname||'—'}</td>
-            <td>${t.type||'—'}</td>
-            <td class="text-gold">${t.amount||0} AC</td>
-            <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
-            <td style="color:var(--dim);font-size:11px">${t.date?t.date.split('T')[0]:'—'}</td>
-            <td>${t.status==='pending'?`<span style="display:flex;gap:4px"><button class="admin-btn success" onclick="approveTx('${t.id||t._fsId}')">✅</button><button class="admin-btn danger" onclick="rejectTx('${t.id||t._fsId}')">❌</button></span>`:'—'}</td>
-          </tr>
-        `).join('')}</tbody>
-      </table>
-    </div>
-  `;
-}
-
-async function approveTx(txid) {
-  const tx = DB.transactions.find(t=>t.id===txid||t._fsId===txid);
-  if(!tx) return;
-  tx.status = 'approved';
-  // Add balance for deposits
-  if(tx.type==='deposit') {
-    const p = DB.players.find(pp=>pp.id===tx.uid||pp._fsId===tx.uid);
-    if(p) { p.balance=(p.balance||0)+tx.amount; await fsSet('players',p.id||p._fsId,p); if(p.id===DB.me?.id){DB.me.balance=p.balance;} }
-  }
-  await fsSet('transactions',txid,tx);
-  toast('Transaction approved ✅','success');
-  renderAdminTransactions();
-}
-
-async function rejectTx(txid) {
-  const tx = DB.transactions.find(t=>t.id===txid||t._fsId===txid);
-  if(!tx) return;
-  tx.status = 'rejected';
-  await fsSet('transactions',txid,tx);
-  toast('Transaction rejected','info');
-  renderAdminTransactions();
-}
-
-function renderAdminNotifications() {
-  const el = document.getElementById('admin-content');
-  el.innerHTML = `
-    <div class="card" style="margin-bottom:12px">
-      <div style="font-size:14px;font-weight:700;margin-bottom:12px">📢 Send Notification</div>
-      <div class="form-group"><label class="form-label">Title</label><input class="form-input" id="notif-title" placeholder="Notification title"></div>
-      <div class="form-group"><label class="form-label">Message</label><textarea class="form-input" id="notif-body" rows="3" placeholder="Notification message..." style="resize:vertical"></textarea></div>
-      <button class="btn-primary" onclick="sendNotification()">Send to All Players</button>
-    </div>
-    <div class="section-title" style="margin-bottom:8px">Sent Notifications (${DB.notifications.length})</div>
-    ${DB.notifications.map(n=>`
-      <div class="notif-item">
-        <div class="notif-title">${n.title||'—'}</div>
-        <div class="notif-body">${n.body||''}</div>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px">
-          <div class="notif-date">${n.date?n.date.split('T')[0]:'—'}</div>
-          <button class="admin-btn danger" onclick="deleteNotification('${n.id||n._fsId}')">🗑️</button>
-        </div>
-      </div>
-    `).join('')||'<div class="empty-state"><p>No notifications sent</p></div>'}
-  `;
-}
-
-async function sendNotification() {
-  const title=document.getElementById('notif-title')?.value.trim();
-  const body=document.getElementById('notif-body')?.value.trim();
-  if(!title||!body){toast('Fill title and message','error');return;}
-  const id='notif_'+Date.now();
-  const notif={id,title,body,date:new Date().toISOString(),readBy:[]};
-  DB.notifications.push(notif);
-  await fsSet('notifications',id,notif);
-  toast('Notification sent! 📢','success');
-  updateNotifDot();
-  renderAdminNotifications();
-}
-
-async function deleteNotification(nid) {
-  DB.notifications = DB.notifications.filter(n=>n.id!==nid&&n._fsId!==nid);
-  await fsDelete('notifications',nid);
-  toast('Notification deleted','info');
-  renderAdminNotifications();
-}
-
-// ============================================================
+// ================================================================
 // NOTIFICATIONS
-// ============================================================
+// ================================================================
 function updateNotifDot() {
-  const me = DB.me;
-  const unread = DB.notifications.filter(n=>!(n.readBy||[]).includes(me?.id));
-  document.getElementById('notif-dot').classList.toggle('show', unread.length>0);
+  const me     = DB.me;
+  const unread = DB.notifications.filter(n => !(n.readBy||[]).includes(me?.id));
+  document.getElementById('notif-dot').classList.toggle('show', unread.length > 0);
 }
 
 function showNotifications() {
-  const me = DB.me;
-  const notifs = DB.notifications.sort((a,b)=>new Date(b.date)-new Date(a.date));
+  const me    = DB.me;
+  const notifs = [...DB.notifications].sort((a,b) => new Date(b.date) - new Date(a.date));
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🔔 Notifications</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    ${notifs.length?notifs.map(n=>{
-      const isRead=(n.readBy||[]).includes(me?.id);
-      return `
-        <div class="notif-item ${isRead?'':'unread'}" onclick="markNotifRead('${n.id||n._fsId}')">
-          <div class="notif-title">${n.title||'Notification'}</div>
-          <div class="notif-body">${n.body||''}</div>
-          <div class="notif-date">${n.date?n.date.split('T')[0]:'—'} ${!isRead?'• New':''}</div>
-        </div>
-      `;
-    }).join(''):'<div class="empty-state"><div class="empty-icon">🔔</div><p>No notifications</p></div>'}
+    ${notifs.length
+      ? notifs.map(n => {
+          const isRead = (n.readBy||[]).includes(me?.id);
+          return `<div class="notif-item ${isRead?'':'unread'}">
+            <div class="notif-title">${n.title||'Notification'}</div>
+            <div class="notif-body">${n.body||''}</div>
+            <div class="notif-date">${n.date ? n.date.split('T')[0] : '—'} ${!isRead ? '<span style="color:var(--g1)">• New</span>' : ''}</div>
+          </div>`;
+        }).join('')
+      : '<div class="empty-state"><div class="empty-icon">🔔</div><p>No notifications</p></div>'}
   `);
   // Mark all as read
-  notifs.forEach(n=>{
-    if(!(n.readBy||[]).includes(me?.id)) {
-      n.readBy=[...(n.readBy||[]),me.id];
-      fsSet('notifications',n.id||n._fsId,n);
+  notifs.forEach(n => {
+    if (!(n.readBy||[]).includes(me?.id)) {
+      n.readBy = [...(n.readBy||[]), me.id];
+      fsSet('notifications', n.id||n._fsId, n);
     }
   });
   updateNotifDot();
 }
 
-async function markNotifRead(nid) {
-  const n = DB.notifications.find(n=>n.id===nid||n._fsId===nid);
-  if(!n) return;
-  if(!(n.readBy||[]).includes(DB.me?.id)) {
-    n.readBy=[...(n.readBy||[]),DB.me.id];
-    await fsSet('notifications',nid,n);
-  }
-}
-
-// ============================================================
+// ================================================================
 // PLAYER MODAL
-// ============================================================
+// ================================================================
 function viewPlayerModal(pid) {
-  const p = DB.players.find(pp=>pp.id===pid||pp._fsId===pid);
-  if(!p) return;
-  const guild=DB.guilds.find(g=>(g.memberIds||[]).includes(p.id));
-  const teams=DB.teams.filter(t=>(t.memberIds||[]).includes(p.id));
-  const wr=p.wins&&p.tournaments?Math.round((p.wins/p.tournaments)*100):0;
+  const p = DB.players.find(pp => _pid(pp) === pid); if (!p) return;
+  const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+  const teams = DB.teams.filter(t => (t.memberIds||[]).includes(_pid(p)));
+  const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
+  const badgeDefs = {
+    owner:{emoji:'👑',name:'Owner'}, tournament:{emoji:'🏆',name:'Winner'},
+    winner:{emoji:'🥇',name:'Champion'}, veteran:{emoji:'⚔️',name:'Veteran'},
+    legend:{emoji:'🌟',name:'Legend'}, newbie:{emoji:'🌱',name:'Newcomer'}
+  };
   openModal(`
     <div class="modal-close-row">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div style="width:44px;height:44px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:2px solid var(--border2)">${getAvatarEl(p)}</div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:48px;height:48px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:2px solid var(--border2);flex-shrink:0">${_avatarInner(p)}</div>
         <div>
           <div style="font-weight:800;font-size:16px">${p.name}${p.role==='admin'?'<span class="badge-role admin" style="font-size:8px;margin-left:6px">ADMIN</span>':''}</div>
-          <div style="font-size:11px;color:var(--dim);font-family:\'JetBrains Mono\',monospace">${p.uid||'—'}</div>
+          <div style="font-size:11px;color:var(--dim);font-family:monospace">${p.uid||'—'}</div>
         </div>
       </div>
       <span class="modal-close-btn" onclick="closeModal()">✕</span>
@@ -3128,74 +2734,564 @@ function viewPlayerModal(pid) {
       <div class="profile-stat"><div class="profile-stat-val text-red">${p.losses||0}</div><div class="profile-stat-lbl">Losses</div></div>
       <div class="profile-stat"><div class="profile-stat-val">${wr}%</div><div class="profile-stat-lbl">WR</div></div>
       <div class="profile-stat"><div class="profile-stat-val text-gold">${p.tournaments||0}</div><div class="profile-stat-lbl">Events</div></div>
+      <div class="profile-stat"><div class="profile-stat-val">${p.balance||0}</div><div class="profile-stat-lbl">AC</div></div>
     </div>
-    ${guild?`<div style="font-size:13px;margin-bottom:8px">🛡️ Guild: <b>${guild.name}</b> [${guild.tag}]</div>`:''}
-    ${teams.length?`<div style="font-size:13px;margin-bottom:8px">👥 Teams: ${teams.map(t=>t.name).join(', ')}</div>`:''}
-    <div class="badges-grid">
-      ${(p.badges||[]).map(b=>{const bd={owner:{emoji:'👑',name:'Owner'},tournament:{emoji:'🏆',name:'Tournament Winner'},winner:{emoji:'🥇',name:'Champion'},veteran:{emoji:'⚔️',name:'Veteran'},legend:{emoji:'🌟',name:'Legend'},newbie:{emoji:'🌱',name:'Newcomer'}}[b]||{emoji:'🏅',name:b};return `<div class="badge-item"><span class="badge-emoji">${bd.emoji}</span>${bd.name}</div>`;}).join('')}
+    ${guild ? `<div style="font-size:13px;margin-bottom:8px">🛡️ <b>${guild.name}</b> [${guild.tag}]</div>` : ''}
+    ${teams.length ? `<div style="font-size:13px;margin-bottom:8px">👥 ${teams.map(t=>t.name).join(', ')}</div>` : ''}
+    <div class="badges-grid" style="margin-bottom:10px">
+      ${(p.badges||[]).map(b => { const bd=badgeDefs[b]||{emoji:'🏅',name:b}; return `<div class="badge-item"><span class="badge-emoji">${bd.emoji}</span>${bd.name}</div>`; }).join('') || '<span style="font-size:12px;color:var(--dim)">No badges</span>'}
     </div>
-    ${p.joinedDate?`<div class="notif-date" style="margin-top:12px">Joined: ${p.joinedDate.split('T')[0]}</div>`:''}
+    ${p.joinedDate ? `<div style="font-size:11px;color:var(--dim2)">Joined: ${p.joinedDate.split('T')[0]}</div>` : ''}
   `);
 }
 
-// ============================================================
+// ================================================================
 // MISC
-// ============================================================
+// ================================================================
 function copyUID() {
-  const uid = DB.me?.uid||'';
-  navigator.clipboard.writeText(uid).then(()=>toast('UID copied! 📋','success')).catch(()=>toast('Copy failed','error'));
+  const uid = DB.me?.uid || '';
+  navigator.clipboard.writeText(uid)
+    .then(() => toast('UID copied! 📋','success'))
+    .catch(() => { prompt('Copy this UID:', uid); });
 }
 
-function toast(msg, type='info', duration=3000) {
-  const c = document.getElementById('toast-container');
-  const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  t.innerHTML = `${type==='success'?'✅':type==='error'?'❌':'ℹ️'} ${msg}`;
-  c.appendChild(t);
-  setTimeout(()=>t.style.animation='toastIn .3s ease reverse',duration-300);
-  setTimeout(()=>t.remove(),duration);
+// ================================================================
+// ADMIN
+// ================================================================
+function renderAdmin() {
+  if (DB.me?.role !== 'admin') {
+    document.getElementById('admin-content').innerHTML = '<div class="empty-state"><p>⛔ Access denied</p></div>';
+    return;
+  }
+  renderAdminContent();
 }
 
+function setAdminTab(tab, el) {
+  _adminTab = tab;
+  document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderAdminContent();
+}
+
+function renderAdminContent() {
+  const fns = { players:renderAdminPlayers, tournaments:renderAdminTournaments, store:renderAdminStore, transactions:renderAdminTransactions, notifications:renderAdminNotifications };
+  if (fns[_adminTab]) fns[_adminTab]();
+}
+
+// ---- Admin: Players ----
+function renderAdminPlayers() {
+  const el = document.getElementById('admin-content');
+  const q  = (document.getElementById('adm-psearch')?.value || '').toLowerCase();
+  let players = DB.players;
+  if (q) players = players.filter(p => p.name?.toLowerCase().includes(q) || p.email?.toLowerCase().includes(q) || p.uid?.toLowerCase().includes(q));
+
+  el.innerHTML = `
+    <div class="search-box" style="margin-bottom:12px">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="adm-psearch" placeholder="Search players..." oninput="renderAdminPlayers()">
+    </div>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:10px">${players.length} player(s)</div>
+    ${players.map(p => {
+      const pid = _pid(p);
+      return `
+      <div class="admin-player-card">
+        <div class="admin-player-top">
+          <div class="admin-player-avatar">${_avatarInner(p)}</div>
+          <div style="flex:1;min-width:0">
+            <div class="admin-player-name">
+              ${p.name||'—'}
+              ${p.role==='admin' ? '<span class="badge-role admin" style="font-size:8px">ADMIN</span>' : ''}
+              ${p.banned ? '<span style="font-size:10px;color:var(--red);font-weight:700"> BANNED</span>' : ''}
+            </div>
+            <div class="admin-player-email">${p.email||''} · ${p.uid||'no uid'} · ${p.balance||0} AC</div>
+          </div>
+        </div>
+        <div class="admin-actions">
+          <button class="admin-btn gold"    onclick="adminGiveCoins('${pid}')">💰 Coins</button>
+          <button class="admin-btn"         onclick="adminAdjustStats('${pid}')">📊 Stats</button>
+          <button class="admin-btn"         onclick="adminManageBadges('${pid}')">🏅 Badges</button>
+          <button class="admin-btn"         onclick="adminEditUID('${pid}')">🔑 UID</button>
+          <button class="admin-btn"         onclick="adminUnlockName('${pid}')">🔓 Name</button>
+          <button class="admin-btn"         onclick="openAvatarPicker('${pid}')">🖼️ Avatar</button>
+          <button class="admin-btn"         onclick="viewPlayerModal('${pid}')">👁️ View</button>
+          ${p.banned
+            ? `<button class="admin-btn success" onclick="adminBan('${pid}',false)">✅ Unban</button>`
+            : `<button class="admin-btn danger"  onclick="adminBan('${pid}',true)">🚫 Ban</button>`}
+          ${p.role !== 'admin'
+            ? `<button class="admin-btn gold" onclick="adminPromote('${pid}',true)">👑 Promote</button>`
+            : p.email !== ADMIN_EMAIL ? `<button class="admin-btn" onclick="adminPromote('${pid}',false)">⬇ Demote</button>` : ''}
+          ${p.email !== ADMIN_EMAIL ? `<button class="admin-btn danger" onclick="adminDeletePlayer('${pid}')">🗑️ Delete</button>` : ''}
+        </div>
+      </div>`;
+    }).join('')}`;
+}
+
+async function adminGiveCoins(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  const input = prompt(`Give coins to "${p.name}"\nEnter amount (use - to deduct):`);
+  if (input === null) return;
+  const amount = Number(input);
+  if (isNaN(amount)) { toast('Invalid amount','error'); return; }
+  p.balance = Math.max(0, (p.balance||0) + amount);
+  await fsSet('players', pid, p);
+  toast(`${amount >= 0 ? 'Gave' : 'Deducted'} ${Math.abs(amount)} AC ${amount>=0?'to':'from'} ${p.name}`,'success');
+  _cacheDB(); renderAdminPlayers();
+}
+
+function adminAdjustStats(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">📊 Stats — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Wins</label><input class="form-input" id="as-wins" type="number" value="${p.wins||0}" min="0"></div>
+    <div class="form-group"><label class="form-label">Losses</label><input class="form-input" id="as-losses" type="number" value="${p.losses||0}" min="0"></div>
+    <div class="form-group"><label class="form-label">Events Played</label><input class="form-input" id="as-events" type="number" value="${p.tournaments||0}" min="0"></div>
+    <button class="btn-primary" id="btn-as" onclick="saveAdminStats('${pid}')">Save Stats</button>
+  `);
+}
+
+async function saveAdminStats(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  _btn('btn-as', true);
+  p.wins       = Math.max(0, Number(_v('as-wins'))  || 0);
+  p.losses     = Math.max(0, Number(_v('as-losses')) || 0);
+  p.tournaments= Math.max(0, Number(_v('as-events')) || 0);
+  await fsSet('players', pid, p);
+  toast('Stats updated','success'); _cacheDB(); closeModal(); renderAdminPlayers();
+}
+
+function adminManageBadges(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  const all = ['owner','tournament','winner','veteran','legend','newbie'];
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">🏅 Badges — ${p.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    ${all.map(b => {
+      const has = (p.badges||[]).includes(b);
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:13px;font-weight:600;text-transform:capitalize">${b}</span>
+        ${has
+          ? `<button class="admin-btn danger" onclick="adminToggleBadge('${pid}','${b}',false)">✕ Remove</button>`
+          : `<button class="admin-btn success" onclick="adminToggleBadge('${pid}','${b}',true)">+ Add</button>`}
+      </div>`;
+    }).join('')}
+  `);
+}
+
+async function adminToggleBadge(pid, badge, add) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.badges = p.badges || [];
+  if (add) { if (!p.badges.includes(badge)) p.badges.push(badge); }
+  else p.badges = p.badges.filter(b => b !== badge);
+  await fsSet('players', pid, p);
+  toast(`Badge ${add?'added':'removed'}`,'success');
+  _cacheDB(); adminManageBadges(pid);
+}
+
+async function adminEditUID(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  const newUID = prompt('Enter new display UID:', p.uid||'');
+  if (!newUID || newUID === p.uid) return;
+  p.uid = newUID.trim();
+  await fsSet('players', pid, p);
+  toast('UID updated','success'); _cacheDB(); renderAdminPlayers();
+}
+
+async function adminUnlockName(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.lastNameChange = null;
+  await fsSet('players', pid, p);
+  toast(`Name cooldown unlocked for ${p.name}`,'success'); _cacheDB();
+}
+
+async function adminBan(pid, ban) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.banned = ban;
+  await fsSet('players', pid, p);
+  toast(ban ? `${p.name} banned` : `${p.name} unbanned`, ban ? 'error' : 'success');
+  _cacheDB(); renderAdminPlayers();
+}
+
+async function adminPromote(pid, promote) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.role = promote ? 'admin' : 'player';
+  await fsSet('players', pid, p);
+  toast(promote ? `${p.name} promoted to Admin` : `${p.name} demoted`,'success');
+  _cacheDB(); renderAdminPlayers();
+}
+
+function adminDeletePlayer(pid) {
+  const p = _findPlayer(pid); if (!p) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">🗑️ Delete Player</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <p style="font-size:14px;margin-bottom:20px;line-height:1.6">Delete <b>"${p.name}"</b>?<br><span style="color:var(--red);font-size:12px">This cannot be undone.</span></p>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" style="background:var(--red2)" onclick="confirmDeletePlayer('${pid}')">Yes, Delete</button>
+      <button class="btn-details" onclick="closeModal()">Cancel</button>
+    </div>
+  `);
+}
+
+async function confirmDeletePlayer(pid) {
+  DB.players = DB.players.filter(p => _pid(p) !== pid);
+  await Promise.all([fsDelete('players', pid), fsDelete('avatars', pid)]);
+  toast('Player deleted','success'); _cacheDB(); closeModal(); renderAdminPlayers();
+}
+
+// ---- Admin: Tournaments ----
+function renderAdminTournaments() {
+  const el = document.getElementById('admin-content');
+  el.innerHTML = `
+    <button class="btn-create" onclick="openCreateTournament()" style="border-style:solid;color:var(--g1)">➕ Create Tournament</button>
+    ${DB.tournaments.map(t => {
+      const tid = t.id || t._fsId;
+      return `
+      <div class="card" style="margin-bottom:8px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="font-weight:700;font-size:14px">${t.name}</div>
+          <span class="tc-status-badge ${t.status||'upcoming'}" style="position:static">${(t.status||'upcoming').toUpperCase()}</span>
+        </div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:10px">${t.game||'—'} · ${(t.players||[]).length}/${t.maxPlayers||16} players · ${t.entryFee?t.entryFee+' AC entry':'Free'} · Prize: ${t.prize||'—'}</div>
+        <div class="admin-actions">
+          <button class="admin-btn success" onclick="adminSetTStatus('${tid}','open')">✅ Open</button>
+          <button class="admin-btn gold"    onclick="adminSetTStatus('${tid}','upcoming')">⏳ Upcoming</button>
+          <button class="admin-btn danger"  onclick="adminSetTStatus('${tid}','closed')">🔒 Close</button>
+          <button class="admin-btn"         onclick="adminEditTournament('${tid}')">✏️ Edit</button>
+          <button class="admin-btn success" onclick="adminRecordWins('${tid}')">📊 Results</button>
+          <button class="admin-btn danger"  onclick="adminDeleteT('${tid}')">🗑️ Delete</button>
+        </div>
+      </div>`;
+    }).join('') || '<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments yet</p></div>'}
+  `;
+}
+
+async function adminSetTStatus(tid, status) {
+  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  t.status = status;
+  await fsSet('tournaments', tid, t);
+  toast(`Status → ${status}`,'success'); _cacheDB(); renderAdminTournaments();
+}
+
+function openCreateTournament() {
+  const GAMES = ['Valorant','Street Fighter 6','Free Fire','PUBG Mobile','Call of Duty Mobile','Mobile Legends','Other'];
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">➕ Create Tournament</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Name *</label><input class="form-input" id="nt-name" placeholder="Tournament name"></div>
+    <div class="form-group"><label class="form-label">Game *</label>
+      <select class="form-input" id="nt-game">${GAMES.map(g=>`<option>${g}</option>`).join('')}</select>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="nt-date"></div>
+      <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" id="nt-time"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Max Players</label><input class="form-input" type="number" id="nt-max" value="16" min="2"></div>
+      <div class="form-group"><label class="form-label">Entry Fee (AC)</label><input class="form-input" type="number" id="nt-fee" value="0" min="0"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Format</label><input class="form-input" id="nt-format" placeholder="Solo / Duo / Squad"></div>
+    <div class="form-group"><label class="form-label">Prize Pool</label><input class="form-input" id="nt-prize" placeholder="e.g. 5000 AC or Gift Card"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="nt-desc" rows="3" style="resize:vertical" placeholder="Tournament details..."></textarea></div>
+    <button class="btn-primary" id="btn-nt" onclick="createTournament()">Create Tournament</button>
+  `);
+}
+
+async function createTournament() {
+  const name = _v('nt-name').trim();
+  const game = _v('nt-game');
+  if (!name) { toast('Enter tournament name','error'); return; }
+  _btn('btn-nt', true);
+  const id = 't_' + Date.now();
+  const t = {
+    id, name, game,
+    date:       _v('nt-date'),
+    time:       _v('nt-time'),
+    format:     _v('nt-format') || 'Solo',
+    maxPlayers: Number(_v('nt-max')) || 16,
+    entryFee:   Number(_v('nt-fee')) || 0,
+    prize:      _v('nt-prize'),
+    description:_v('nt-desc'),
+    status:     'upcoming',
+    players:    [],
+    modes:      [_v('nt-format')||'Solo'],
+    createdAt:  new Date().toISOString()
+  };
+  DB.tournaments.push(t);
+  const ok = await fsSet('tournaments', id, t);
+  if (ok) { toast('Tournament created! 🏆','success'); _cacheDB(); closeModal(); renderAdminTournaments(); }
+  else    { toast('Error creating tournament','error'); _btn('btn-nt', false); }
+}
+
+async function adminDeleteT(tid) {
+  if (!confirm('Delete this tournament?')) return;
+  DB.tournaments = DB.tournaments.filter(t => (t.id||t._fsId) !== tid);
+  await fsDelete('tournaments', tid);
+  toast('Tournament deleted','success'); _cacheDB(); renderAdminTournaments();
+}
+
+function adminEditTournament(tid) {
+  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">✏️ Edit — ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Name</label><input class="form-input" id="et-name" value="${t.name||''}"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Date</label><input class="form-input" type="date" id="et-date" value="${t.date||''}"></div>
+      <div class="form-group"><label class="form-label">Time</label><input class="form-input" type="time" id="et-time" value="${t.time||''}"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Prize</label><input class="form-input" id="et-prize" value="${t.prize||''}"></div>
+    <div class="form-group"><label class="form-label">Max Players</label><input class="form-input" type="number" id="et-max" value="${t.maxPlayers||16}"></div>
+    <div class="form-group"><label class="form-label">Entry Fee (AC)</label><input class="form-input" type="number" id="et-fee" value="${t.entryFee||0}"></div>
+    <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="et-desc" rows="3" style="resize:vertical">${t.description||''}</textarea></div>
+    <button class="btn-primary" id="btn-et" onclick="saveTEdit('${tid}')">Save Changes</button>
+  `);
+}
+
+async function saveTEdit(tid) {
+  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  _btn('btn-et', true);
+  t.name        = _v('et-name')  || t.name;
+  t.date        = _v('et-date')  || t.date;
+  t.time        = _v('et-time')  || t.time;
+  t.prize       = _v('et-prize');
+  t.maxPlayers  = Number(_v('et-max')) || t.maxPlayers;
+  t.entryFee    = Number(_v('et-fee')) || 0;
+  t.description = _v('et-desc');
+  await fsSet('tournaments', tid, t);
+  toast('Tournament updated','success'); _cacheDB(); closeModal(); renderAdminTournaments();
+}
+
+function adminRecordWins(tid) {
+  const t = DB.tournaments.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  const players = (t.players||[]).map(pid => DB.players.find(p => _pid(p) === pid)).filter(Boolean);
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">📊 Results — ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    ${players.length
+      ? players.map(p => `
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:30px;height:30px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
+            <span style="font-size:13px;font-weight:600">${p.name}</span>
+            <span style="font-size:11px;color:var(--dim)">${p.wins||0}W ${p.losses||0}L</span>
+          </div>
+          <div style="display:flex;gap:6px">
+            <button class="admin-btn success" onclick="adminRecordResult('${_pid(p)}','win',this)">✅ Win</button>
+            <button class="admin-btn danger"  onclick="adminRecordResult('${_pid(p)}','loss',this)">❌ Loss</button>
+          </div>
+        </div>`)
+        .join('')
+      : '<div class="empty-state" style="padding:20px"><p>No players registered</p></div>'}
+  `);
+}
+
+async function adminRecordResult(pid, result, btn) {
+  const p = _findPlayer(pid); if (!p) return;
+  if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+  if (result === 'win')  p.wins   = (p.wins||0)   + 1;
+  else                   p.losses = (p.losses||0)  + 1;
+  await fsSet('players', pid, p);
+  toast(`${result === 'win' ? '✅ Win' : '❌ Loss'} recorded for ${p.name}`,'success');
+  _cacheDB();
+}
+
+// ---- Admin: Store ----
+function renderAdminStore() {
+  const el = document.getElementById('admin-content');
+  el.innerHTML = `
+    <button class="btn-create" onclick="openAddStoreItem()" style="border-style:solid;color:var(--g1)">➕ Add Store Item</button>
+    ${DB.storeItems.map(i => {
+      const iid = i.id || i._fsId;
+      return `<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+        <span style="font-size:28px">${i.icon||'📦'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700">${i.name}</div>
+          <div style="font-size:11px;color:var(--dim)">${i.cat||'cosmetics'} · ${i.price} AC</div>
+        </div>
+        <button class="admin-btn danger" onclick="adminDeleteItem('${iid}')">🗑️</button>
+      </div>`;
+    }).join('') || '<div class="empty-state" style="padding:24px"><p>No items yet</p></div>'}
+  `;
+}
+
+function openAddStoreItem() {
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">➕ Add Item</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Name *</label><input class="form-input" id="ni-name" placeholder="Item name"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Category</label>
+        <select class="form-input" id="ni-cat"><option value="cosmetics">Cosmetics</option><option value="bundles">Bundles</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="ni-icon" placeholder="🎭" maxlength="4"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="ni-desc" placeholder="What does this item do?"></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="ni-price" placeholder="100" min="1"></div>
+      <div class="form-group"><label class="form-label">Badge</label>
+        <select class="form-input" id="ni-badge"><option value="">None</option><option value="HOT">🔥 HOT</option><option value="BEST VALUE">⭐ BEST VALUE</option></select>
+      </div>
+    </div>
+    <button class="btn-primary" id="btn-ni" onclick="saveStoreItem()">Add Item</button>
+  `);
+}
+
+async function saveStoreItem() {
+  const name = _v('ni-name').trim();
+  const price = Number(_v('ni-price'));
+  if (!name || !price) { toast('Enter name and price','error'); return; }
+  _btn('btn-ni', true);
+  const id   = 'item_' + Date.now();
+  const item = { id, name, cat:_v('ni-cat')||'cosmetics', icon:_v('ni-icon')||'📦', desc:_v('ni-desc'), price, badgeType:_v('ni-badge'), createdAt:new Date().toISOString() };
+  DB.storeItems.push(item);
+  const ok = await fsSet('storeItems', id, item);
+  if (ok) { toast('Item added!','success'); _cacheDB(); closeModal(); renderAdminStore(); }
+  else    { toast('Error adding item','error'); _btn('btn-ni', false); }
+}
+
+async function adminDeleteItem(iid) {
+  if (!confirm('Delete this item?')) return;
+  DB.storeItems = DB.storeItems.filter(i => (i.id||i._fsId) !== iid);
+  await fsDelete('storeItems', iid);
+  toast('Item deleted','success'); _cacheDB(); renderAdminStore();
+}
+
+// ---- Admin: Transactions ----
+function renderAdminTransactions() {
+  const el      = document.getElementById('admin-content');
+  const all     = [...DB.transactions].sort((a,b) => new Date(b.date) - new Date(a.date));
+  const pending = all.filter(t => t.status === 'pending').length;
+  el.innerHTML = `
+    <div style="margin-bottom:12px;display:flex;align-items:center;gap:8px">
+      <span style="font-size:14px;font-weight:700">All Transactions</span>
+      ${pending ? `<span style="background:rgba(248,113,113,.15);color:var(--red);border:1px solid rgba(248,113,113,.3);padding:2px 10px;border-radius:20px;font-size:12px;font-weight:700">${pending} pending</span>` : ''}
+    </div>
+    <div style="overflow-x:auto">
+      <table class="tx-table" style="min-width:550px">
+        <thead><tr><th>Player</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
+        <tbody>
+          ${all.map(t => `
+            <tr>
+              <td style="font-weight:600">${t.uname||'—'}</td>
+              <td style="text-transform:capitalize">${t.type||'—'}</td>
+              <td class="text-gold">${t.amount||0} AC</td>
+              <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
+              <td style="color:var(--dim);font-size:11px">${t.date ? t.date.split('T')[0] : '—'}</td>
+              <td>
+                ${t.status === 'pending'
+                  ? `<div style="display:flex;gap:4px">
+                      <button class="admin-btn success" onclick="approveTx('${t.id||t._fsId}')">✅</button>
+                      <button class="admin-btn danger"  onclick="rejectTx('${t.id||t._fsId}')">❌</button>
+                    </div>`
+                  : '<span style="color:var(--dim);font-size:11px">—</span>'}
+              </td>
+            </tr>`
+          ).join('')}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+async function approveTx(txid) {
+  const tx = DB.transactions.find(t => (t.id||t._fsId) === txid); if (!tx) return;
+  tx.status = 'approved';
+  const tasks = [fsSet('transactions', txid, tx)];
+  if (tx.type === 'deposit') {
+    const p = DB.players.find(pp => _pid(pp) === tx.uid);
+    if (p) {
+      p.balance = (p.balance||0) + tx.amount;
+      tasks.push(fsSet('players', _pid(p), p));
+      if (_pid(p) === DB.me?.id) DB.me.balance = p.balance;
+    }
+  }
+  await Promise.all(tasks);
+  toast('Transaction approved ✅','success'); _cacheDB(); renderAdminTransactions();
+}
+
+async function rejectTx(txid) {
+  const tx = DB.transactions.find(t => (t.id||t._fsId) === txid); if (!tx) return;
+  tx.status = 'rejected';
+  await fsSet('transactions', txid, tx);
+  toast('Transaction rejected','info'); _cacheDB(); renderAdminTransactions();
+}
+
+// ---- Admin: Notifications ----
+function renderAdminNotifications() {
+  const el = document.getElementById('admin-content');
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:12px">📢 Broadcast Notification</div>
+      <div class="form-group"><label class="form-label">Title *</label><input class="form-input" id="notif-title" placeholder="Notification title"></div>
+      <div class="form-group"><label class="form-label">Message *</label><textarea class="form-input" id="notif-body" rows="3" style="resize:vertical" placeholder="Your message..."></textarea></div>
+      <button class="btn-primary" id="btn-notif" onclick="sendNotification()">Send to All Players</button>
+    </div>
+    <div style="font-size:13px;font-weight:700;margin-bottom:8px">Sent (${DB.notifications.length})</div>
+    ${DB.notifications.map(n => `
+      <div class="notif-item">
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div class="notif-title">${n.title||'—'}</div>
+          <button class="admin-btn danger" style="flex-shrink:0" onclick="deleteNotification('${n.id||n._fsId}')">🗑️</button>
+        </div>
+        <div class="notif-body">${n.body||''}</div>
+        <div class="notif-date">${n.date ? n.date.split('T')[0] : '—'}</div>
+      </div>`
+    ).join('') || '<div class="empty-state" style="padding:24px"><p>No notifications sent</p></div>'}
+  `;
+}
+
+async function sendNotification() {
+  const title = _v('notif-title').trim();
+  const body  = _v('notif-body').trim();
+  if (!title || !body) { toast('Fill title and message','error'); return; }
+  _btn('btn-notif', true);
+  const id    = 'notif_' + Date.now();
+  const notif = { id, title, body, date:new Date().toISOString(), readBy:[] };
+  DB.notifications.push(notif);
+  const ok = await fsSet('notifications', id, notif);
+  if (ok) { toast('Notification sent to all players! 📢','success'); _cacheDB(); updateNotifDot(); renderAdminNotifications(); }
+  else    { toast('Error sending notification','error'); _btn('btn-notif', false); }
+}
+
+async function deleteNotification(nid) {
+  DB.notifications = DB.notifications.filter(n => (n.id||n._fsId) !== nid);
+  await fsDelete('notifications', nid);
+  toast('Notification deleted','info'); _cacheDB(); renderAdminNotifications();
+}
+
+// ================================================================
+// MODAL & TOAST
+// ================================================================
 function openModal(html) {
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal-overlay').classList.add('show');
 }
 function closeModal() {
   document.getElementById('modal-overlay').classList.remove('show');
+  setTimeout(() => { document.getElementById('modal-content').innerHTML = ''; }, 300);
 }
 function closeModalIfOverlay(e) {
-  if(e.target===document.getElementById('modal-overlay')) closeModal();
+  if (e.target === document.getElementById('modal-overlay')) closeModal();
 }
 
-// ============================================================
-// PWA
-// ============================================================
-if('serviceWorker' in navigator) {
-  const swCode = `
-    const CACHE='fairplay-v1';
-    const ASSETS=['/'];
-    self.addEventListener('install',e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS))));
-    self.addEventListener('fetch',e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request).catch(()=>r))));
-  `;
-  const blob = new Blob([swCode],{type:'application/javascript'});
-  const swUrl = URL.createObjectURL(blob);
-  navigator.serviceWorker.register(swUrl).catch(()=>{});
+function toast(msg, type = 'info', ms = 3200) {
+  const icons = { success:'✅', error:'❌', info:'ℹ️' };
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `${icons[type]||'ℹ️'} ${msg}`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateY(-8px)'; t.style.transition='.3s'; }, ms - 350);
+  setTimeout(() => t.remove(), ms);
 }
 
-// Keyboard shortcuts
-document.addEventListener('keydown', e => {
-  if(e.key==='Escape') closeModal();
-});
+// ================================================================
+// KEYBOARD & MISC
+// ================================================================
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
 
-// Initialize loading animation timeout
-setTimeout(()=>{
-  if(document.getElementById('loading-screen').style.display!=='none') {
-    hideLoading();
-    showLoginScreen();
+// Auto-hide loading after 10s failsafe
+setTimeout(() => {
+  const ls = document.getElementById('loading-screen');
+  if (ls && ls.style.display !== 'none') {
+    _hideLoading();
+    _showLogin();
+    toast('Connection timeout. Please try again.','error');
   }
-},8000);
-
-console.log('%c⚔ FAIR PLAY %cEsports Arena Platform', 'font-size:18px;font-weight:900;color:#4ade80', 'font-size:12px;color:#fbbf24');
+}, 10000);
 </script>
 </body>
 </html>
