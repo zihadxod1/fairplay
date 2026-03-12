@@ -950,6 +950,59 @@ img{display:block;max-width:100%}
   .stats-grid{grid-template-columns:repeat(3,1fr)}
   .quick-grid{grid-template-columns:repeat(6,1fr)}
 }
+
+/* ===== ANNOUNCEMENT BANNER ===== */
+#site-banner{
+  display:none;padding:10px 16px;
+  font-size:13px;font-weight:600;text-align:center;
+  position:sticky;top:56px;z-index:99;
+  border-bottom:1px solid rgba(255,255,255,.1);
+  background:rgba(74,222,128,.15);color:var(--g1);
+}
+#site-banner.show{display:block}
+#site-banner.gold{background:rgba(251,191,36,.15);color:var(--gold)}
+#site-banner.red{background:rgba(248,113,113,.15);color:var(--red)}
+#site-banner.blue{background:rgba(96,165,250,.15);color:var(--blue)}
+#site-banner.purple{background:rgba(167,139,250,.15);color:var(--purple)}
+
+/* ===== BADGE CARDS ===== */
+.badge-card{
+  background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px;display:flex;align-items:center;gap:10px;margin-bottom:8px;
+}
+.badge-icon-display{
+  width:44px;height:44px;border-radius:10px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:22px;border:2px solid var(--border2);flex-shrink:0;overflow:hidden;
+}
+.badge-rarity-common{border-color:rgba(148,163,184,.4);background:rgba(148,163,184,.08)}
+.badge-rarity-rare{border-color:rgba(96,165,250,.4);background:rgba(96,165,250,.08)}
+.badge-rarity-epic{border-color:rgba(167,139,250,.4);background:rgba(167,139,250,.08)}
+.badge-rarity-legendary{border-color:rgba(251,191,36,.4);background:rgba(251,191,36,.08)}
+
+/* ===== SETTINGS SECTIONS ===== */
+.settings-section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px;margin-bottom:12px}
+.settings-section-title{font-size:13px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.theme-preset{
+  width:100%;padding:10px;border-radius:8px;border:2px solid var(--border);
+  font-size:12px;font-weight:700;cursor:pointer;transition:.2s;
+  background:var(--panel2);color:var(--text);text-align:center;
+}
+.theme-preset:hover,.theme-preset.active{border-color:var(--g1);color:var(--g1)}
+.color-row{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)}
+.color-row:last-child{border-bottom:none}
+.color-swatch{width:32px;height:32px;border-radius:6px;border:2px solid var(--border2);cursor:pointer;overflow:hidden}
+.color-swatch input[type=color]{width:100%;height:100%;border:none;padding:0;cursor:pointer;background:none}
+
+/* ===== ADMIN 9-TAB LAYOUT ===== */
+.admin-tabs{display:flex;gap:4px;margin-bottom:14px;overflow-x:auto;flex-wrap:nowrap;padding-bottom:2px}
+.admin-tabs::-webkit-scrollbar{height:3px}
+.admin-tab{
+  padding:7px 11px;border-radius:8px;font-size:11px;font-weight:700;
+  border:1px solid var(--border);color:var(--dim);cursor:pointer;
+  transition:.15s;white-space:nowrap;flex-shrink:0;letter-spacing:.3px;
+}
+.admin-tab.active{background:rgba(248,113,113,.12);color:var(--red);border-color:rgba(248,113,113,.3)}
 </style>
 </head>
 <body>
@@ -1023,6 +1076,9 @@ img{display:block;max-width:100%}
       </div>
     </div>
   </nav>
+
+  <!-- ANNOUNCEMENT BANNER -->
+  <div id="site-banner"></div>
 
   <!-- DRAWER -->
   <div id="drawer-overlay" onclick="closeDrawer()"></div>
@@ -1180,15 +1236,18 @@ img{display:block;max-width:100%}
 
     <!-- ADMIN -->
     <div class="page" id="page-admin">
-      <div class="page-header"><div class="page-title" style="color:var(--red)">🔑 Admin Panel</div><div class="page-subtitle">Platform management</div></div>
-      <div id="admin-overview" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:14px"></div>
-      <div class="admin-tabs">
-        <div class="admin-tab active" onclick="setAdminTab('players',this)">👥 Players</div>
-        <div class="admin-tab" onclick="setAdminTab('tournaments',this)">🏆 Tourneys</div>
-        <div class="admin-tab" onclick="setAdminTab('store',this)">🛒 Store</div>
-        <div class="admin-tab" onclick="setAdminTab('transactions',this)">💰 Wallet <span id="adm-pending-dot"></span></div>
-        <div class="admin-tab" onclick="setAdminTab('notifications',this)">🔔 Notifs</div>
+      <div class="page-header"><div class="page-title" style="color:var(--red)">🔑 Admin Panel</div><div class="page-subtitle">Full platform control</div></div>
+      <div id="admin-overview" style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px"></div>
+      <div class="admin-tabs" id="admin-tabs-bar">
+        <div class="admin-tab active" onclick="setAdminTab('transactions',this)">💳 Transactions <span id="adm-pending-dot"></span></div>
+        <div class="admin-tab" onclick="setAdminTab('badges',this)">🎖️ Badges</div>
+        <div class="admin-tab" onclick="setAdminTab('tournaments',this)">🏆 Tournaments</div>
+        <div class="admin-tab" onclick="setAdminTab('games',this)">🎮 Games</div>
+        <div class="admin-tab" onclick="setAdminTab('players',this)">👥 Players</div>
+        <div class="admin-tab" onclick="setAdminTab('payment',this)">💳 Payment</div>
+        <div class="admin-tab" onclick="setAdminTab('notifications',this)">🔔 Notify</div>
         <div class="admin-tab" onclick="setAdminTab('settings',this)">⚙️ Settings</div>
+        <div class="admin-tab" onclick="setAdminTab('store',this)">🛒 Store</div>
       </div>
       <div id="admin-content"></div>
     </div>
@@ -1250,7 +1309,7 @@ let _lbSort     = 'wins';
 let _storeCat   = 'topup';
 let _storeGame  = null;
 let _walletTab  = 'deposit';
-let _adminTab   = 'players';
+let _adminTab   = 'transactions';
 let _syncTimer  = null;
 let _busy       = false; // prevent double-submit
 
@@ -1420,10 +1479,11 @@ async function fbLoadAll() {
 
   // Then fetch fresh from Firestore
   try {
-    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications] =
+    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs] =
       await Promise.all([
         fsList('players'), fsList('tournaments'), fsList('teams'), fsList('guilds'),
-        fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications')
+        fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications'),
+        fsList('badges')
       ]);
 
     DB.players       = players.filter(Boolean);
@@ -1434,13 +1494,17 @@ async function fbLoadAll() {
     DB.storeItems    = storeItems.filter(Boolean);
     DB.games         = games.filter(Boolean);
     DB.notifications = notifications.filter(Boolean);
+    DB.badges        = badgesDocs.filter(Boolean);
     DB.me            = DB.players.find(p => _pid(p) === S.uid) || null;
 
-    // Load platform meta (payment methods, config)
+    // Load platform meta
     const payMeta = await fsGet('_meta','paymentMethods');
     if (payMeta?.methods) DB.paymentMethods = payMeta.methods;
     const cfgMeta = await fsGet('_meta','config');
     if (cfgMeta) { delete cfgMeta._fsId; DB.config = cfgMeta; }
+
+    // Apply saved config (theme, branding, banner, etc.)
+    _applyConfig();
 
     // Load avatars for players (non-blocking)
     _loadAvatars();
@@ -1464,7 +1528,7 @@ function _cacheDB() {
     const toSave = {
       players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
       guilds:DB.guilds, transactions:DB.transactions, storeItems:DB.storeItems,
-      games:DB.games, notifications:DB.notifications
+      games:DB.games, notifications:DB.notifications, badges:DB.badges
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch(e) {}
@@ -1566,7 +1630,7 @@ async function lpForgotPw() {
 function doLogout() {
   if (_syncTimer) clearInterval(_syncTimer);
   _clearSession();
-  DB = { me:null, players:[], tournaments:[], teams:[], guilds:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[] };
+  DB = { me:null, players:[], tournaments:[], teams:[], guilds:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[], paymentMethods:[], config:{} };
   S  = { token:null, refresh:null, uid:null, email:null };
   _storeGame = null;
   document.getElementById('app-screen').classList.remove('active');
@@ -1696,6 +1760,8 @@ function _refreshUI() {
   document.querySelectorAll('.admin-only').forEach(el =>
     el.style.display = me.role === 'admin' ? 'flex' : 'none'
   );
+  // Apply saved platform config
+  _applyConfig();
 }
 
 // ================================================================
@@ -2801,19 +2867,22 @@ function renderAdmin() {
 function setAdminTab(tab, el) {
   _adminTab = tab;
   document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  if (el) el.classList.add('active');
   renderAdminContent();
 }
 
 function renderAdminContent() {
   _renderAdminOverview();
   const fns = {
-    players:       renderAdminPlayers,
-    tournaments:   renderAdminTournaments,
-    store:         renderAdminStore,
     transactions:  renderAdminTransactions,
+    badges:        renderAdminBadges,
+    tournaments:   renderAdminTournaments,
+    games:         renderAdminGames,
+    players:       renderAdminPlayers,
+    payment:       renderAdminPayment,
     notifications: renderAdminNotifications,
-    settings:      renderAdminSettings
+    settings:      renderAdminSettings,
+    store:         renderAdminStore,
   };
   if (fns[_adminTab]) fns[_adminTab]();
 }
@@ -3414,36 +3483,110 @@ async function adminLossBtn(pid) {
 // ================================================================
 let _storeEditId = null; // null = new item, string = editing
 
+// ================================================================
+// ADMIN — STORE TAB (two-panel: items left, form right)
+// ================================================================
+
 function renderAdminStore() {
   const el = document.getElementById('admin-content');
   const catFilter = window._admStoreCat || 'all';
+  const CATS = [{k:'all',l:'All'},{k:'topup',l:'🎮 Top-up'},{k:'bundles',l:'📦 Bundles'},{k:'cosmetics',l:'🎨 Cosmetics'},{k:'badges',l:'🎖️ Badges'}];
   const items = catFilter==='all' ? DB.storeItems : DB.storeItems.filter(i=>(i.cat||'cosmetics')===catFilter);
 
   el.innerHTML = `
-    <div style="display:flex;gap:8px;margin-bottom:12px;overflow-x:auto">
-      ${['all','topup','cosmetics','bundles','badges'].map(c=>
-        `<button class="filter-tab ${catFilter===c?'active':''}" onclick="adminFilterStoreCat(this,'${c}')" style="white-space:nowrap">${c}</button>`
-      ).join('')}
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap">
-      <button class="btn-create" onclick="adminAddStoreItem()" style="flex:1;border-style:solid;color:var(--g1);padding:10px">➕ Add Item</button>
-      <button class="btn-create" onclick="renderAdminTopup()" style="flex:1;border-style:solid;color:var(--gold);padding:10px">🎮 Manage Top-ups</button>
-    </div>
-    ${items.map(i => {
-      const iid = i.id||i._fsId;
-      return `<div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-        <span style="font-size:26px;flex-shrink:0">${i.icon||'📦'}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-weight:700;font-size:13px">${i.name}</div>
-          <div style="font-size:11px;color:var(--dim)">${i.cat||'cosmetics'} · ${i.price} AC${i.badgeType?' · '+i.badgeType:''}</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start">
+
+      <!-- LEFT: Items List -->
+      <div>
+        <div style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto;flex-wrap:nowrap">
+          ${CATS.map(c=>`<button class="filter-tab ${catFilter===c.k?'active':''}" onclick="adminFilterStoreCat(this,'${c.k}')" style="white-space:nowrap;font-size:11px">${c.l}</button>`).join('')}
         </div>
-        <div style="display:flex;gap:4px;flex-shrink:0">
-          <button class="admin-btn" onclick="adminEditStoreItem('${iid}')">✏️</button>
-          <button class="admin-btn danger" onclick="adminDeleteStoreItem('${iid}')">🗑️</button>
+        <button class="btn-create" onclick="adminAddStoreItem()" style="border-style:solid;color:var(--g1);margin-bottom:10px;width:100%">➕ Add Item</button>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:6px">${items.length} item${items.length!==1?'s':''}</div>
+        ${items.map(i => {
+          const iid = i.id||i._fsId;
+          return `<div class="card" style="display:flex;align-items:center;gap:8px;margin-bottom:6px;padding:10px;cursor:pointer" onclick="adminEditStoreItem('${iid}')">
+            <span style="font-size:22px;flex-shrink:0">${i.icon||'📦'}</span>
+            <div style="flex:1;min-width:0">
+              <div style="font-weight:700;font-size:12px">${i.name}${i.featured?'<span style="font-size:9px;background:var(--gold);color:#000;padding:1px 5px;border-radius:10px;margin-left:5px">⭐</span>':''}</div>
+              <div style="font-size:10px;color:var(--dim)">${i.cat||'cosmetics'} · ${i.price} ${_AC()}${i.badgeType?` · <span style="color:var(--gold)">${i.badgeType}</span>`:''}</div>
+            </div>
+            <button class="admin-btn danger" style="padding:4px 8px;font-size:11px" onclick="event.stopPropagation();adminDeleteStoreItem('${iid}')">🗑️</button>
+          </div>`;
+        }).join('')||`<div class="empty-state" style="padding:20px"><p style="font-size:13px">No items</p></div>`}
+      </div>
+
+      <!-- RIGHT: Add/Edit Form -->
+      <div>
+        <div class="settings-section" id="store-form-panel">
+          <div class="settings-section-title" id="sf-form-title">➕ New Store Item</div>
+          <div class="form-group"><label class="form-label">Item Name *</label>
+            <input class="form-input" id="sf-name" placeholder="e.g. 1000 VP Pack">
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="form-group"><label class="form-label">Category</label>
+              <select class="form-input" id="sf-cat" onchange="adminStoreFormCatChange()">
+                <option value="topup">🎮 Top-up</option>
+                <option value="bundles">📦 Bundles</option>
+                <option value="cosmetics">🎨 Cosmetics</option>
+                <option value="badges">🎖️ Badges</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Game (optional)</label>
+              <select class="form-input" id="sf-game">
+                <option value="">— Any —</option>
+                ${_getGames().map(g=>`<option value="${g.id}">${g.icon||'🎮'} ${g.name}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Icon / Emoji</label>
+              <input class="form-input" id="sf-icon" value="📦" maxlength="4">
+            </div>
+            <div class="form-group"><label class="form-label">Price (${_AC()}) *</label>
+              <input class="form-input" type="number" id="sf-price" value="0" min="0">
+            </div>
+          </div>
+          <div class="form-group"><label class="form-label">Description</label>
+            <input class="form-input" id="sf-desc" placeholder="Short selling line">
+          </div>
+          <div class="form-group" id="sf-topup-wrap"><label class="form-label">Amount / Value</label>
+            <input class="form-input" id="sf-amount" placeholder="e.g. 1000 VP or Exclusive Skin Bundle">
+          </div>
+          <div class="form-group"><label class="form-label">Bonus Label</label>
+            <input class="form-input" id="sf-bonus" placeholder="e.g. +100 VP Bonus">
+          </div>
+          <div class="form-group"><label class="form-label">Instructions for Buyer</label>
+            <textarea class="form-input" id="sf-instr" rows="2" style="resize:vertical" placeholder="e.g. Enter your Riot ID after purchase"></textarea>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+            <div class="form-group"><label class="form-label">Badge / Label</label>
+              <select class="form-input" id="sf-badge">
+                <option value="">None</option>
+                <option value="HOT">🔥 HOT</option>
+                <option value="NEW">✨ NEW</option>
+                <option value="BEST VALUE">⭐ BEST VALUE</option>
+                <option value="SALE">💥 SALE</option>
+                <option value="LIMITED">⏳ LIMITED</option>
+              </select>
+            </div>
+            <div class="form-group"><label class="form-label">Feature on Store?</label>
+              <select class="form-input" id="sf-featured">
+                <option value="no">No</option>
+                <option value="yes">⭐ Yes — Show at top</option>
+              </select>
+            </div>
+          </div>
+          <input type="hidden" id="sf-edit-id">
+          <div style="display:flex;gap:8px;margin-top:4px">
+            <button class="btn-primary" id="btn-sf" onclick="adminSaveStoreItem()">💾 Save Item</button>
+            <button class="btn-details" onclick="adminResetStoreForm()">✕ Clear</button>
+          </div>
         </div>
-      </div>`;
-    }).join('')||'<div class="empty-state" style="padding:24px"><p>No items in this category</p></div>'}
-    <div id="store-item-form" style="display:none"></div>
+
+        <div style="margin-top:12px">
+          <button class="btn-create" onclick="setAdminTab('games',document.querySelector('.admin-tab:nth-child(4)'))" style="border-style:solid;color:var(--gold);width:100%">🎮 Manage Game Top-up Packages →</button>
+        </div>
+      </div>
+    </div>
   `;
 }
 
@@ -3454,60 +3597,50 @@ function adminFilterStoreCat(btn, cat) {
 
 function adminAddStoreItem() {
   _storeEditId = null;
-  _showStoreForm(null);
+  // Reset form
+  const fields = {
+    'sf-name':'', 'sf-desc':'', 'sf-icon':'📦', 'sf-price':'0',
+    'sf-amount':'', 'sf-bonus':'', 'sf-instr':'', 'sf-edit-id':''
+  };
+  Object.entries(fields).forEach(([id,val])=>{ const el=document.getElementById(id); if(el) el.value=val; });
+  const ft = document.getElementById('sf-form-title'); if(ft) ft.textContent='➕ New Store Item';
+  const btn = document.getElementById('btn-sf'); if(btn) btn.innerHTML='💾 Save Item';
+  const cat = document.getElementById('sf-cat'); if(cat) cat.value='topup';
+  const feat = document.getElementById('sf-featured'); if(feat) feat.value='no';
+  const badge = document.getElementById('sf-badge'); if(badge) badge.value='';
+  document.getElementById('sf-name')?.focus();
 }
+
 function adminEditStoreItem(iid) {
   _storeEditId = iid;
   const item = DB.storeItems.find(i=>(i.id||i._fsId)===iid);
-  _showStoreForm(item);
-}
-function _showStoreForm(item) {
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">${item?'✏️ Edit Item':'➕ New Store Item'}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group" style="grid-column:span 2"><label class="form-label">Name *</label><input class="form-input" id="sf-name" value="${item?.name||''}"></div>
-      <div class="form-group"><label class="form-label">Category</label>
-        <select class="form-input" id="sf-cat" onchange="adminStoreFormCatChange()">
-          <option value="cosmetics" ${item?.cat==='cosmetics'?'selected':''}>Cosmetics</option>
-          <option value="bundles"   ${item?.cat==='bundles'?'selected':''}>Bundles</option>
-          <option value="topup"     ${item?.cat==='topup'?'selected':''}>Top-up</option>
-          <option value="badges"    ${item?.cat==='badges'?'selected':''}>Badges</option>
-        </select>
-      </div>
-      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="sf-icon" value="${item?.icon||'📦'}" maxlength="4"></div>
-      <div class="form-group"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="sf-price" value="${item?.price||0}" min="0"></div>
-      <div class="form-group"><label class="form-label">Badge</label>
-        <select class="form-input" id="sf-badge">
-          <option value="" ${!item?.badgeType?'selected':''}>None</option>
-          <option value="HOT" ${item?.badgeType==='HOT'?'selected':''}>🔥 HOT</option>
-          <option value="BEST VALUE" ${item?.badgeType==='BEST VALUE'?'selected':''}>⭐ BEST VALUE</option>
-        </select>
-      </div>
-      <div class="form-group" style="grid-column:span 2"><label class="form-label">Description</label><input class="form-input" id="sf-desc" value="${item?.desc||''}"></div>
-      <div class="form-group" style="grid-column:span 2" id="sf-instr-wrap"><label class="form-label">Instructions</label><textarea class="form-input" id="sf-instr" rows="2" style="resize:vertical">${item?.instructions||''}</textarea></div>
-      <div class="form-group" style="grid-column:span 2" id="sf-topup-wrap" style="display:none">
-        <label class="form-label">Amount (for top-up)</label>
-        <input class="form-input" type="number" id="sf-amount" value="${item?.amount||0}">
-      </div>
-      <div class="form-group" style="grid-column:span 2" id="sf-bonus-wrap">
-        <label class="form-label">Bonus Text</label><input class="form-input" id="sf-bonus" value="${item?.bonus||''}">
-      </div>
-    </div>
-    <div style="display:flex;gap:8px">
-      <button class="btn-primary" id="btn-sf" onclick="adminSaveStoreItem()">💾 Save Item</button>
-      <button class="btn-details" onclick="adminResetStoreForm()">↺ Reset</button>
-    </div>
-  `);
+  if (!item) return;
+  const set = (id,val) => { const el=document.getElementById(id); if(el) el.value=val||''; };
+  set('sf-name',   item.name);
+  set('sf-desc',   item.desc);
+  set('sf-icon',   item.icon||'📦');
+  set('sf-price',  item.price||0);
+  set('sf-amount', item.amount||item.amountStr||'');
+  set('sf-bonus',  item.bonus||'');
+  set('sf-instr',  item.instructions||'');
+  set('sf-edit-id',iid);
+  const cat  = document.getElementById('sf-cat');    if(cat)  cat.value  = item.cat||'cosmetics';
+  const game = document.getElementById('sf-game');   if(game) game.value = item.game||'';
+  const bdg  = document.getElementById('sf-badge');  if(bdg)  bdg.value  = item.badgeType||'';
+  const feat = document.getElementById('sf-featured'); if(feat) feat.value = item.featured?'yes':'no';
+  const ft   = document.getElementById('sf-form-title'); if(ft) ft.textContent='✏️ Edit: '+item.name;
+  const btn  = document.getElementById('btn-sf');    if(btn)  btn.innerHTML='💾 Update Item';
+  document.getElementById('sf-name')?.scrollIntoView({behavior:'smooth', block:'nearest'});
 }
 
 function adminStoreFormCatChange() {
-  const cat = _v('sf-cat');
-  const tw = document.getElementById('sf-topup-wrap');
-  if (tw) tw.style.display = cat==='topup' ? 'block' : 'none';
+  // All fields shown for all categories in new layout
 }
 
 function adminResetStoreForm() {
-  _storeEditId = null; _showStoreForm(null);
+  _storeEditId = null;
+  adminAddStoreItem();
+  toast('Form cleared','info');
 }
 
 async function adminSaveStoreItem() {
@@ -3515,31 +3648,50 @@ async function adminSaveStoreItem() {
   const price = Number(_v('sf-price'));
   if (!name) { toast('Enter item name','error'); return; }
   _btn('btn-sf', true);
-  const id   = _storeEditId || 'item_'+Date.now();
-  const item = {
-    id, name, cat:_v('sf-cat')||'cosmetics', icon:_v('sf-icon')||'📦',
-    desc:_v('sf-desc'), price, bonus:_v('sf-bonus'),
-    instructions:_v('sf-instr'), badgeType:_v('sf-badge'),
-    amount:Number(_v('sf-amount'))||0,
-    featured:false, createdAt:new Date().toISOString()
+  const editId = _v('sf-edit-id') || _storeEditId;
+  const id     = editId || 'item_'+Date.now();
+  const item   = {
+    id, name, cat:_v('sf-cat')||'cosmetics',
+    game: _v('sf-game')||'',
+    icon: _v('sf-icon')||'📦',
+    desc: _v('sf-desc'),
+    price,
+    bonus: _v('sf-bonus'),
+    instructions: _v('sf-instr'),
+    badgeType: _v('sf-badge'),
+    amountStr: _v('sf-amount'),
+    amount: Number(_v('sf-amount'))||0,
+    featured: _v('sf-featured')==='yes',
+    createdAt: new Date().toISOString()
   };
-  if (_storeEditId) {
-    const idx = DB.storeItems.findIndex(i=>(i.id||i._fsId)===_storeEditId);
+  if (editId) {
+    const idx = DB.storeItems.findIndex(i=>(i.id||i._fsId)===editId);
     if (idx>=0) DB.storeItems[idx] = item;
+    else DB.storeItems.push(item);
   } else {
     DB.storeItems.push(item);
   }
   const ok = await fsSet('storeItems', id, item);
-  if (ok) { toast(`Item ${_storeEditId?'updated':'added'}! ✅`,'success'); _cacheDB(); closeModal(); renderAdminStore(); }
-  else    { toast('Save failed','error'); _btn('btn-sf',false); }
+  if (ok) {
+    toast(`Item ${editId?'updated':'added'}! ✅`,'success');
+    _cacheDB();
+    // Refresh item list, keep form open for next item
+    _storeEditId = null;
+    adminAddStoreItem();
+    renderAdminStore();
+    // Re-open form panel (renderAdminStore re-renders the whole thing)
+  } else {
+    toast('Save failed','error');
+    _btn('btn-sf', false);
+  }
 }
 
 async function adminDeleteStoreItem(iid) {
-  if (!confirm('Delete this store item?')) return;
   DB.storeItems = DB.storeItems.filter(i=>(i.id||i._fsId)!==iid);
   await fsDelete('storeItems', iid);
-  toast('Item deleted','success'); _cacheDB(); renderAdminStore();
+  toast('Item deleted','info'); _cacheDB(); renderAdminStore();
 }
+
 
 // ================================================================
 // ADMIN — TOP-UP PACKAGE MANAGEMENT
@@ -3840,16 +3992,20 @@ async function rejectTx(txid) {
 function renderAdminNotifications() {
   const el = document.getElementById('admin-content');
   const notifTypes = [
-    { val:'system', label:'🔧 System' }, { val:'promo',  label:'🎁 Promo' },
-    { val:'admin',  label:'📣 Admin'  }, { val:'warning',label:'⚠️ Warning' }
+    { val:'system',     label:'🔧 System'     },
+    { val:'tournament', label:'🏆 Tournament'  },
+    { val:'admin',      label:'📣 Admin'       },
+    { val:'promo',      label:'🎁 Promo'       },
+    { val:'warning',    label:'⚠️ Warning'     },
   ];
+  const recent = [...DB.notifications].sort((a,b)=>new Date(b.date)-new Date(a.date));
   el.innerHTML = `
     <div class="card" style="margin-bottom:14px">
       <div style="font-size:14px;font-weight:700;margin-bottom:12px">📢 Send Notification</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div class="form-group"><label class="form-label">Target</label>
+        <div class="form-group"><label class="form-label">Send To</label>
           <select class="form-input" id="notif-target" onchange="toggleNotifTarget()">
-            <option value="all">📣 All Players</option>
+            <option value="all">🌐 All Players</option>
             <option value="specific">👤 Specific Player</option>
           </select>
         </div>
@@ -3861,35 +4017,61 @@ function renderAdminNotifications() {
       </div>
       <div id="notif-target-uid" style="display:none" class="form-group">
         <label class="form-label">Player UID or Name</label>
-        <input class="form-input" id="notif-uid" placeholder="Enter exact UID or player name">
-      </div>
-      <div class="form-group"><label class="form-label">Title *</label><input class="form-input" id="notif-title" placeholder="Notification title"></div>
-      <div class="form-group"><label class="form-label">Message *</label><textarea class="form-input" id="notif-body" rows="3" style="resize:vertical" placeholder="Your message..."></textarea></div>
-      <button class="btn-primary" id="btn-notif" onclick="adminSendNotif()">📢 Send</button>
-    </div>
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-      <div style="font-size:13px;font-weight:700">Sent Notifications (${DB.notifications.length})</div>
-    </div>
-    ${DB.notifications.sort((a,b)=>new Date(b.date)-new Date(a.date)).map(n => `
-      <div class="notif-item">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-          <div style="flex:1">
-            <div class="notif-title">${n.title||'—'}</div>
-            <div class="notif-body">${n.body||''}</div>
-            <div class="notif-date" style="margin-top:6px">${n.date?n.date.split('T')[0]:'—'} · Read by ${(n.readBy||[]).length} player(s)${n.targetUid?' · DM to 1 player':''}</div>
-          </div>
-          <button class="admin-btn danger" style="flex-shrink:0" onclick="adminDeleteNotif('${n.id||n._fsId}')">🗑️</button>
+        <div style="display:flex;gap:8px">
+          <input class="form-input" id="notif-uid" placeholder="Enter UID or name...">
+          <button class="admin-btn" onclick="previewNotifPlayer()">Find</button>
         </div>
-      </div>`
-    ).join('')||'<div class="empty-state" style="padding:24px"><p>No notifications sent yet</p></div>'}
+        <div id="notif-player-preview" style="margin-top:6px"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Title *</label>
+        <input class="form-input" id="notif-title" placeholder="Short headline...">
+      </div>
+      <div class="form-group"><label class="form-label">Message *</label>
+        <textarea class="form-input" id="notif-body" rows="3" style="resize:vertical" placeholder="Your message..."></textarea>
+      </div>
+      <button class="btn-primary" id="btn-notif" onclick="adminSendNotif()">📤 Send Notification</button>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div style="font-size:13px;font-weight:700">Sent Notifications (${recent.length})</div>
+      ${recent.length ? `<button class="admin-btn danger" onclick="adminDeleteAllNotifs()">🗑️ Delete All</button>` : ''}
+    </div>
+    ${recent.map(n => {
+      const nid = n.id||n._fsId;
+      return `
+      <div class="card" style="margin-bottom:8px;padding:12px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:700;font-size:13px">${n.title||'—'}</div>
+            <div style="font-size:12px;color:var(--dim);margin-top:2px;line-height:1.5">${n.body||''}</div>
+            <div style="font-size:10px;color:var(--dim2);margin-top:5px;display:flex;gap:10px;flex-wrap:wrap">
+              <span>${n.date?n.date.split('T')[0]:'—'}</span>
+              <span>Read by ${(n.readBy||[]).length} player(s)</span>
+              ${n.targetUid?'<span style="color:var(--blue)">DM · 1 player</span>':'<span style="color:var(--g1)">Broadcast · All</span>'}
+            </div>
+          </div>
+          <button class="admin-btn danger" style="flex-shrink:0;padding:5px 8px" onclick="adminDeleteNotif('${nid}')">🗑️</button>
+        </div>
+      </div>`;
+    }).join('')||'<div class="empty-state" style="padding:24px"><p>No notifications sent yet</p></div>'}
   `;
 }
 
-function toggleNotifTarget() {
-  const v = _v('notif-target');
-  const el = document.getElementById('notif-target-uid');
-  if (el) el.style.display = v==='specific' ? 'block' : 'none';
+function previewNotifPlayer() {
+  const q   = document.getElementById('notif-uid')?.value.trim().toLowerCase();
+  const res = document.getElementById('notif-player-preview');
+  if (!q || !res) return;
+  const p = DB.players.find(pp=>pp.uid?.toLowerCase()===q||pp.name?.toLowerCase().includes(q));
+  if (!p) { res.innerHTML='<div style="font-size:11px;color:var(--red)">No player found</div>'; return; }
+  res.innerHTML = `<div style="background:var(--panel2);border:1px solid var(--border2);border-radius:8px;padding:8px;display:flex;align-items:center;gap:8px">
+    <div style="width:28px;height:28px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px;overflow:hidden">${_avatarInner(p)}</div>
+    <div><div style="font-size:12px;font-weight:700">${p.name}</div><div style="font-size:10px;color:var(--dim)">${p.uid||''}</div></div>
+    <span style="margin-left:auto;font-size:10px;background:rgba(74,222,128,.1);color:var(--g1);padding:2px 7px;border-radius:10px">Found ✓</span>
+  </div>`;
+  // Fill uid so send works
+  document.getElementById('notif-uid').value = p.uid || p.name;
 }
+
 
 async function adminSendNotif() {
   const title  = _v('notif-title').trim();
@@ -3919,6 +4101,19 @@ async function adminSendNotif() {
     updateNotifDot();
   }
   _cacheDB(); renderAdminNotifications();
+}
+
+function toggleNotifTarget() {
+  const v  = _v('notif-target');
+  const el = document.getElementById('notif-target-uid');
+  if (el) el.style.display = v==='specific' ? 'block' : 'none';
+}
+
+async function adminDeleteAllNotifs() {
+  if (!confirm(`Delete all ${DB.notifications.length} notifications?`)) return;
+  for (const n of DB.notifications) await fsDelete('notifications', n.id||n._fsId);
+  DB.notifications=[];
+  toast('All notifications deleted','info'); _cacheDB(); renderAdminNotifications();
 }
 
 async function adminDeleteNotif(nid) {
@@ -4079,161 +4274,780 @@ async function adminDeletePkgInline(gid, idx) {
 // ================================================================
 // ADMIN — SETTINGS (payment methods, platform config)
 // ================================================================
-function renderAdminSettings() {
+// ================================================================
+// ADMIN — BADGES TAB (full badge creator + assignment)
+// ================================================================
+function renderAdminBadges() {
   const el = document.getElementById('admin-content');
-  const methods = DB.paymentMethods || [];
+  const RARITIES = [
+    {key:'common',   label:'⚪ Common',    color:'var(--silver)'},
+    {key:'rare',     label:'🔵 Rare',      color:'var(--blue)'},
+    {key:'epic',     label:'🟣 Epic',      color:'var(--purple)'},
+    {key:'legendary',label:'🟡 Legendary', color:'var(--gold)'},
+  ];
+
   el.innerHTML = `
-    <!-- PLATFORM STATS SUMMARY -->
-    <div class="card" style="margin-bottom:14px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:12px">📊 Platform Stats</div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px">
-        ${[
-          ['👥','Total Players',       DB.players.length,                                     'var(--g1)'],
-          ['🚫','Banned',              DB.players.filter(p=>p.banned).length,                 'var(--red)'],
-          ['🏆','Tournaments',         DB.tournaments.length,                                  'var(--g1)'],
-          ['🔓','Open Tournaments',    DB.tournaments.filter(t=>t.status==='open').length,     'var(--gold)'],
-          ['🛒','Store Items',         DB.storeItems.length,                                   'var(--g1)'],
-          ['🎮','Games',               _getGames().length,                                     'var(--g1)'],
-          ['💰','Transactions',        DB.transactions.length,                                  'var(--dim)'],
-          ['⏳','Pending Tx',          DB.transactions.filter(t=>t.status==='pending').length, 'var(--red)'],
-          ['💎','Total AC Issued',     DB.players.reduce((s,p)=>(s+(p.balance||0)),0).toLocaleString()+' AC', 'var(--gold)'],
-          ['🔔','Notifications',       DB.notifications.length,                                'var(--dim)'],
-        ].map(([icon,label,val,color])=>`
-          <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:8px">
-            <span>${icon}</span>
-            <div><div style="font-size:15px;font-weight:800;color:${color}">${val}</div><div style="font-size:10px;color:var(--dim)">${label}</div></div>
-          </div>`).join('')}
-      </div>
-    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
 
-    <!-- PAYMENT METHODS -->
-    <div class="card" style="margin-bottom:14px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-        <div style="font-size:13px;font-weight:700">💳 Payment Methods</div>
-        <button class="admin-btn success" onclick="adminAddPayEntry()">➕ Add Method</button>
-      </div>
-      <div style="font-size:11px;color:var(--dim);margin-bottom:12px">These appear on the Deposit screen so players know where to send payment.</div>
-      <div id="pay-methods-list">
-        ${methods.map((m,i) => `
-          <div style="background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px">
-            <span style="font-size:22px">${m.icon||'💳'}</span>
-            <div style="flex:1;min-width:0">
-              <div style="font-weight:700;font-size:13px">${m.name}</div>
-              <div style="font-size:12px;font-family:monospace;color:var(--g1)">${m.number}</div>
-              ${m.note ? `<div style="font-size:11px;color:var(--dim)">${m.note}</div>` : ''}
+      <!-- LEFT: Create / Edit -->
+      <div>
+        <div class="settings-section">
+          <div class="settings-section-title">✨ Create Badge</div>
+          <div class="form-group"><label class="form-label">Badge Name *</label>
+            <input class="form-input" id="bd-name" placeholder="e.g. Champion, Season 1 Winner">
+          </div>
+          <div class="form-group"><label class="form-label">Description</label>
+            <input class="form-input" id="bd-desc" placeholder="Short flavor text">
+          </div>
+          <div class="form-group"><label class="form-label">Emoji Icon</label>
+            <input class="form-input" id="bd-emoji" placeholder="🏆" maxlength="4" value="🏅" oninput="updateBadgePreview()">
+          </div>
+          <div class="form-group"><label class="form-label">Or Upload Image / GIF</label>
+            <div class="upload-zone" onclick="document.getElementById('bd-img-file').click()" style="padding:14px">
+              <input type="file" id="bd-img-file" accept="image/*,.gif" style="display:none" onchange="handleBadgeImg(this)">
+              <span id="bd-img-preview" style="font-size:24px">🖼️</span>
+              <input type="hidden" id="bd-img-data">
             </div>
-            <div style="display:flex;gap:4px;flex-shrink:0">
-              <button class="admin-btn" onclick="adminEditPayEntry(${i})">✏️</button>
-              <button class="admin-btn danger" onclick="adminDeletePayEntry(${i})">🗑️</button>
+          </div>
+          <div class="form-group"><label class="form-label">Or Image URL</label>
+            <input class="form-input" id="bd-img-url" placeholder="https://..." oninput="updateBadgePreview()">
+          </div>
+          <div class="form-group"><label class="form-label">Rarity</label>
+            <select class="form-input" id="bd-rarity" onchange="updateBadgePreview()">
+              ${RARITIES.map(r=>`<option value="${r.key}">${r.label}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group"><label class="form-label">Background Color</label>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="color-swatch"><input type="color" id="bd-bg" value="#111a12" oninput="updateBadgePreview()"></div>
+              <span style="font-size:12px;color:var(--dim)">Badge background</span>
             </div>
-          </div>`).join('') || '<div style="font-size:12px;color:var(--dim);padding:8px 0">No payment methods added yet. Players won\'t see deposit instructions.</div>'}
+          </div>
+
+          <!-- Live Preview -->
+          <div id="badge-preview-wrap" style="background:var(--panel2);border:1px solid var(--border2);border-radius:var(--radius);padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:10px">
+            <div id="badge-preview-icon" class="badge-icon-display badge-rarity-common" style="font-size:24px">🏅</div>
+            <div>
+              <div id="badge-preview-name" style="font-weight:700;font-size:13px">Badge Name</div>
+              <div id="badge-preview-rarity" style="font-size:11px;color:var(--silver)">⚪ Common</div>
+              <div id="badge-preview-desc" style="font-size:11px;color:var(--dim)">Description</div>
+            </div>
+          </div>
+
+          <input type="hidden" id="bd-edit-id">
+          <div style="display:flex;gap:8px">
+            <button class="btn-primary" id="btn-bd" onclick="saveAdminBadge()">✨ Create Badge</button>
+            <button class="btn-details" onclick="clearBadgeForm()">✕ Clear</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Badge list + assign -->
+      <div>
+        <div class="settings-section">
+          <div class="settings-section-title">🎖️ All Badges (${DB.badges.length})</div>
+          ${DB.badges.map(b => {
+            const bid = b.id||b._fsId;
+            const rColor = {common:'var(--silver)',rare:'var(--blue)',epic:'var(--purple)',legendary:'var(--gold)'}[b.rarity]||'var(--dim)';
+            return `<div class="badge-card">
+              <div class="badge-icon-display badge-rarity-${b.rarity||'common'}" style="background:${b.bgColor||'var(--panel)'}">
+                ${b.imgData||b.imgUrl ? `<img src="${b.imgData||b.imgUrl}" style="width:100%;height:100%;object-fit:cover">` : (b.emoji||'🏅')}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-weight:700;font-size:13px">${b.name}</div>
+                <div style="font-size:11px;color:${rColor};text-transform:capitalize">${b.rarity||'common'}</div>
+                ${b.desc?`<div style="font-size:11px;color:var(--dim)">${b.desc}</div>`:''}
+              </div>
+              <div style="display:flex;gap:4px;flex-shrink:0">
+                <button class="admin-btn" onclick="editAdminBadge('${bid}')">✏️</button>
+                <button class="admin-btn danger" onclick="deleteAdminBadge('${bid}')">🗑️</button>
+              </div>
+            </div>`;
+          }).join('')||'<div style="font-size:12px;color:var(--dim);padding:12px 0">No badges yet. Create your first badge!</div>'}
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title">👤 Assign Badge to Player</div>
+          <div style="display:flex;gap:8px;margin-bottom:12px">
+            <input class="form-input" id="badge-search-player" placeholder="Player name or UID..." style="flex:1">
+            <button class="admin-btn success" onclick="searchPlayerForBadge()">Find</button>
+          </div>
+          <div id="badge-assign-result"></div>
+        </div>
       </div>
     </div>
+  `;
+  updateBadgePreview();
+}
 
-    <!-- PLATFORM CONFIG -->
-    <div class="card" style="margin-bottom:14px">
-      <div style="font-size:13px;font-weight:700;margin-bottom:12px">⚙️ Platform Config</div>
-      ${[
-        ['Min Deposit (AC)', 'cfg-min-dep',    DB.config?.minDeposit||10,    'number'],
-        ['Min Withdraw (AC)','cfg-min-wd',     DB.config?.minWithdraw||10,   'number'],
-        ['Name Change Days', 'cfg-name-days',  DB.config?.nameDays||30,      'number'],
-        ['Platform Name',    'cfg-plat-name',  DB.config?.platformName||'Fair Play', 'text'],
-      ].map(([label,id,val,type])=>`
-        <div class="form-group" style="margin-bottom:10px">
-          <label class="form-label">${label}</label>
-          <input class="form-input" type="${type}" id="${id}" value="${val}">
-        </div>`).join('')}
-      <button class="btn-primary" id="btn-cfg" onclick="saveAdminConfig()">💾 Save Config</button>
+function updateBadgePreview() {
+  const name   = _v('bd-name')||'Badge Name';
+  const desc   = _v('bd-desc')||'Description';
+  const emoji  = _v('bd-emoji')||'🏅';
+  const rarity = _v('bd-rarity')||'common';
+  const imgData= document.getElementById('bd-img-data')?.value;
+  const imgUrl = _v('bd-img-url');
+  const bg     = document.getElementById('bd-bg')?.value||'#111a12';
+  const rarityInfo = {common:{label:'⚪ Common',c:'var(--silver)'},rare:{label:'🔵 Rare',c:'var(--blue)'},epic:{label:'🟣 Epic',c:'var(--purple)'},legendary:{label:'🟡 Legendary',c:'var(--gold)'}};
+  const ri = rarityInfo[rarity]||rarityInfo.common;
+  const icon = document.getElementById('badge-preview-icon');
+  if (icon) {
+    icon.className = `badge-icon-display badge-rarity-${rarity}`;
+    icon.style.background = bg;
+    icon.innerHTML = (imgData||imgUrl) ? `<img src="${imgData||imgUrl}" style="width:100%;height:100%;object-fit:cover">` : emoji;
+  }
+  const n = document.getElementById('badge-preview-name'); if(n) n.textContent = name;
+  const r = document.getElementById('badge-preview-rarity'); if(r){ r.textContent=ri.label; r.style.color=ri.c; }
+  const d = document.getElementById('badge-preview-desc'); if(d) d.textContent = desc;
+}
+
+function handleBadgeImg(input) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 2*1024*1024) { toast('Image too large (max 2MB)','error'); return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dat = document.getElementById('bd-img-data');
+    const prev = document.getElementById('bd-img-preview');
+    if (dat) dat.value = e.target.result;
+    if (prev) prev.innerHTML = `<img src="${e.target.result}" style="max-height:40px;border-radius:6px">`;
+    updateBadgePreview();
+  };
+  reader.readAsDataURL(file);
+}
+
+async function saveAdminBadge() {
+  const name = _v('bd-name').trim();
+  if (!name) { toast('Enter badge name','error'); return; }
+  _btn('btn-bd', true);
+  const editId = _v('bd-edit-id');
+  const id     = editId || 'badge_'+Date.now();
+  const badge  = {
+    id, name, desc:_v('bd-desc').trim(),
+    emoji:_v('bd-emoji')||'🏅',
+    imgData:document.getElementById('bd-img-data')?.value||'',
+    imgUrl:_v('bd-img-url').trim(),
+    rarity:_v('bd-rarity')||'common',
+    bgColor:document.getElementById('bd-bg')?.value||'#111a12',
+    createdAt:new Date().toISOString()
+  };
+  if (editId) {
+    const idx = DB.badges.findIndex(b=>(b.id||b._fsId)===editId);
+    if (idx>=0) DB.badges[idx]=badge;
+  } else {
+    DB.badges.push(badge);
+  }
+  await fsSet('badges', id, badge);
+  toast(editId?'Badge updated ✅':'Badge created! 🎖️','success');
+  _cacheDB(); clearBadgeForm(); renderAdminBadges();
+}
+
+function editAdminBadge(bid) {
+  const b = DB.badges.find(b=>(b.id||b._fsId)===bid); if(!b) return;
+  document.getElementById('bd-name').value  = b.name||'';
+  document.getElementById('bd-desc').value  = b.desc||'';
+  document.getElementById('bd-emoji').value = b.emoji||'🏅';
+  document.getElementById('bd-img-url').value = b.imgUrl||'';
+  document.getElementById('bd-edit-id').value = bid;
+  if (b.imgData) {
+    const dat=document.getElementById('bd-img-data'); if(dat) dat.value=b.imgData;
+    const prev=document.getElementById('bd-img-preview'); if(prev) prev.innerHTML=`<img src="${b.imgData}" style="max-height:40px;border-radius:6px">`;
+  }
+  const rarSel = document.getElementById('bd-rarity'); if(rarSel) rarSel.value=b.rarity||'common';
+  const bgInp  = document.getElementById('bd-bg');     if(bgInp)  bgInp.value=b.bgColor||'#111a12';
+  const btn = document.getElementById('btn-bd'); if(btn) btn.innerHTML='💾 Save Badge';
+  updateBadgePreview();
+  document.getElementById('bd-name').scrollIntoView({behavior:'smooth'});
+}
+
+function clearBadgeForm() {
+  ['bd-name','bd-desc','bd-emoji','bd-img-url','bd-edit-id'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.value = id==='bd-emoji'?'🏅':'';
+  });
+  const dat=document.getElementById('bd-img-data'); if(dat) dat.value='';
+  const prev=document.getElementById('bd-img-preview'); if(prev) prev.innerHTML='🖼️';
+  const btn=document.getElementById('btn-bd'); if(btn) btn.innerHTML='✨ Create Badge';
+  updateBadgePreview();
+}
+
+async function deleteAdminBadge(bid) {
+  if (!confirm('Delete this badge permanently?')) return;
+  DB.badges = DB.badges.filter(b=>(b.id||b._fsId)!==bid);
+  await fsDelete('badges', bid);
+  toast('Badge deleted','info'); _cacheDB(); renderAdminBadges();
+}
+
+function searchPlayerForBadge() {
+  const q = document.getElementById('badge-search-player')?.value.trim().toLowerCase();
+  if (!q) { toast('Enter player name or UID','error'); return; }
+  const p = DB.players.find(pp =>
+    pp.name?.toLowerCase().includes(q) || pp.uid?.toLowerCase().includes(q)
+  );
+  const res = document.getElementById('badge-assign-result');
+  if (!res) return;
+  if (!p) { res.innerHTML = '<div style="font-size:12px;color:var(--dim)">No player found.</div>'; return; }
+  const pid = _pid(p);
+  res.innerHTML = `
+    <div style="background:var(--panel2);border:1px solid var(--border2);border-radius:var(--radius);padding:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <div style="width:36px;height:36px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0">${_avatarInner(p)}</div>
+      <div><div style="font-weight:700;font-size:13px">${p.name}</div><div style="font-size:11px;color:var(--dim)">${p.uid||''}</div></div>
     </div>
-
-    <!-- DANGER ZONE -->
-    <div class="card" style="border-color:rgba(248,113,113,.2);margin-bottom:14px">
-      <div style="font-size:13px;font-weight:700;color:var(--red);margin-bottom:12px">🚨 Danger Zone</div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap">
-        <button class="admin-btn danger" onclick="adminPurgeTransactions()">🗑️ Purge Old Transactions</button>
-        <button class="admin-btn danger" onclick="adminResetAllNotifs()">🔔 Clear All Notifications</button>
-        <button class="admin-btn danger" onclick="adminForceRefresh()">🔄 Force Data Refresh</button>
-      </div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:8px;font-weight:600;letter-spacing:.8px;text-transform:uppercase">Tap badge to toggle assignment</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px">
+      ${DB.badges.map(b => {
+        const bid = b.id||b._fsId;
+        const has = (p.badges||[]).includes(bid)||(p.badges||[]).includes(b.name);
+        return `<div onclick="adminToggleBadgeAssign('${pid}','${bid}')" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;border:1px solid ${has?'var(--g1)':'var(--border)'};background:${has?'rgba(74,222,128,.1)':'var(--panel)'};cursor:pointer;transition:.15s">
+          <span style="font-size:16px">${b.imgData||b.imgUrl?`<img src="${b.imgData||b.imgUrl}" style="width:18px;height:18px;border-radius:3px;object-fit:cover">`:(b.emoji||'🏅')}</span>
+          <span style="font-size:11px;font-weight:600;color:${has?'var(--g1)':'var(--dim)'}">${b.name}</span>
+          ${has?'<span style="font-size:10px;color:var(--g1)">✓</span>':''}
+        </div>`;
+      }).join('')||'<div style="font-size:12px;color:var(--dim)">No badges created yet.</div>'}
     </div>
   `;
 }
 
-function adminAddPayEntry() {
-  _openPayEntryModal(null, null);
+async function adminToggleBadgeAssign(pid, bid) {
+  const p = _findPlayer(pid); if (!p) return;
+  p.badges = p.badges||[];
+  const idx = p.badges.indexOf(bid);
+  if (idx>=0) p.badges.splice(idx,1);
+  else p.badges.push(bid);
+  await fsSet('players', pid, p);
+  toast(idx>=0?'Badge removed':'Badge assigned ✅','success');
+  _cacheDB(); searchPlayerForBadge();
 }
-function adminEditPayEntry(idx) {
-  const m = (DB.paymentMethods||[])[idx];
-  _openPayEntryModal(m, idx);
+
+// ================================================================
+// ADMIN — GAMES TAB (full game + top-up management)
+// ================================================================
+function renderAdminGames() {
+  const el = document.getElementById('admin-content');
+  const games = _getGames();
+  el.innerHTML = `
+    <button class="btn-create" onclick="adminAddGame()" style="border-style:solid;color:var(--gold);margin-bottom:12px">➕ Add New Game</button>
+    ${games.map(g => {
+      const gid = g.id;
+      return `
+      <div class="card" style="margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="width:48px;height:48px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;border:1px solid var(--border2)">
+            ${g.logoIsImg&&g.icon ? `<img src="${g.icon}" style="width:100%;height:100%;object-fit:cover">` : (g.icon||'🎮')}
+          </div>
+          <div style="flex:1">
+            <div style="font-weight:800;font-size:15px">${g.name}</div>
+            <div style="font-size:11px;color:var(--dim)">${g.genre||'—'} · ${g.topup?.currency||'Points'} · ${(g.topup?.packages||[]).length} packages</div>
+          </div>
+          <div style="display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end">
+            <button class="admin-btn success" onclick="adminEditTopup('${gid}')">📋 Manage</button>
+            <button class="admin-btn" onclick="adminEditGame('${gid}')">✏️ Edit</button>
+            <button class="admin-btn danger" onclick="adminDeleteGameSection('${gid}')">🗑️</button>
+          </div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          ${(g.topup?.packages||[]).map((pkg,i)=>`
+            <div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:11px">
+              <span style="font-weight:700">${pkg.label||pkg.amount+' '+g.topup?.currency}</span>
+              <span style="color:var(--gold);margin-left:6px">${pkg.price} AC</span>
+              ${pkg.bonus?`<span style="color:var(--g1);margin-left:4px">${pkg.bonus}</span>`:''}
+            </div>`).join('')||'<span style="font-size:11px;color:var(--dim2)">No packages</span>'}
+        </div>
+      </div>`;
+    }).join('')||'<div class="empty-state"><p>No games yet. Add your first game!</p></div>'}
+  `;
 }
+
+// ================================================================
+// ADMIN — PAYMENT TAB (dedicated payment methods manager)
+// ================================================================
+function renderAdminPayment() {
+  const el      = document.getElementById('admin-content');
+  const methods = DB.paymentMethods||[];
+  el.innerHTML = `
+    <div style="font-size:12px;color:var(--dim);margin-bottom:14px;line-height:1.6">
+      These payment accounts are shown to players on the Wallet → Deposit screen. Players send money here and upload proof.
+    </div>
+    <button class="btn-create" onclick="adminAddPayEntry()" style="border-style:solid;color:var(--g1);margin-bottom:14px">➕ Add Payment Method</button>
+
+    ${methods.length ? methods.map((m,i) => `
+      <div style="background:var(--panel);border:1px solid var(--border2);border-radius:var(--radius);padding:14px;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:48px;height:48px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:24px;border:2px solid var(--border2);flex-shrink:0">${m.icon||'💳'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:800;font-size:14px">${m.name}</div>
+            <div style="font-size:14px;font-family:monospace;color:var(--g1);cursor:pointer" onclick="copyText('${m.number}')">${m.number} 📋</div>
+            ${m.holder?`<div style="font-size:12px;color:var(--dim)">${m.holder}</div>`:''}
+            ${m.note?`<div style="font-size:11px;color:var(--dim2);margin-top:2px">${m.note}</div>`:''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+            ${i>0?`<button class="admin-btn" style="padding:4px 8px" onclick="movePayEntry(${i},-1)">↑</button>`:''}
+            ${i<methods.length-1?`<button class="admin-btn" style="padding:4px 8px" onclick="movePayEntry(${i},1)">↓</button>`:''}
+            <button class="admin-btn" onclick="adminEditPayEntry(${i})">✏️</button>
+            <button class="admin-btn danger" onclick="adminDeletePayEntry(${i})">🗑️</button>
+          </div>
+        </div>
+        <div style="background:var(--panel2);border-radius:8px;padding:6px 10px;margin-top:10px;display:flex;align-items:center;justify-content:space-between">
+          <span style="font-size:11px;color:var(--dim)">Min deposit: ${m.min||10} AC</span>
+          <span style="font-size:11px;background:rgba(74,222,128,.1);color:var(--g1);padding:2px 8px;border-radius:20px">Active</span>
+        </div>
+      </div>`).join('')
+    : `<div class="empty-state" style="padding:32px"><div class="empty-icon">💳</div><p>No payment methods yet</p><p style="font-size:12px;color:var(--dim);margin-top:4px">Add methods so players know where to deposit</p></div>`}
+  `;
+}
+
+async function movePayEntry(idx, dir) {
+  const methods = DB.paymentMethods||[];
+  const ni = idx+dir;
+  if (ni<0||ni>=methods.length) return;
+  [methods[idx],methods[ni]]=[methods[ni],methods[idx]];
+  await fsSet('_meta','paymentMethods',{ methods });
+  _cacheDB(); renderAdminPayment();
+}
+
+function adminAddPayEntry() { _openPayEntryModal(null, null); }
+function adminEditPayEntry(idx) { _openPayEntryModal((DB.paymentMethods||[])[idx], idx); }
+
 function _openPayEntryModal(m, idx) {
-  const PAY_ICONS = ['💳','📱','🏦','💵','🔑','💸','💹','🎰'];
   openModal(`
     <div class="modal-close-row">
-      <div class="modal-title">${idx===null?'➕ Add Payment Method':'✏️ Edit Payment Method'}</div>
+      <div class="modal-title">${idx===null?'➕ Add Payment Method':'✏️ Edit Method'}</div>
       <span class="modal-close-btn" onclick="closeModal()">✕</span>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group"><label class="form-label">Method Name *</label>
-        <input class="form-input" id="pm-name" value="${m?.name||''}" placeholder="e.g. bKash, Nagad, Bank">
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Method Name * (e.g. bKash, Nagad, USDT)</label>
+        <input class="form-input" id="pm-name" value="${m?.name||''}" placeholder="bKash">
       </div>
       <div class="form-group"><label class="form-label">Icon (emoji)</label>
         <input class="form-input" id="pm-icon" value="${m?.icon||'💳'}" maxlength="4">
       </div>
-      <div class="form-group" style="grid-column:span 2"><label class="form-label">Account Number / Address *</label>
-        <input class="form-input" id="pm-number" value="${m?.number||''}" placeholder="01XXXXXXXXX">
+      <div class="form-group"><label class="form-label">Type</label>
+        <input class="form-input" id="pm-type" value="${m?.type||''}" placeholder="Personal (Send Money)">
       </div>
-      <div class="form-group"><label class="form-label">Account Holder</label>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Account Number / Address *</label>
+        <input class="form-input" id="pm-number" value="${m?.number||''}" placeholder="01712-345678">
+      </div>
+      <div class="form-group"><label class="form-label">Account Holder Name</label>
         <input class="form-input" id="pm-holder" value="${m?.holder||''}" placeholder="Your Name">
       </div>
-      <div class="form-group"><label class="form-label">Min Amount (AC)</label>
+      <div class="form-group"><label class="form-label">Min Deposit (AC)</label>
         <input class="form-input" type="number" id="pm-min" value="${m?.min||10}" min="1">
       </div>
-      <div class="form-group" style="grid-column:span 2"><label class="form-label">Instructions / Note</label>
-        <textarea class="form-input" id="pm-note" rows="2" style="resize:vertical" placeholder="e.g. Send payment and upload screenshot">${m?.note||''}</textarea>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Instructions for players</label>
+        <textarea class="form-input" id="pm-note" rows="2" style="resize:vertical">${m?.note||''}</textarea>
       </div>
     </div>
-    <button class="btn-primary" id="btn-pm" onclick="savePayEntry(${idx})">💾 Save Method</button>
+    <button class="btn-primary" id="btn-pm" onclick="savePayEntry(${idx})">💾 Save</button>
   `);
 }
 
 async function savePayEntry(idx) {
-  const name   = _v('pm-name').trim();
-  const number = _v('pm-number').trim();
+  const name=_v('pm-name').trim(), number=_v('pm-number').trim();
   if (!name||!number) { toast('Enter name and account number','error'); return; }
   _btn('btn-pm', true);
-  if (!DB.paymentMethods) DB.paymentMethods = [];
-  const entry = {
-    name, number, icon:_v('pm-icon')||'💳',
-    holder:_v('pm-holder').trim(), min:Number(_v('pm-min'))||10,
-    note:_v('pm-note').trim()
-  };
+  if (!DB.paymentMethods) DB.paymentMethods=[];
+  const entry={ name,number,icon:_v('pm-icon')||'💳',type:_v('pm-type').trim(),holder:_v('pm-holder').trim(),min:Number(_v('pm-min'))||10,note:_v('pm-note').trim() };
   if (idx===null) DB.paymentMethods.push(entry);
-  else            DB.paymentMethods[idx] = entry;
-  await fsSet('_meta','paymentMethods',{ methods: DB.paymentMethods });
-  toast(`Payment method ${idx===null?'added':'updated'} ✅`,'success');
-  _cacheDB(); closeModal(); renderAdminSettings();
+  else            DB.paymentMethods[idx]=entry;
+  await fsSet('_meta','paymentMethods',{methods:DB.paymentMethods});
+  toast(`Method ${idx===null?'added':'updated'} ✅`,'success');
+  _cacheDB(); closeModal(); renderAdminPayment();
 }
 
 async function adminDeletePayEntry(idx) {
   if (!confirm('Remove this payment method?')) return;
-  DB.paymentMethods = (DB.paymentMethods||[]).filter((_,i)=>i!==idx);
-  await fsSet('_meta','paymentMethods',{ methods: DB.paymentMethods });
-  toast('Removed','info'); _cacheDB(); renderAdminSettings();
+  DB.paymentMethods=(DB.paymentMethods||[]).filter((_,i)=>i!==idx);
+  await fsSet('_meta','paymentMethods',{methods:DB.paymentMethods});
+  toast('Removed','info'); _cacheDB(); renderAdminPayment();
 }
 
-async function saveAdminConfig() {
-  _btn('btn-cfg', true);
-  if (!DB.config) DB.config = {};
-  DB.config.minDeposit   = Number(_v('cfg-min-dep'))||10;
-  DB.config.minWithdraw  = Number(_v('cfg-min-wd'))||10;
-  DB.config.nameDays     = Number(_v('cfg-name-days'))||30;
-  DB.config.platformName = _v('cfg-plat-name').trim()||'Fair Play';
-  await fsSet('_meta','config', DB.config);
-  toast('Config saved ✅','success'); _cacheDB();
-  document.getElementById('btn-cfg').innerHTML = '✅ Saved!';
-  setTimeout(()=>{ const b=document.getElementById('btn-cfg'); if(b) b.innerHTML='💾 Save Config'; }, 1500);
+// ================================================================
+// ADMIN — SETTINGS TAB (full 8-section platform config)
+// ================================================================
+const THEME_PRESETS = {
+  forest:  { '--g1':'#4ade80','--g2':'#22c55e','--bg':'#060b07','--panel':'#0f1f11','--gold':'#fbbf24','--red':'#f87171','--dim':'rgba(240,253,244,.45)','--border':'rgba(74,222,128,.1)','--text':'#f0fdf4' },
+  ocean:   { '--g1':'#38bdf8','--g2':'#0ea5e9','--bg':'#05070b','--panel':'#0c1420','--gold':'#f59e0b','--red':'#f87171','--dim':'rgba(224,242,254,.4)','--border':'rgba(56,189,248,.12)','--text':'#e0f2fe' },
+  neon:    { '--g1':'#a78bfa','--g2':'#8b5cf6','--bg':'#07050e','--panel':'#130f20','--gold':'#fbbf24','--red':'#f87171','--dim':'rgba(237,233,254,.4)','--border':'rgba(167,139,250,.12)','--text':'#ede9fe' },
+  blood:   { '--g1':'#f87171','--g2':'#ef4444','--bg':'#0b0505','--panel':'#1c0a0a','--gold':'#fbbf24','--red':'#fca5a5','--dim':'rgba(254,226,226,.4)','--border':'rgba(248,113,113,.12)','--text':'#fee2e2' },
+  royal:   { '--g1':'#fbbf24','--g2':'#f59e0b','--bg':'#09080a','--panel':'#1a1610','--gold':'#fde68a','--red':'#f87171','--dim':'rgba(254,243,199,.4)','--border':'rgba(251,191,36,.12)','--text':'#fef3c7' },
+};
+
+function renderAdminSettings() {
+  const el  = document.getElementById('admin-content');
+  const cfg = DB.config||{};
+  const br  = cfg.branding||{};
+  const th  = cfg.theme||{};
+  const cu  = cfg.currency||{};
+  const nl  = cfg.navLabels||{};
+  const bn  = cfg.banner||{};
+  const sea = cfg.season||{};
+  const rul = cfg.rules||{};
+
+  el.innerHTML = `
+
+  <!-- §1 FIREBASE STATUS -->
+  <div class="settings-section">
+    <div class="settings-section-title">🔥 Firebase Connection</div>
+    <div style="display:flex;align-items:center;gap:10px;padding:10px;background:rgba(74,222,128,.06);border:1px solid var(--border2);border-radius:var(--radius)">
+      <span style="width:10px;height:10px;background:var(--g1);border-radius:50%;flex-shrink:0;box-shadow:0 0 8px var(--g1)"></span>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:var(--g1)">Connected</div>
+        <div style="font-size:11px;color:var(--dim)">Project: ff-booyah-eb33c · Admin: ${ADMIN_EMAIL}</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- §2 BRANDING -->
+  <div class="settings-section">
+    <div class="settings-section-title">🎨 Branding</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Platform Name</label>
+        <input class="form-input" id="br-name" value="${br.name||'FAIR PLAY'}" oninput="previewBranding()">
+      </div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Tagline</label>
+        <input class="form-input" id="br-tagline" value="${br.tagline||'Esports Arena Platform'}" oninput="previewBranding()">
+      </div>
+      <div class="form-group"><label class="form-label">Accent Letter (logo italic)</label>
+        <input class="form-input" id="br-letter" value="${br.letter||'P'}" maxlength="1" oninput="previewBranding()">
+      </div>
+      <div class="form-group"><label class="form-label">Platform Icon / Emoji</label>
+        <input class="form-input" id="br-icon" value="${br.icon||'⚔️'}" maxlength="4" oninput="previewBranding()">
+      </div>
+    </div>
+    <div style="background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px;text-align:center">
+      <div style="font-size:24px" id="br-preview-icon">${br.icon||'⚔️'}</div>
+      <div style="font-size:20px;font-weight:900;letter-spacing:2px;background:linear-gradient(135deg,var(--g1),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" id="br-preview-name">${br.name||'FAIR PLAY'}</div>
+      <div style="font-size:11px;color:var(--dim)" id="br-preview-tagline">${br.tagline||'Esports Arena Platform'}</div>
+    </div>
+    <button class="btn-primary" id="btn-br" onclick="saveBranding()">✅ Apply Branding</button>
+  </div>
+
+  <!-- §3 THEME COLORS -->
+  <div class="settings-section">
+    <div class="settings-section-title">🖌️ Theme Colors</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-bottom:14px">
+      ${Object.entries({forest:'🌿 Forest',ocean:'🌊 Ocean',neon:'⚡ Neon',blood:'🔥 Blood',royal:'👑 Royal'}).map(([k,v])=>
+        `<button class="theme-preset ${(cfg.activePreset||'forest')===k?'active':''}" onclick="applyThemePreset('${k}',this)">${v}</button>`
+      ).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--dim);margin-bottom:10px;font-weight:600;letter-spacing:.8px;text-transform:uppercase">Custom Colors</div>
+    ${[
+      ['Primary Accent (buttons, highlights)', '--g1',   th['--g1']||'#4ade80'],
+      ['Hover / Secondary',                   '--g2',   th['--g2']||'#22c55e'],
+      ['Background',                          '--bg',   th['--bg']||'#060b07'],
+      ['Cards / Panels',                      '--panel',th['--panel']||'#0f1f11'],
+      ['Gold / Awards',                       '--gold', th['--gold']||'#fbbf24'],
+      ['Danger / Red',                        '--red',  th['--red']||'#f87171'],
+    ].map(([label,key,val])=>`
+      <div class="color-row">
+        <span style="font-size:12px;color:var(--dim);flex:1">${label}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <code style="font-size:10px;color:var(--dim2)" id="clr-val-${key.slice(2)}">${val}</code>
+          <div class="color-swatch"><input type="color" value="${val}" id="clr-${key.slice(2)}" onchange="liveColorChange('${key}',this.value)"></div>
+        </div>
+      </div>`).join('')}
+    <button class="btn-primary" id="btn-theme" onclick="saveThemeColors()" style="margin-top:12px">💾 Save Theme</button>
+    <button class="btn-details" onclick="resetTheme()" style="margin-top:8px;width:100%">↩ Reset to Default</button>
+  </div>
+
+  <!-- §4 CURRENCY -->
+  <div class="settings-section">
+    <div class="settings-section-title">💰 Currency Settings</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Currency Name</label>
+        <input class="form-input" id="cu-name" value="${cu.name||'Arena Coin'}" placeholder="Arena Coin">
+      </div>
+      <div class="form-group"><label class="form-label">Currency Symbol</label>
+        <input class="form-input" id="cu-symbol" value="${cu.symbol||'AC'}" placeholder="AC" maxlength="6">
+      </div>
+      <div class="form-group"><label class="form-label">Currency Icon</label>
+        <input class="form-input" id="cu-icon" value="${cu.icon||'💰'}" placeholder="💰" maxlength="4">
+      </div>
+      <div class="form-group"><label class="form-label">Balance Color</label>
+        <div class="color-swatch"><input type="color" id="cu-color" value="${cu.color||'#fbbf24'}"></div>
+      </div>
+    </div>
+    <button class="btn-primary" id="btn-cu" onclick="saveCurrencySettings()">💾 Apply Currency</button>
+  </div>
+
+  <!-- §5 NAVIGATION LABELS -->
+  <div class="settings-section">
+    <div class="settings-section-title">🧭 Navigation Labels</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${[['Home','nav-home',nl.home||'Home'],['Arena','nav-arena',nl.arena||'Arena'],['Ranks','nav-ranks',nl.ranks||'Ranks'],['Store','nav-store',nl.store||'Store'],['Profile','nav-profile',nl.profile||'Profile']].map(([lbl,id,val])=>`
+        <div class="form-group" style="margin-bottom:6px"><label class="form-label">${lbl}</label>
+          <input class="form-input" id="${id}" value="${val}" placeholder="${lbl}">
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" id="btn-nl" onclick="saveNavLabels()">✅ Apply Labels</button>
+      <button class="btn-details" onclick="resetNavLabels()">↩ Reset</button>
+    </div>
+  </div>
+
+  <!-- §6 ANNOUNCEMENT BANNER -->
+  <div class="settings-section">
+    <div class="settings-section-title">📢 Announcement Banner</div>
+    <div class="form-group"><label class="form-label">Message</label>
+      <input class="form-input" id="bn-msg" value="${bn.message||''}" placeholder="e.g. Season 2 starts March 15! 🚀">
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Icon</label>
+        <input class="form-input" id="bn-icon" value="${bn.icon||'📣'}" maxlength="4">
+      </div>
+      <div class="form-group"><label class="form-label">Color</label>
+        <select class="form-input" id="bn-color">
+          ${['green','gold','red','blue','purple'].map(c=>`<option value="${c}" ${bn.color===c?'selected':''}>${c.charAt(0).toUpperCase()+c.slice(1)}</option>`).join('')}
+        </select>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" id="btn-bn-show" onclick="showBanner()">📤 Show Banner</button>
+      <button class="btn-details" onclick="hideBanner()">✕ Hide</button>
+    </div>
+    ${bn.visible ? `<div id="site-banner" class="show ${bn.color||''}" style="margin-top:8px;position:static;border-radius:var(--radius)">${bn.icon||'📣'} ${bn.message}</div>` : ''}
+  </div>
+
+  <!-- §7 SEASON CONTROL -->
+  <div class="settings-section">
+    <div class="settings-section-title">🏆 Season Control</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Season Name</label>
+        <input class="form-input" id="sea-name" value="${sea.name||'Season 1'}" placeholder="Season 1">
+      </div>
+      <div class="form-group"><label class="form-label">Season Number</label>
+        <input class="form-input" type="number" id="sea-num" value="${sea.number||1}" min="1">
+      </div>
+      <div class="form-group"><label class="form-label">End Date</label>
+        <input class="form-input" type="date" id="sea-end" value="${sea.endDate||''}">
+      </div>
+      <div class="form-group"><label class="form-label">Status</label>
+        <select class="form-input" id="sea-status">
+          ${['Active','Ending Soon','Off-Season'].map(s=>`<option value="${s}" ${sea.status===s?'selected':''}>${s}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group" style="grid-column:span 2"><label class="form-label">Season Rewards</label>
+        <textarea class="form-input" id="sea-rewards" rows="2" style="resize:vertical">${sea.rewards||''}</textarea>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="btn-primary" id="btn-sea" onclick="saveSeasonSettings()">💾 Save Season</button>
+      <button class="btn-details" style="color:var(--red);border-color:rgba(248,113,113,.3)" onclick="resetSeasonStats()">🔄 Reset All Stats</button>
+    </div>
+  </div>
+
+  <!-- §8 PLATFORM RULES -->
+  <div class="settings-section">
+    <div class="settings-section-title">⚙️ Platform Rules</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      ${[
+        ['Starting Balance (AC)', 'rul-start',   rul.startingBalance||1200],
+        ['Min Deposit (AC)',      'rul-min-dep',  rul.minDeposit||100],
+        ['Max Deposit (AC)',      'rul-max-dep',  rul.maxDeposit||100000],
+        ['Min Withdraw (AC)',     'rul-min-wd',   rul.minWithdraw||10],
+        ['Name Change (days)',    'rul-name-days',rul.nameDays||30],
+        ['Max Team Size',        'rul-team-max',  rul.maxTeam||10],
+        ['Max Guild Members',    'rul-guild-max', rul.maxGuild||50],
+        ['LB Min Wins',          'rul-lb-min',    rul.lbMinWins||0],
+      ].map(([lbl,id,val])=>`
+        <div class="form-group" style="margin-bottom:6px">
+          <label class="form-label">${lbl}</label>
+          <input class="form-input" type="number" id="${id}" value="${val}" min="0">
+        </div>`).join('')}
+    </div>
+    <button class="btn-primary" id="btn-rul" onclick="saveAdminRules()">💾 Save Rules</button>
+  </div>
+
+  <!-- DANGER ZONE -->
+  <div class="settings-section" style="border-color:rgba(248,113,113,.25)">
+    <div class="settings-section-title" style="color:var(--red)">🚨 Danger Zone</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <button class="admin-btn danger" onclick="adminPurgeTransactions()">🗑️ Purge Old Tx</button>
+      <button class="admin-btn danger" onclick="adminResetAllNotifs()">🔔 Clear Notifications</button>
+      <button class="admin-btn danger" onclick="adminForceRefresh()">🔄 Force Refresh</button>
+    </div>
+  </div>
+  `;
 }
 
+// Settings — Branding
+function previewBranding() {
+  const icon = _v('br-icon')||'⚔️';
+  const name = _v('br-name')||'FAIR PLAY';
+  const tag  = _v('br-tagline')||'Esports Arena Platform';
+  const prI  = document.getElementById('br-preview-icon'); if(prI) prI.textContent=icon;
+  const prN  = document.getElementById('br-preview-name'); if(prN) prN.textContent=name;
+  const prT  = document.getElementById('br-preview-tagline'); if(prT) prT.textContent=tag;
+}
+async function saveBranding() {
+  _btn('btn-br', true);
+  if (!DB.config) DB.config={};
+  DB.config.branding = {
+    name:   _v('br-name').trim()||'FAIR PLAY',
+    tagline:_v('br-tagline').trim(),
+    letter: _v('br-letter').trim()||'P',
+    icon:   _v('br-icon').trim()||'⚔️'
+  };
+  await fsSet('_meta','config',DB.config);
+  _applyConfig();
+  toast('Branding updated ✅','success'); _cacheDB();
+  setTimeout(()=>{ const b=document.getElementById('btn-br'); if(b) b.innerHTML='✅ Apply Branding'; },300);
+  document.getElementById('btn-br').innerHTML='✅ Saved!';
+  setTimeout(()=>{ const b=document.getElementById('btn-br'); if(b) { b.innerHTML='✅ Apply Branding'; b.disabled=false; } },1500);
+}
+
+// Settings — Theme
+function liveColorChange(key, value) {
+  document.documentElement.style.setProperty(key, value);
+  const valEl = document.getElementById('clr-val-'+key.slice(2));
+  if (valEl) valEl.textContent = value;
+}
+function applyThemePreset(preset, btn) {
+  const colors = THEME_PRESETS[preset]; if (!colors) return;
+  Object.entries(colors).forEach(([k,v]) => document.documentElement.style.setProperty(k, v));
+  // Update color pickers
+  Object.entries(colors).forEach(([k,v]) => {
+    const inp = document.getElementById('clr-'+k.slice(2));
+    const val = document.getElementById('clr-val-'+k.slice(2));
+    if (inp) inp.value = v;
+    if (val) val.textContent = v;
+  });
+  document.querySelectorAll('.theme-preset').forEach(b=>b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  if (!DB.config) DB.config={};
+  DB.config.activePreset = preset;
+  if (!DB.config.theme) DB.config.theme={};
+  Object.assign(DB.config.theme, colors);
+  toast(`${preset} theme applied 🎨`,'success');
+}
+async function saveThemeColors() {
+  _btn('btn-theme', true);
+  if (!DB.config) DB.config={};
+  if (!DB.config.theme) DB.config.theme={};
+  const keys=['g1','g2','bg','panel','gold','red'];
+  keys.forEach(k => {
+    const val = document.getElementById('clr-'+k)?.value;
+    if (val) DB.config.theme['--'+k] = val;
+  });
+  await fsSet('_meta','config',DB.config);
+  _applyConfig();
+  toast('Theme saved ✅','success'); _cacheDB();
+  setTimeout(()=>{ const b=document.getElementById('btn-theme'); if(b){ b.innerHTML='💾 Save Theme'; b.disabled=false; } },1500);
+}
+async function resetTheme() {
+  if (!confirm('Reset to default Forest theme?')) return;
+  const colors = THEME_PRESETS.forest;
+  Object.entries(colors).forEach(([k,v]) => document.documentElement.style.setProperty(k, v));
+  if (!DB.config) DB.config={};
+  DB.config.theme = {...colors};
+  DB.config.activePreset = 'forest';
+  await fsSet('_meta','config',DB.config);
+  toast('Theme reset to Forest 🌿','success'); _cacheDB(); renderAdminSettings();
+}
+
+// Settings — Currency
+async function saveCurrencySettings() {
+  _btn('btn-cu', true);
+  if (!DB.config) DB.config={};
+  DB.config.currency = {
+    name:   _v('cu-name')||'Arena Coin',
+    symbol: _v('cu-symbol')||'AC',
+    icon:   _v('cu-icon')||'💰',
+    color:  document.getElementById('cu-color')?.value||'#fbbf24'
+  };
+  await fsSet('_meta','config',DB.config);
+  _applyConfig();
+  toast('Currency settings saved ✅','success'); _cacheDB();
+  setTimeout(()=>{ const b=document.getElementById('btn-cu'); if(b){ b.innerHTML='💾 Apply Currency'; b.disabled=false; } },1500);
+}
+
+// Settings — Nav Labels
+async function saveNavLabels() {
+  _btn('btn-nl', true);
+  if (!DB.config) DB.config={};
+  DB.config.navLabels = {
+    home:    _v('nav-home')||'Home',
+    arena:   _v('nav-arena')||'Arena',
+    ranks:   _v('nav-ranks')||'Ranks',
+    store:   _v('nav-store')||'Store',
+    profile: _v('nav-profile')||'Profile'
+  };
+  await fsSet('_meta','config',DB.config);
+  _applyConfig();
+  toast('Nav labels updated ✅','success'); _cacheDB();
+  setTimeout(()=>{ const b=document.getElementById('btn-nl'); if(b){ b.innerHTML='✅ Apply Labels'; b.disabled=false; } },1500);
+}
+async function resetNavLabels() {
+  if (!DB.config) DB.config={};
+  DB.config.navLabels = {home:'Home',arena:'Arena',ranks:'Ranks',store:'Store',profile:'Profile'};
+  await fsSet('_meta','config',DB.config);
+  _applyConfig(); toast('Nav labels reset','info'); _cacheDB(); renderAdminSettings();
+}
+
+// Settings — Banner
+async function showBanner() {
+  _btn('btn-bn-show', true);
+  const msg   = _v('bn-msg').trim();
+  if (!msg) { toast('Enter banner message','error'); _btn('btn-bn-show',false); return; }
+  if (!DB.config) DB.config={};
+  DB.config.banner = { message:msg, icon:_v('bn-icon')||'📣', color:_v('bn-color')||'green', visible:true };
+  await fsSet('_meta','config',DB.config);
+  _applyConfig(); _cacheDB();
+  toast('Banner shown to all players 📢','success');
+  setTimeout(()=>{ const b=document.getElementById('btn-bn-show'); if(b){ b.innerHTML='📤 Show Banner'; b.disabled=false; } },1000);
+}
+async function hideBanner() {
+  if (!DB.config) DB.config={};
+  if (!DB.config.banner) DB.config.banner={};
+  DB.config.banner.visible = false;
+  await fsSet('_meta','config',DB.config);
+  _applyConfig(); _cacheDB(); toast('Banner hidden','info'); renderAdminSettings();
+}
+
+// Settings — Season
+async function saveSeasonSettings() {
+  _btn('btn-sea', true);
+  if (!DB.config) DB.config={};
+  DB.config.season = {
+    name:    _v('sea-name')||'Season 1',
+    number:  Number(_v('sea-num'))||1,
+    endDate: _v('sea-end'),
+    status:  _v('sea-status')||'Active',
+    rewards: _v('sea-rewards')
+  };
+  await fsSet('_meta','config',DB.config);
+  toast('Season settings saved ✅','success'); _cacheDB();
+  setTimeout(()=>{ const b=document.getElementById('btn-sea'); if(b){ b.innerHTML='💾 Save Season'; b.disabled=false; } },1500);
+}
+async function resetSeasonStats() {
+  const n = DB.players.filter(p=>!p.banned).length;
+  if (!confirm(`⚠️ This will reset ALL wins, losses, and events to 0 for ${n} players. This cannot be undone.\n\nProceed?`)) return;
+  for (const p of DB.players) {
+    p.wins=0; p.losses=0; p.tournaments=0;
+    await fsSet('players', _pid(p), p);
+  }
+  if (DB.me) { DB.me.wins=0; DB.me.losses=0; DB.me.tournaments=0; }
+  toast(`Season reset complete! ${n} players updated 🔄`,'success'); _cacheDB(); renderDash();
+}
+
+// Settings — Rules
+async function saveAdminRules() {
+  _btn('btn-rul', true);
+  if (!DB.config) DB.config={};
+  DB.config.rules = {
+    startingBalance: Number(_v('rul-start'))||1200,
+    minDeposit:      Number(_v('rul-min-dep'))||100,
+    maxDeposit:      Number(_v('rul-max-dep'))||100000,
+    minWithdraw:     Number(_v('rul-min-wd'))||10,
+    nameDays:        Number(_v('rul-name-days'))||30,
+    maxTeam:         Number(_v('rul-team-max'))||10,
+    maxGuild:        Number(_v('rul-guild-max'))||50,
+    lbMinWins:       Number(_v('rul-lb-min'))||0,
+  };
+  await fsSet('_meta','config',DB.config);
+  toast('Platform rules saved ✅','success'); _cacheDB();
+  setTimeout(()=>{ const b=document.getElementById('btn-rul'); if(b){ b.innerHTML='💾 Save Rules'; b.disabled=false; } },1500);
+}
+
+// Settings — Danger
 async function adminPurgeTransactions() {
   const cutoff = new Date(Date.now() - 30*24*60*60*1000);
   const toDelete = DB.transactions.filter(t=>t.status!=='pending' && new Date(t.date||0) < cutoff);
@@ -4243,24 +5057,82 @@ async function adminPurgeTransactions() {
   DB.transactions = DB.transactions.filter(t=>t.status==='pending'||new Date(t.date||0)>=cutoff);
   toast(`Purged ${toDelete.length} old transactions`,'success'); _cacheDB(); renderAdminSettings();
 }
-
 async function adminResetAllNotifs() {
   if (!confirm('Delete ALL notifications? This cannot be undone.')) return;
   for (const n of DB.notifications) await fsDelete('notifications', n.id||n._fsId);
-  DB.notifications = [];
+  DB.notifications=[];
   toast('All notifications cleared','success'); _cacheDB(); renderAdminSettings();
 }
-
 async function adminForceRefresh() {
   localStorage.removeItem('fp_db_v2');
   toast('Cache cleared, refreshing...','info');
-  setTimeout(async () => {
-    await fbLoadAll();
-    _refreshUI();
-    renderAdmin();
-    toast('Data refreshed ✅','success');
-  }, 500);
+  setTimeout(async()=>{ await fbLoadAll(); _refreshUI(); renderAdmin(); toast('Data refreshed ✅','success'); }, 500);
 }
+
+// ================================================================
+// _applyConfig — apply saved config to live DOM
+// ================================================================
+function _applyConfig() {
+  const cfg = DB.config||{};
+
+  // 1. Theme colors
+  if (cfg.theme) {
+    Object.entries(cfg.theme).forEach(([k,v]) => document.documentElement.style.setProperty(k, v));
+  }
+
+  // 2. Branding
+  const br = cfg.branding||{};
+  if (br.name) {
+    document.querySelectorAll('.nav-logo').forEach(el => { if(el.querySelector('span:first-child')) el.querySelector('span:first-child').textContent = (br.icon||'⚔') + ' ' + br.name; });
+    document.querySelectorAll('.drawer-logo').forEach(el => el.textContent = (br.icon||'⚔') + ' ' + br.name);
+    document.title = br.name + ' — Esports Platform';
+  }
+  if (br.icon) {
+    const li = document.querySelector('.login-logo .logo-icon'); if(li) li.textContent = br.icon;
+  }
+
+  // 3. Nav labels
+  const nl = cfg.navLabels||{};
+  const navMap = {dashboard:'home',tournaments:'arena',leaderboard:'ranks',store:'store',profile:'profile'};
+  document.querySelectorAll('.bottom-nav-label').forEach(el => {
+    const item = el.closest('[data-page]');
+    if (!item) return;
+    const page = item.dataset.page;
+    const key  = navMap[page];
+    if (key && nl[key]) el.textContent = nl[key];
+  });
+
+  // 4. Currency
+  const cu = cfg.currency||{};
+  if (cu.symbol) {
+    // Currency symbol is used dynamically via DB.config.currency.symbol
+    // Applied when rendering wallet/store
+  }
+  if (cu.color) {
+    document.documentElement.style.setProperty('--gold', cu.color);
+  }
+
+  // 5. Announcement banner
+  const bn = cfg.banner||{};
+  const bannerEl = document.getElementById('site-banner');
+  if (bannerEl) {
+    if (bn.visible && bn.message) {
+      bannerEl.className = 'show '+(bn.color||'');
+      bannerEl.textContent = (bn.icon||'📣') + ' ' + bn.message;
+    } else {
+      bannerEl.className = '';
+      bannerEl.textContent = '';
+    }
+  }
+}
+
+// Helper: get currency symbol
+function _AC() { return DB.config?.currency?.symbol || 'AC'; }
+
+// Old saveAdminConfig shim (compatibility)
+async function saveAdminConfig() { await saveAdminRules(); }
+
+
 function openModal(html) {
   document.getElementById('modal-content').innerHTML = html;
   document.getElementById('modal-overlay').classList.add('show');
