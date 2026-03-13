@@ -1981,6 +1981,16 @@ function setTFilter(f, el) {
 const GEMOJI = { valorant:'🎯', 'street fighter 6':'🥊', 'free fire':'🔥', 'pubg mobile':'🪖', 'call of duty mobile':'💥', 'mobile legends':'⚔️' };
 function _gameEmoji(game) { return GEMOJI[(game||'').toLowerCase()] || '🎮'; }
 
+// Returns an inline icon element for a game — img if has uploaded image, else emoji
+function _gameIconHtml(gameId, size=20) {
+  const game = _getGames().find(g => g.id === gameId || g.name?.toLowerCase() === (gameId||'').toLowerCase());
+  if (game?.logoIsImg && game?.icon) {
+    return `<img src="${game.icon}" style="width:${size}px;height:${size}px;border-radius:${Math.round(size*0.25)}px;object-fit:cover;vertical-align:middle;flex-shrink:0">`;
+  }
+  const emoji = game?.icon || _gameEmoji(gameId) || '🎮';
+  return `<span style="font-size:${size}px;line-height:1;flex-shrink:0">${emoji}</span>`;
+}
+
 function renderTournaments() {
   const me = DB.me;
   let ts = [...DB.tournaments];
@@ -2016,12 +2026,22 @@ function _tCard(t) {
     </div>`;
   }).join('');
 
+  const gameObj = _getGames().find(g => g.id === (t.game||'').toLowerCase().replace(/\s+/g,'_') || g.name?.toLowerCase() === (t.game||'').toLowerCase());
+  const heroIconHtml = (gameObj?.logoIsImg && gameObj?.icon)
+    ? `<img src="${gameObj.icon}" class="tc-hero-img">`
+    : (t.logoIsImg && t.logo)
+      ? `<img src="${t.logo}" class="tc-hero-img">`
+      : `<div class="tc-hero-emoji">${_gameEmoji(t.game)}</div>`;
+  const gameBadgeIcon = (gameObj?.logoIsImg && gameObj?.icon)
+    ? `<img src="${gameObj.icon}" style="width:16px;height:16px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:4px">`
+    : '';
+
   return `
   <div class="tc">
     <div class="tc-hero">
-      ${t.logoIsImg && t.logo ? `<img src="${t.logo}" class="tc-hero-img">` : `<div class="tc-hero-emoji">${_gameEmoji(t.game)}</div>`}
+      ${heroIconHtml}
       <div class="tc-hero-overlay"></div>
-      <div class="tc-game-badge">${t.game||'Unknown'}</div>
+      <div class="tc-game-badge">${gameBadgeIcon}${t.game||'Unknown'}</div>
       <div class="tc-status-badge ${statusCls}">${(t.status||'upcoming').toUpperCase()}</div>
       ${t.prize ? `<div class="tc-prize-badge">🏆 ${t.prize}</div>` : ''}
     </div>
@@ -2613,10 +2633,12 @@ function renderStore() {
     if (!_storeGame) _storeGame = games[0]?.id;
 
     // Render game tabs (avoid inline onclick referencing stale `_storeGame`)
-    gameTabs.innerHTML = games.map(g => `
-      <div class="game-tab ${g.id === _storeGame ? 'active' : ''}"
-           onclick="selectStoreGame('${g.id}')">${g.icon||'🎮'} ${g.name}</div>
-    `).join('');
+    gameTabs.innerHTML = games.map(g => {
+      const tabIcon = (g.logoIsImg && g.icon)
+        ? `<img src="${g.icon}" style="width:18px;height:18px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:5px">`
+        : `<span style="margin-right:3px">${g.icon||'🎮'}</span>`;
+      return `<div class="game-tab ${g.id === _storeGame ? 'active' : ''}" onclick="selectStoreGame('${g.id}')">${tabIcon}${g.name}</div>`;
+    }).join('');
 
     const game   = games.find(g => g.id === _storeGame) || games[0];
     const pkgs   = game?.topup?.packages || [];
@@ -2670,8 +2692,14 @@ function openTopup(gameId, amount, price, label, currency) {
   const me   = DB.me;
   const game = _getGames().find(g => g.id === gameId);
   const gp   = (me?.gameProfiles||[]).find(p => p.game === gameId);
+  const gameIconHtml = (game?.logoIsImg && game?.icon)
+    ? `<img src="${game.icon}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:6px">`
+    : `<span style="font-size:20px;margin-right:4px">${game?.icon||'🎮'}</span>`;
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">${game?.icon||'🎮'} Top-up ${game?.name||gameId}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="modal-close-row">
+      <div class="modal-title" style="display:flex;align-items:center">${gameIconHtml}Top-up ${game?.name||gameId}</div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
     <div style="background:var(--panel);border-radius:var(--radius);padding:16px;margin-bottom:16px;text-align:center">
       <div style="font-size:32px;font-weight:900;color:var(--g1)">${Number(amount).toLocaleString()}</div>
       <div style="font-size:12px;color:var(--dim)">${currency||'Points'} — ${label}</div>
@@ -3015,11 +3043,31 @@ function renderProfile() {
       <div class="section-header"><div class="section-title">🎮 Game Profiles</div><div class="section-action" onclick="openAddGameProfile()">+ Add</div></div>
       <div class="game-profile-list">
         ${(me.gameProfiles||[]).length
-          ? me.gameProfiles.map(gp => `
-            <div class="game-profile-item">
-              <div class="gp-game">${_gameEmoji(gp.game)} ${gameNames[gp.game]||gp.game}</div>
-              <div class="gp-username">${gp.username}</div>
-            </div>`).join('')
+          ? (() => {
+              // Normalize & deduplicate: resolve old hardcoded IDs to DB IDs, keep last entry per game
+              const allGames = _getGames();
+              const normalize = id => {
+                // Try exact match first, then fuzzy match by name
+                if (allGames.find(g => g.id === id)) return id;
+                const fuzzy = allGames.find(g => g.id.replace(/_/g,'') === id.replace(/_/g,'') ||
+                  g.name.toLowerCase().replace(/\s+/g,'_') === id);
+                return fuzzy ? fuzzy.id : id;
+              };
+              const seen = {};
+              (me.gameProfiles||[]).forEach(gp => { seen[normalize(gp.game)] = {...gp, game: normalize(gp.game)}; });
+              const unique = Object.values(seen);
+              return unique.map(gp => {
+                const dbGame = _getGames().find(g => g.id === gp.game);
+                const displayName = dbGame?.name || gp.game;
+                return `<div class="game-profile-item">
+                  <div class="gp-game" style="display:flex;align-items:center;gap:8px">
+                    ${_gameIconHtml(gp.game, 20)}
+                    <span>${displayName}</span>
+                  </div>
+                  <div class="gp-username">${gp.username}</div>
+                </div>`;
+              }).join('');
+            })()
           : '<div style="font-size:12px;color:var(--dim)">No game profiles linked yet</div>'}
       </div>
     </div>
@@ -3056,17 +3104,15 @@ async function editName() {
 }
 
 function openAddGameProfile() {
+  const games = _getGames();
+  const opts = games.map(g => {
+    const prefix = (!g.logoIsImg && g.icon) ? g.icon+' ' : '';
+    return '<option value="'+g.id+'">'+prefix+g.name+'</option>';
+  }).join('');
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🎮 Add Game Profile</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div class="form-group"><label class="form-label">Game</label>
-      <select class="form-input" id="gp-game">
-        <option value="valorant">🎯 Valorant (Riot ID: Name#TAG)</option>
-        <option value="sf6">🥊 Street Fighter 6 (CFN)</option>
-        <option value="freefire">🔥 Free Fire (UID)</option>
-        <option value="pubg">🪖 PUBG Mobile (UID)</option>
-        <option value="codm">💥 Call of Duty Mobile (UID)</option>
-        <option value="ml">⚔️ Mobile Legends (UID)</option>
-      </select>
+      <select class="form-input" id="gp-game">${opts}</select>
     </div>
     <div class="form-group"><label class="form-label">Username / UID</label><input class="form-input" id="gp-username" placeholder="e.g. Player#1234 or 123456789"></div>
     <button class="btn-primary" id="btn-gp" onclick="saveGameProfile()">Save Profile</button>
