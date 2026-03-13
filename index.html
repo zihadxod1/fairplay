@@ -158,6 +158,14 @@ img{display:block;max-width:100%}
 .btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(34,197,94,.3)}
 .btn-primary:hover::before{opacity:1}
 .btn-primary:active{transform:translateY(0)}
+.btn-secondary{
+  width:100%;padding:10px 14px;
+  background:var(--panel2);color:var(--g1);
+  font-size:13px;font-weight:600;letter-spacing:.5px;
+  border-radius:var(--radius);border:1.5px solid var(--g3);
+  transition:var(--transition);cursor:pointer;
+}
+.btn-secondary:hover{background:rgba(74,222,128,.1);border-color:var(--g1)}
 .login-footer{text-align:center;margin-top:16px}
 .login-footer a{color:var(--g1);font-size:13px;font-weight:500;cursor:pointer}
 .login-footer a:hover{text-decoration:underline}
@@ -781,37 +789,37 @@ img{display:block;max-width:100%}
 .avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:8px}
 /* Hero avatar badge pin */
 .hero-badge-pin{
-  position:absolute;top:-4px;right:-4px;
-  width:22px;height:22px;border-radius:5px;
+  position:absolute;top:-6px;right:-6px;
+  width:28px;height:28px;border-radius:7px;
+  background:var(--bg2);
+  border:2.5px solid #e8e800;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;font-size:14px;
+  box-shadow:0 0 0 1.5px var(--bg),0 0 10px rgba(232,232,0,.4);
+  z-index:10;
+}
+.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:4px}
+/* Small badge pin for leaderboard/search rows */
+.sm-badge-pin{
+  position:absolute;top:-5px;right:-5px;
+  width:20px;height:20px;border-radius:5px;
   background:var(--bg2);
   border:2px solid #e8e800;
   display:flex;align-items:center;justify-content:center;
-  overflow:hidden;font-size:11px;
-  box-shadow:0 0 0 1.5px var(--bg),0 0 8px rgba(232,232,0,.35);
-  z-index:10;
-}
-.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:3px}
-/* Small badge pin for leaderboard/search rows */
-.sm-badge-pin{
-  position:absolute;top:-3px;right:-3px;
-  width:16px;height:16px;border-radius:4px;
-  background:var(--bg2);
-  border:1.5px solid #e8e800;
-  display:flex;align-items:center;justify-content:center;
-  overflow:hidden;font-size:8px;
-  box-shadow:0 0 0 1px var(--bg),0 0 6px rgba(232,232,0,.3);
+  overflow:hidden;font-size:10px;
+  box-shadow:0 0 0 1px var(--bg),0 0 7px rgba(232,232,0,.35);
   z-index:10;pointer-events:none;
 }
 .sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:3px}
 /* XS badge pin for tournament avatar stack */
 .xs-badge-pin{
-  position:absolute;top:-3px;right:-3px;
-  width:11px;height:11px;border-radius:3px;
+  position:absolute;top:-4px;right:-4px;
+  width:13px;height:13px;border-radius:3px;
   background:var(--bg2);
   border:1.5px solid #e8e800;
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:6px;
-  box-shadow:0 0 0 1px var(--bg);
+  box-shadow:0 0 0 1px var(--bg),0 0 4px rgba(232,232,0,.3);
   z-index:10;pointer-events:none;
 }
 .xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:2px}
@@ -2107,7 +2115,7 @@ function viewTournament(tid) {
   const registered = (t.players||[]).map(pid => {
     const p = DB.players.find(pp => _pid(pp) === pid);
     return p ? `<div class="lb-row" style="cursor:default">
-      <div class="lb-avatar" style="overflow:visible">${_badgePinHTML(p,'sm-badge-pin')}${_avatarInner(p)}</div>
+      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
       <div class="lb-info"><div class="lb-name">${p.name}</div><div class="lb-guild">${p.uid||''}</div></div>
     </div>` : '';
   }).join('');
@@ -2144,7 +2152,7 @@ function renderTeams() {
     const isMember = (t.memberIds||[]).includes(me?.id);
     return `
     <div class="team-card" onclick="viewTeam('${tid}')">
-      <div class="team-logo">${t.logo||'👥'}</div>
+      <div class="team-logo">${(t.logo||'').startsWith('data:')||(t.logo||'').startsWith('http')?`<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`:t.logo||'👥'}</div>
       <div class="team-info">
         <div class="team-name">${t.name} ${isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : ''}</div>
         <div class="team-tag">[${t.tag||'???'}]</div>
@@ -2160,15 +2168,40 @@ function openCreateTeam() {
     <div class="modal-close-row"><div class="modal-title">👥 Create Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div class="form-group"><label class="form-label">Team Name *</label><input class="form-input" id="ct-name" placeholder="Enter team name"></div>
     <div class="form-group"><label class="form-label">Tag (2-5 chars) *</label><input class="form-input" id="ct-tag" placeholder="e.g. PRO" maxlength="5"></div>
-    <div class="form-group"><label class="form-label">Logo Emoji</label><input class="form-input" id="ct-logo" placeholder="🔥" maxlength="4"></div>
+    <div class="form-group">
+      <label class="form-label">Logo</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="ct-logo-preview" style="width:52px;height:52px;border-radius:12px;background:var(--panel2);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;flex-shrink:0">👥</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <button class="btn-secondary" style="font-size:12px;padding:7px 12px" onclick="document.getElementById('ct-logo-file').click()">📷 Upload Image / GIF</button>
+          <input type="file" id="ct-logo-file" accept="image/*,.gif" style="display:none" onchange="handleTeamLogoUpload(this,'ct-logo-preview','ct-logo-data')">
+          <input class="form-input" id="ct-logo-emoji" placeholder="Or type emoji e.g. 🔥" maxlength="4" style="font-size:18px" oninput="document.getElementById('ct-logo-preview').innerHTML=this.value||'👥'">
+          <input type="hidden" id="ct-logo-data">
+        </div>
+      </div>
+    </div>
     <button class="btn-primary" id="btn-create-team" onclick="createTeam()">Create Team</button>
   `);
+}
+
+function handleTeamLogoUpload(input, previewId, dataId) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = e.target.result;
+    document.getElementById(dataId).value = data;
+    const prev = document.getElementById(previewId);
+    prev.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`;
+  };
+  reader.readAsDataURL(file);
 }
 
 async function createTeam() {
   const name = _v('ct-name').trim();
   const tag  = _v('ct-tag').trim().toUpperCase();
-  const logo = _v('ct-logo').trim() || '👥';
+  const logoData  = document.getElementById('ct-logo-data')?.value;
+  const logoEmoji = _v('ct-logo-emoji').trim() || '👥';
+  const logo = logoData || logoEmoji;
   if (!name || !tag) { toast('Enter name and tag','error'); return; }
   _btn('btn-create-team', true);
   const me = DB.me;
@@ -2216,7 +2249,7 @@ function viewTeam(tid) {
   const members = (t.memberIds||[]).map(mid => {
     const p = DB.players.find(pp => _pid(pp) === mid);
     return p ? `<div class="lb-row" style="cursor:default">
-      <div class="lb-avatar" style="overflow:visible">${_badgePinHTML(p,'sm-badge-pin')}${_avatarInner(p)}</div>
+      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
       <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===t.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
     </div>` : '';
   }).join('');
@@ -2244,7 +2277,7 @@ function renderGuilds() {
     const isMember = (g.memberIds||[]).includes(me?.id);
     return `
     <div class="team-card" onclick="viewGuild('${gid}')">
-      <div class="team-logo">🛡️</div>
+      <div class="team-logo">${(g.logo||'').startsWith('data:')||(g.logo||'').startsWith('http')?`<img src="${g.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`:g.logo||'🛡️'}</div>
       <div class="team-info">
         <div class="team-name">${g.name} ${isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : ''}</div>
         <div class="team-tag">[${g.tag||'???'}]</div>
@@ -2262,6 +2295,18 @@ function openCreateGuild() {
     <div class="form-group"><label class="form-label">Guild Name *</label><input class="form-input" id="cg-name" placeholder="Guild name"></div>
     <div class="form-group"><label class="form-label">Tag (2-6 chars) *</label><input class="form-input" id="cg-tag" placeholder="e.g. ALPHA" maxlength="6"></div>
     <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="cg-desc" placeholder="Short description"></div>
+    <div class="form-group">
+      <label class="form-label">Logo</label>
+      <div style="display:flex;align-items:center;gap:10px">
+        <div id="cg-logo-preview" style="width:52px;height:52px;border-radius:12px;background:var(--panel2);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;flex-shrink:0">🛡️</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <button class="btn-secondary" style="font-size:12px;padding:7px 12px" onclick="document.getElementById('cg-logo-file').click()">📷 Upload Image / GIF</button>
+          <input type="file" id="cg-logo-file" accept="image/*,.gif" style="display:none" onchange="handleTeamLogoUpload(this,'cg-logo-preview','cg-logo-data')">
+          <input class="form-input" id="cg-logo-emoji" placeholder="Or type emoji e.g. 🔥" maxlength="4" style="font-size:18px" oninput="document.getElementById('cg-logo-preview').innerHTML=this.value||'🛡️'">
+          <input type="hidden" id="cg-logo-data">
+        </div>
+      </div>
+    </div>
     <button class="btn-primary" id="btn-cg" onclick="createGuild()">Create Guild</button>
   `);
 }
@@ -2270,12 +2315,15 @@ async function createGuild() {
   const name = _v('cg-name').trim();
   const tag  = _v('cg-tag').trim().toUpperCase();
   const desc = _v('cg-desc').trim();
+  const logoData  = document.getElementById('cg-logo-data')?.value;
+  const logoEmoji = _v('cg-logo-emoji').trim() || '🛡️';
+  const logo = logoData || logoEmoji;
   if (!name || !tag) { toast('Fill name and tag','error'); return; }
   const me = DB.me;
   if (me.guildId) { toast('You are already in a guild','error'); return; }
   _btn('btn-cg', true);
   const id    = 'guild_' + Date.now();
-  const guild = { id, name, tag, description:desc, leaderId:me.id, memberIds:[me.id], createdAt:new Date().toISOString() };
+  const guild = { id, name, tag, logo, description:desc, leaderId:me.id, memberIds:[me.id], createdAt:new Date().toISOString() };
   me.guildId  = id;
   DB.guilds.push(guild);
   await Promise.all([fsSet('guilds', id, guild), fsSet('players', me.id, me)]);
@@ -2318,7 +2366,7 @@ function viewGuild(gid) {
   const members = (g.memberIds||[]).map(mid => {
     const p = DB.players.find(pp => _pid(pp) === mid);
     return p ? `<div class="lb-row" style="cursor:default">
-      <div class="lb-avatar" style="overflow:visible">${_badgePinHTML(p,'sm-badge-pin')}${_avatarInner(p)}</div>
+      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
       <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===g.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
     </div>` : '';
   }).join('');
@@ -2406,7 +2454,7 @@ function renderLB() {
     return `
     <div class="lb-row ${isMe?'me':''}" onclick="viewPlayerModal('${_pid(p)}')" style="animation-delay:${i*0.03}s">
       <div class="lb-rank">#${i+4}</div>
-      <div class="lb-avatar" style="overflow:visible">${_badgePinHTML(p,'sm-badge-pin')}${_avatarInner(p)}</div>
+      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
       <div class="lb-info">
         <div class="lb-name">${p.name}${p.role==='admin'?'<span class="badge-role admin" style="font-size:7px;padding:1px 4px;margin-left:4px">A</span>':''}</div>
         <div class="lb-guild">${guild?'['+guild.tag+'] ':''}${p.wins||0}W ${p.losses||0}L ${wr}%WR</div>
@@ -2439,7 +2487,7 @@ function doSearch() {
     const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
     return `
     <div class="lb-row" onclick="viewPlayerModal('${_pid(p)}')" style="margin-bottom:6px">
-      <div class="lb-avatar" style="overflow:visible">${_badgePinHTML(p,'sm-badge-pin')}${_avatarInner(p)}</div>
+      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
       <div class="lb-info">
         <div class="lb-name">${p.name}</div>
         <div class="lb-guild">${guild?'['+guild.tag+'] ':''}${p.uid||''}</div>
@@ -2896,7 +2944,7 @@ function renderProfile() {
     <div class="card" style="margin-bottom:12px">
       <div class="section-header"><div class="section-title">👥 My Teams</div><div class="section-action" onclick="showPage(\'teams\')">View All</div></div>
       ${myTeams.length
-        ? myTeams.map(t => `<div class="team-card" style="margin-bottom:6px;cursor:default"><div class="team-logo">${t.logo||'👥'}</div><div class="team-info"><div class="team-name">${t.name}</div><div class="team-tag">[${t.tag}]</div></div></div>`).join('')
+        ? myTeams.map(t => `<div class="team-card" style="margin-bottom:6px;cursor:default"><div class="team-logo">${(t.logo||'').startsWith('data:')||(t.logo||'').startsWith('http')?`<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`:t.logo||'👥'}</div><div class="team-info"><div class="team-name">${t.name}</div><div class="team-tag">[${t.tag}]</div></div></div>`).join('')
         : '<div style="font-size:12px;color:var(--dim)">No teams joined</div>'}
     </div>
 
@@ -2904,7 +2952,7 @@ function renderProfile() {
     <div class="card" style="margin-bottom:12px">
       <div class="section-header"><div class="section-title">🛡️ My Guild</div></div>
       <div class="team-card" style="cursor:default">
-        <div class="team-logo">🛡️</div>
+        <div class="team-logo">${(myGuild.logo||'').startsWith('data:')||(myGuild.logo||'').startsWith('http')?`<img src="${myGuild.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`:myGuild.logo||'🛡️'}</div>
         <div class="team-info"><div class="team-name">${myGuild.name}</div><div class="team-tag">[${myGuild.tag}]</div><div class="team-members">${(myGuild.memberIds||[]).length} members</div></div>
       </div>
     </div>` : ''}
