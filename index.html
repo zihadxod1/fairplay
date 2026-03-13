@@ -202,7 +202,7 @@ img{display:block;max-width:100%}
 }
 .nav-notif-dot.show{display:block}
 .nav-avatar{
-  width:38px;height:38px;border-radius:50%;
+  width:38px;height:38px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:18px;cursor:pointer;
@@ -251,7 +251,7 @@ img{display:block;max-width:100%}
 .drawer-close{font-size:22px;color:var(--dim);cursor:pointer;padding:4px}
 .drawer-user{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px}
 .drawer-avatar{
-  width:44px;height:44px;border-radius:50%;
+  width:44px;height:44px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:22px;border:2px solid var(--border2);overflow:hidden;flex-shrink:0;
@@ -349,7 +349,7 @@ img{display:block;max-width:100%}
 }
 .hero-top{display:flex;align-items:center;gap:14px;margin-bottom:16px;position:relative;z-index:1}
 .hero-avatar{
-  width:60px;height:60px;border-radius:50%;
+  width:60px;height:60px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:28px;border:3px solid var(--border3);
@@ -492,7 +492,7 @@ img{display:block;max-width:100%}
 .tc-players{display:flex;align-items:center;gap:8px;margin-bottom:10px}
 .avatar-stack{display:flex;overflow:visible}
 .avatar-stack-item{
-  width:24px;height:24px;border-radius:50%;
+  width:24px;height:24px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   border:2px solid var(--bg2);margin-left:-6px;
   display:flex;align-items:center;justify-content:center;
@@ -586,7 +586,7 @@ img{display:block;max-width:100%}
 .podium{display:flex;align-items:flex-end;justify-content:center;gap:8px;margin-bottom:24px;padding:0 8px}
 .podium-slot{flex:1;display:flex;flex-direction:column;align-items:center;max-width:100px}
 .podium-avatar{
-  border-radius:50%;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;display:flex;align-items:center;justify-content:center;
   font-size:24px;overflow:hidden;border:3px solid;margin-bottom:8px;
   position:relative;
 }
@@ -622,13 +622,13 @@ img{display:block;max-width:100%}
 @keyframes slideIn{from{opacity:0;transform:translateX(-10px)}to{opacity:1;transform:translateX(0)}}
 .lb-rank{font-size:13px;font-weight:800;font-family:'JetBrains Mono',monospace;color:var(--dim);width:24px;text-align:center}
 .lb-avatar{
-  width:36px;height:36px;border-radius:50%;
+  width:36px;height:36px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:16px;flex-shrink:0;overflow:visible;border:2px solid var(--border);
   position:relative;
 }
-.lb-avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.lb-avatar img{width:100%;height:100%;object-fit:cover;border-radius:10px}
 .lb-info{flex:1;min-width:0}
 .lb-name{font-size:13px;font-weight:700;display:flex;align-items:center;gap:6px}
 .lb-guild{font-size:10px;color:var(--dim);margin-top:1px}
@@ -761,7 +761,7 @@ img{display:block;max-width:100%}
 /* Badge pinned to top-RIGHT of avatar */
 .avatar-badge-pin{
   position:absolute;top:-6px;right:-6px;
-  width:32px;height:32px;border-radius:50%;
+  width:32px;height:32px;border-radius:6px;
   background:var(--bg2);
   border:2.5px solid var(--gold);
   display:flex;align-items:center;justify-content:center;
@@ -771,11 +771,11 @@ img{display:block;max-width:100%}
   transition:transform .15s,box-shadow .15s;
 }
 .avatar-badge-pin:hover{transform:scale(1.15);box-shadow:0 0 0 2px var(--bg),0 3px 12px rgba(251,191,36,.4)}
-.avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:6px}
 /* Hero avatar badge pin (smaller) */
 .hero-badge-pin{
   position:absolute;top:-4px;right:-4px;
-  width:22px;height:22px;border-radius:50%;
+  width:22px;height:22px;border-radius:6px;
   background:var(--bg2);
   border:2px solid var(--gold);
   display:flex;align-items:center;justify-content:center;
@@ -783,11 +783,11 @@ img{display:block;max-width:100%}
   box-shadow:0 0 0 1.5px var(--bg);
   z-index:10;
 }
-.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:6px}
 /* Small badge pin for leaderboard/search rows */
 .sm-badge-pin{
   position:absolute;top:-3px;right:-3px;
-  width:16px;height:16px;border-radius:50%;
+  width:16px;height:16px;border-radius:6px;
   background:var(--bg2);
   border:1.5px solid var(--gold);
   display:flex;align-items:center;justify-content:center;
@@ -795,11 +795,11 @@ img{display:block;max-width:100%}
   box-shadow:0 0 0 1px var(--bg);
   z-index:10;pointer-events:none;
 }
-.sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:6px}
 /* XS badge pin for tournament avatar stack (24px avatars) */
 .xs-badge-pin{
   position:absolute;top:-3px;right:-3px;
-  width:11px;height:11px;border-radius:50%;
+  width:11px;height:11px;border-radius:6px;
   background:var(--bg2);
   border:1.5px solid var(--gold);
   display:flex;align-items:center;justify-content:center;
@@ -807,9 +807,9 @@ img{display:block;max-width:100%}
   box-shadow:0 0 0 1px var(--bg);
   z-index:10;pointer-events:none;
 }
-.xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:6px}
 .profile-avatar{
-  width:80px;height:80px;border-radius:50%;
+  width:80px;height:80px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:36px;border:3px solid var(--border3);
@@ -868,7 +868,7 @@ img{display:block;max-width:100%}
 }
 .admin-player-top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .admin-player-avatar{
-  width:40px;height:40px;border-radius:50%;
+  width:40px;height:40px;border-radius:10px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:18px;flex-shrink:0;overflow:hidden;border:2px solid var(--border);
@@ -1796,7 +1796,7 @@ const SVG_NM = ['Swordsman','Mage','Ninja','Archer','Tank','Scout','Brawler','Co
 
 function _avatarInner(p) {
   if (!p) return '👤';
-  if (p.avatarCustom) return `<img src="${p.avatarCustom}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+  if (p.avatarCustom) return `<img src="${p.avatarCustom}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`;
   if (p._svgIdx != null) return SVG_AV[p._svgIdx] || '👤';
   return EMOJIS[p._emojiIdx ?? 0] || '👤';
 }
@@ -1812,7 +1812,7 @@ function _badgePinHTML(player, cls='avatar-badge-pin') {
     const img = dbBadge.imgData||dbBadge.imgUrl;
     const sz = cls==='sm-badge-pin' ? '8px' : cls==='hero-badge-pin' ? '11px' : '16px';
     const inner = img
-      ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+      ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`
       : `<span style="font-size:${sz}">${dbBadge.emoji||'🏅'}</span>`;
     return `<div class="${cls}" title="${dbBadge.name}">${inner}</div>`;
   }
@@ -1832,7 +1832,7 @@ function _avWrap(player, size='sm', onclick='') {
   const av  = _avatarInner(player);
   const clickAttr = onclick ? `onclick="${onclick}" style="cursor:pointer"` : '';
   return `<div style="position:relative;display:inline-flex;flex-shrink:0" ${clickAttr}>
-    <div style="width:${dim};height:${dim};border-radius:50%;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:${fs};overflow:hidden;border:2px solid var(--border);flex-shrink:0">${av}</div>
+    <div style="width:${dim};height:${dim};border-radius:10px;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:${fs};overflow:hidden;border:2px solid var(--border);flex-shrink:0">${av}</div>
     ${pin}
   </div>`;
 }
@@ -2360,7 +2360,7 @@ function renderLB() {
       return `
       <div class="podium-slot" style="${isMe?'animation:pulse 2s ease infinite':''}">
         <div style="position:relative;display:inline-block;margin-bottom:8px">
-          <div class="podium-avatar" style="width:${sz}px;height:${sz}px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:${sz*0.45}px;overflow:hidden;border:3px solid var(--${color});box-shadow:0 0 ${rank===1?20:12}px rgba(${col},.4)">${_avatarInner(p)}</div>
+          <div class="podium-avatar" style="width:${sz}px;height:${sz}px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:${sz*0.45}px;overflow:hidden;border:3px solid var(--${color});box-shadow:0 0 ${rank===1?20:12}px rgba(${col},.4)">${_avatarInner(p)}</div>
           ${_badgePinHTML(p,'sm-badge-pin')}
         </div>
         <div class="podium-name" style="width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:center;font-size:12px;font-weight:700">${p.name}</div>
@@ -3067,7 +3067,7 @@ function viewPlayerModal(pid) {
     <div class="modal-close-row">
       <div style="display:flex;align-items:center;gap:12px">
         <div style="position:relative;display:inline-flex;flex-shrink:0">
-          <div style="width:48px;height:48px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:2px solid var(--border2)">${_avatarInner(p)}</div>
+          <div style="width:48px;height:48px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:2px solid var(--border2)">${_avatarInner(p)}</div>
           ${_badgePinHTML(p,'sm-badge-pin')}
         </div>
         <div>
@@ -3258,7 +3258,7 @@ function adminEditProfile(pid) {
     <div class="modal-close-row">
       <div style="display:flex;align-items:center;gap:12px">
         <div style="position:relative;display:inline-flex;flex-shrink:0">
-          <div id="aep-av" style="width:56px;height:56px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;border:3px solid var(--border2);cursor:pointer" onclick="openAvatarPicker('${pid}')">${_avatarInner(p)}</div>
+          <div id="aep-av" style="width:56px;height:56px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:24px;overflow:hidden;border:3px solid var(--border2);cursor:pointer" onclick="openAvatarPicker('${pid}')">${_avatarInner(p)}</div>
           ${_badgePinHTML(p,'sm-badge-pin')}
         </div>
         <div><div style="font-weight:800;font-size:15px">${p.name||'Player'}</div><div style="font-size:11px;color:var(--dim)">${p.email||''}</div></div>
@@ -3727,7 +3727,7 @@ function adminRecordWins(tid) {
       <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:center;gap:8px">
           <div style="position:relative;display:inline-flex;flex-shrink:0">
-            <div style="width:32px;height:32px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
+            <div style="width:32px;height:32px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
             ${_badgePinHTML(p,'sm-badge-pin')}
           </div>
           <div>
@@ -4348,7 +4348,7 @@ function previewNotifPlayer() {
   if (!p) { res.innerHTML='<div style="font-size:11px;color:var(--red)">No player found</div>'; return; }
   res.innerHTML = `<div style="background:var(--panel2);border:1px solid var(--border2);border-radius:8px;padding:8px;display:flex;align-items:center;gap:8px">
     <div style="position:relative;display:inline-flex;flex-shrink:0">
-      <div style="width:28px;height:28px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px;overflow:hidden">${_avatarInner(p)}</div>
+      <div style="width:28px;height:28px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px;overflow:hidden">${_avatarInner(p)}</div>
       ${_badgePinHTML(p,'sm-badge-pin')}
     </div>
     <div><div style="font-size:12px;font-weight:700">${p.name}</div><div style="font-size:10px;color:var(--dim)">${p.uid||''}</div></div>
@@ -4775,7 +4775,7 @@ function searchPlayerForBadge() {
   res.innerHTML = `
     <div style="background:var(--panel2);border:1px solid var(--border2);border-radius:var(--radius);padding:10px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
       <div style="position:relative;display:inline-flex;flex-shrink:0">
-        <div style="width:36px;height:36px;border-radius:50%;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
+        <div style="width:36px;height:36px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
         ${_badgePinHTML(p,'sm-badge-pin')}
       </div>
       <div><div style="font-weight:700;font-size:13px">${p.name}</div><div style="font-size:11px;color:var(--dim)">${p.uid||''}</div></div>
