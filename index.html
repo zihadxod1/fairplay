@@ -4154,7 +4154,9 @@ function renderAdminTopup() {
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
           <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-size:24px">${g.icon||'🎮'}</span>
+            <div style="width:40px;height:40px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
+              ${(g.logoIsImg && g.icon) ? `<img src="${g.icon}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">` : `<span>${g.icon||'🎮'}</span>`}
+            </div>
             <div>
               <div style="font-weight:700">${g.name}</div>
               <div style="font-size:11px;color:var(--dim)">${g.topup?.currency||'Points'} · ${(g.topup?.packages||[]).length} packages</div>
@@ -4279,55 +4281,131 @@ async function saveTopupMeta(gid) {
 
 function adminEditGame(gid) {
   const game = _getGameObj(gid); if(!game) return;
+  const hasImg = game.logoIsImg && game.icon;
+  const previewHtml = hasImg
+    ? `<img src="${game.icon}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`
+    : `<span style="font-size:30px">${game.icon||'🎮'}</span>`;
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🎮 Edit Game</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div class="form-group"><label class="form-label">Game Name *</label><input class="form-input" id="eg-name" value="${game.name||''}"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="eg-icon" value="${game.icon||'🎮'}" maxlength="4"></div>
-      <div class="form-group"><label class="form-label">Genre</label><input class="form-input" id="eg-genre" value="${game.genre||''}"></div>
+    <div class="form-group"><label class="form-label">Genre</label><input class="form-input" id="eg-genre" value="${game.genre||''}"></div>
+
+    <div class="form-group">
+      <label class="form-label">Game Avatar / Icon</label>
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div id="eg-img-preview" style="width:72px;height:72px;border-radius:12px;background:var(--panel2);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;cursor:pointer" onclick="document.getElementById('eg-img-file').click()">${previewHtml}</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <button class="btn-secondary" style="font-size:12px;padding:8px" onclick="document.getElementById('eg-img-file').click()">🖼️ Upload Image (PNG/JPG/WEBP)</button>
+          <button class="btn-secondary" style="font-size:12px;padding:8px;border-color:var(--gold);color:var(--gold)" onclick="document.getElementById('eg-gif-file').click()">✨ Upload Animated GIF</button>
+          <input type="file" id="eg-img-file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleGameAvatarUpload(this,'eg-img-preview','eg-img-data')">
+          <input type="file" id="eg-gif-file" accept="image/gif" style="display:none" onchange="handleGameAvatarUpload(this,'eg-img-preview','eg-img-data')">
+          <button id="eg-img-clear" class="admin-btn danger" style="font-size:11px;${hasImg?'':'display:none'}" onclick="clearGameAvatar('eg-img-preview','eg-img-data','eg-img-clear','eg-icon')">🗑️ Remove, use emoji</button>
+          <input type="hidden" id="eg-img-data" value="${hasImg ? game.icon : ''}">
+        </div>
+      </div>
     </div>
-    <button class="btn-primary" id="btn-eg" onclick="saveEditGame('${gid}')">Save</button>
+    <div class="form-group"><label class="form-label">Emoji Icon (used if no image)</label><input class="form-input" id="eg-icon" value="${!hasImg ? game.icon||'🎮' : '🎮'}" maxlength="4" ${hasImg?'disabled':''}></div>
+    <button class="btn-primary" id="btn-eg" onclick="saveEditGame('${gid}')">💾 Save Game</button>
   `);
 }
+
 async function saveEditGame(gid) {
   const name = _v('eg-name').trim();
   if (!name) { toast('Enter game name','error'); return; }
   _btn('btn-eg', true);
   const game = _getGameObj(gid); if(!game) return;
   game.name  = name;
-  game.icon  = _v('eg-icon').trim()||'🎮';
   game.genre = _v('eg-genre').trim();
+  const imgData = document.getElementById('eg-img-data')?.value;
+  if (imgData) {
+    game.icon = imgData;
+    game.logoIsImg = true;
+  } else {
+    game.icon = _v('eg-icon').trim() || '🎮';
+    game.logoIsImg = false;
+  }
   await _saveGame(gid, game);
-  toast('Game updated ✅','success'); _cacheDB(); closeModal(); renderAdminTopup();
+  toast('Game updated ✅','success'); _cacheDB(); closeModal(); renderAdminGames(); renderAdminTopup();
 }
 
 function adminAddGame() {
   openModal(`
     <div class="modal-close-row"><div class="modal-title">➕ Add New Game</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div class="form-group"><label class="form-label">Game Name *</label><input class="form-input" id="ag-name" placeholder="e.g. Genshin Impact"></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group"><label class="form-label">Icon (emoji)</label><input class="form-input" id="ag-icon" placeholder="🎮" maxlength="4"></div>
-      <div class="form-group"><label class="form-label">Currency</label><input class="form-input" id="ag-cur" placeholder="e.g. Primogems"></div>
+    <div class="form-group"><label class="form-label">Currency Name</label><input class="form-input" id="ag-cur" placeholder="e.g. Primogems, Diamonds"></div>
+
+    <div class="form-group">
+      <label class="form-label">Game Avatar / Icon</label>
+      <div style="display:flex;gap:12px;align-items:flex-start">
+        <div id="ag-img-preview" style="width:72px;height:72px;border-radius:12px;background:var(--panel2);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:32px;overflow:hidden;flex-shrink:0;cursor:pointer" onclick="document.getElementById('ag-img-file').click()">🎮</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <button class="btn-secondary" style="font-size:12px;padding:8px" onclick="document.getElementById('ag-img-file').click()">🖼️ Upload Image (PNG/JPG/WEBP)</button>
+          <button class="btn-secondary" style="font-size:12px;padding:8px;border-color:var(--gold);color:var(--gold)" onclick="document.getElementById('ag-gif-file').click()">✨ Upload Animated GIF</button>
+          <input type="file" id="ag-img-file" accept="image/png,image/jpeg,image/webp" style="display:none" onchange="handleGameAvatarUpload(this,'ag-img-preview','ag-img-data')">
+          <input type="file" id="ag-gif-file" accept="image/gif" style="display:none" onchange="handleGameAvatarUpload(this,'ag-img-preview','ag-img-data')">
+          <button id="ag-img-clear" class="admin-btn danger" style="font-size:11px;display:none" onclick="clearGameAvatar('ag-img-preview','ag-img-data','ag-img-clear','ag-icon')">🗑️ Remove, use emoji</button>
+          <input type="hidden" id="ag-img-data">
+          <div style="font-size:10px;color:var(--dim)">PNG, JPG, WEBP, GIF · max 8MB</div>
+        </div>
+      </div>
     </div>
-    <button class="btn-primary" id="btn-ag" onclick="saveAddGame()">Add Game</button>
+    <div class="form-group"><label class="form-label">Emoji Icon (used if no image)</label><input class="form-input" id="ag-icon" placeholder="🎮" maxlength="4" value="🎮"></div>
+    <button class="btn-primary" id="btn-ag" onclick="saveAddGame()">➕ Add Game</button>
   `);
 }
+
 async function saveAddGame() {
   const name = _v('ag-name').trim();
   if (!name) { toast('Enter game name','error'); return; }
   _btn('btn-ag', true);
-  const id   = name.toLowerCase().replace(/\s+/g,'_');
-  const game = { id, name, icon:_v('ag-icon')||'🎮', genre:'', topup:{ currency:_v('ag-cur')||'Points', packages:[] }};
+  const id = name.toLowerCase().replace(/\s+/g,'_');
+  const imgData = document.getElementById('ag-img-data')?.value;
+  const game = {
+    id, name,
+    icon: imgData || _v('ag-icon') || '🎮',
+    logoIsImg: !!imgData,
+    genre: '',
+    topup: { currency: _v('ag-cur')||'Points', packages:[] }
+  };
   DB.games.push(game);
   await fsSet('games', id, game);
-  toast('Game added! 🎮','success'); _cacheDB(); closeModal(); renderAdminTopup();
+  toast('Game added! 🎮','success'); _cacheDB(); closeModal(); renderAdminGames();
 }
 
 async function adminDeleteGameSection(gid) {
   if (!confirm(`Delete the entire "${gid}" game and all its packages?`)) return;
   DB.games = DB.games.filter(g=>g.id!==gid);
   await fsDelete('games', gid);
-  toast('Game section deleted','success'); _cacheDB(); renderAdminTopup();
+  toast('Game section deleted','success'); _cacheDB(); renderAdminGames();
+}
+
+function handleGameAvatarUpload(input, previewId, dataId) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 8*1024*1024) { toast('File too large (max 8MB)','error'); input.value=''; return; }
+  const reader = new FileReader();
+  reader.onload = e => {
+    const data = e.target.result;
+    const preview = document.getElementById(previewId);
+    const dataEl  = document.getElementById(dataId);
+    const clearBtn = document.getElementById(dataId.replace('-data','-clear'));
+    const iconEl  = document.getElementById(dataId.replace('-img-data','-icon'));
+    if (preview) preview.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`;
+    if (dataEl)  dataEl.value = data;
+    if (clearBtn){ clearBtn.style.display='block'; }
+    if (iconEl)  { iconEl.disabled = true; iconEl.placeholder = '(using image)'; }
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearGameAvatar(previewId, dataId, clearBtnId, iconId) {
+  const preview  = document.getElementById(previewId);
+  const dataEl   = document.getElementById(dataId);
+  const clearBtn = document.getElementById(clearBtnId);
+  const iconEl   = document.getElementById(iconId);
+  if (preview)  preview.innerHTML = '<span style="font-size:32px">🎮</span>';
+  if (dataEl)   dataEl.value = '';
+  if (clearBtn) clearBtn.style.display = 'none';
+  if (iconEl)   { iconEl.disabled = false; iconEl.placeholder = '🎮'; }
 }
 
 // helpers
@@ -4577,7 +4655,9 @@ function adminEditTopup(gid) {
   openModal(`
     <div class="modal-close-row">
       <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:26px">${game.icon||'🎮'}</span>
+        <div style="width:40px;height:40px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:1px solid var(--border2);flex-shrink:0">
+          ${(game.logoIsImg && game.icon) ? `<img src="${game.icon}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">` : `<span>${game.icon||'🎮'}</span>`}
+        </div>
         <div><div style="font-weight:800;font-size:15px">${game.name}</div>
         <div style="font-size:11px;color:var(--dim)">${(game.topup?.packages||[]).length} packages · ${game.topup?.currency||'Points'}</div></div>
       </div>
@@ -5018,7 +5098,7 @@ function renderAdminGames() {
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
           <div style="width:48px;height:48px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;border:1px solid var(--border2)">
-            ${g.logoIsImg&&g.icon ? `<img src="${g.icon}" style="width:100%;height:100%;object-fit:cover">` : (g.icon||'🎮')}
+            ${(g.logoIsImg && g.icon) ? `<img src="${g.icon}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">` : `<span>${g.icon||'🎮'}</span>`}
           </div>
           <div style="flex:1">
             <div style="font-weight:800;font-size:15px">${g.name}</div>
