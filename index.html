@@ -757,71 +757,94 @@ img{display:block;max-width:100%}
   border-radius:var(--radius2);border:1px solid var(--border);
   margin-bottom:16px;position:relative;
 }
-.profile-avatar-wrap{position:relative;display:inline-block;margin-bottom:12px}
-/* Badge pinned to top-RIGHT of avatar */
-.avatar-badge-pin{
-  position:absolute;top:-6px;right:-6px;
-  width:32px;height:32px;border-radius:4px;
-  background:var(--bg2);
-  border:2.5px solid var(--gold);
-  display:flex;align-items:center;justify-content:center;
-  overflow:hidden;font-size:16px;
-  box-shadow:0 0 0 2px var(--bg),0 2px 8px rgba(0,0,0,.6);
-  z-index:10;cursor:pointer;
-  transition:transform .15s,box-shadow .15s;
+.profile-avatar-wrap{
+  position:relative;display:inline-block;
+  margin-bottom:20px;
+  padding:10px; /* space for floating badge + edit btn */
 }
-.avatar-badge-pin:hover{transform:scale(1.15);box-shadow:0 0 0 2px var(--bg),0 3px 12px rgba(251,191,36,.4)}
-.avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:4px}
-/* Hero avatar badge pin (smaller) */
+/* Large floating badge — top-right, outside avatar bounds */
+.avatar-badge-pin{
+  position:absolute;top:-4px;right:-4px;
+  width:52px;height:52px;border-radius:12px;
+  background:var(--bg2);
+  border:3px solid #e8e800;
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;font-size:26px;
+  box-shadow:0 0 0 2px var(--bg), 0 0 18px rgba(232,232,0,.45), 0 4px 16px rgba(0,0,0,.7);
+  z-index:10;cursor:pointer;
+  transition:transform .18s,box-shadow .18s;
+}
+.avatar-badge-pin:hover{
+  transform:scale(1.1);
+  box-shadow:0 0 0 2px var(--bg),0 0 26px rgba(232,232,0,.65),0 6px 20px rgba(0,0,0,.7);
+}
+.avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:8px}
+/* Hero avatar badge pin */
 .hero-badge-pin{
   position:absolute;top:-4px;right:-4px;
-  width:22px;height:22px;border-radius:4px;
+  width:22px;height:22px;border-radius:5px;
   background:var(--bg2);
-  border:2px solid var(--gold);
+  border:2px solid #e8e800;
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:11px;
-  box-shadow:0 0 0 1.5px var(--bg);
+  box-shadow:0 0 0 1.5px var(--bg),0 0 8px rgba(232,232,0,.35);
   z-index:10;
 }
-.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:4px}
+.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:3px}
 /* Small badge pin for leaderboard/search rows */
 .sm-badge-pin{
   position:absolute;top:-3px;right:-3px;
   width:16px;height:16px;border-radius:4px;
   background:var(--bg2);
-  border:1.5px solid var(--gold);
+  border:1.5px solid #e8e800;
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:8px;
-  box-shadow:0 0 0 1px var(--bg);
+  box-shadow:0 0 0 1px var(--bg),0 0 6px rgba(232,232,0,.3);
   z-index:10;pointer-events:none;
 }
-.sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:4px}
-/* XS badge pin for tournament avatar stack (24px avatars) */
+.sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:3px}
+/* XS badge pin for tournament avatar stack */
 .xs-badge-pin{
   position:absolute;top:-3px;right:-3px;
-  width:11px;height:11px;border-radius:4px;
+  width:11px;height:11px;border-radius:3px;
   background:var(--bg2);
-  border:1.5px solid var(--gold);
+  border:1.5px solid #e8e800;
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:6px;
   box-shadow:0 0 0 1px var(--bg);
   z-index:10;pointer-events:none;
 }
-.xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:4px}
+.xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:2px}
+/* Profile avatar — large square with thick green glow border */
 .profile-avatar{
-  width:80px;height:80px;border-radius:10px;
+  width:120px;height:120px;border-radius:18px;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
-  font-size:36px;border:3px solid var(--border3);
+  font-size:52px;
+  border:3px solid var(--g1);
+  box-shadow:0 0 0 1px rgba(74,222,128,.15), 0 0 24px rgba(74,222,128,.25), 0 8px 32px rgba(0,0,0,.6);
   margin:0 auto;overflow:hidden;cursor:pointer;
+  transition:box-shadow .2s,border-color .2s;
+}
+.profile-avatar:hover{
+  border-color:var(--g1);
+  box-shadow:0 0 0 1px rgba(74,222,128,.2), 0 0 36px rgba(74,222,128,.4), 0 8px 32px rgba(0,0,0,.6);
 }
 .profile-avatar img{width:100%;height:100%;object-fit:cover}
+/* Large green edit button — bottom-right, floating outside */
 .profile-avatar-edit{
-  position:absolute;bottom:2px;right:2px;
-  width:22px;height:22px;border-radius:50%;
-  background:var(--g2);color:#fff;
+  position:absolute;bottom:-4px;right:-4px;
+  width:44px;height:44px;border-radius:12px;
+  background:var(--g1);color:#000;
   display:flex;align-items:center;justify-content:center;
-  font-size:12px;border:2px solid var(--bg2);cursor:pointer;
+  font-size:20px;
+  box-shadow:0 0 0 2px var(--bg),0 4px 16px rgba(74,222,128,.5);
+  cursor:pointer;
+  transition:transform .15s,box-shadow .15s;
+}
+.profile-avatar-edit:hover{
+  transform:scale(1.08);
+  box-shadow:0 0 0 2px var(--bg),0 6px 20px rgba(74,222,128,.65);
 }
 .profile-name{font-size:22px;font-weight:800;margin-bottom:4px;display:flex;align-items:center;justify-content:center;gap:8px}
 .profile-edit-btn{font-size:14px;cursor:pointer;color:var(--dim);transition:var(--transition)}
@@ -2797,10 +2820,12 @@ function renderProfile() {
 
   document.getElementById('profile-content').innerHTML = `
     <div class="profile-header">
-      <div class="profile-avatar-wrap">
+      <div class="profile-avatar-wrap" style="overflow:visible">
         <div class="profile-avatar" onclick="openAvatarPicker('${me.id}')">${_avatarInner(me)}</div>
         ${_badgePinHTML(me,'avatar-badge-pin')}
-        <div class="profile-avatar-edit" onclick="openAvatarPicker('${me.id}')">✏️</div>
+        <div class="profile-avatar-edit" onclick="openAvatarPicker('${me.id}')">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </div>
       </div>
       <div class="profile-name">
         ${me.name||'Player'}
