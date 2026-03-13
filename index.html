@@ -1381,6 +1381,8 @@ img{display:block;max-width:100%}
 const FB_API_KEY   = 'AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw';
 const FB_PROJECT   = 'ff-booyah-eb33c';
 const ADMIN_EMAIL  = 'zihadmoon8@gmail.com';
+const SUPER_ADMIN  = 'zihadmoon8@gmail.com'; // Only this account can delete/demote admins
+const _isSuperAdmin = () => DB.me?.email === SUPER_ADMIN;
 const AUTH_URL     = 'https://identitytoolkit.googleapis.com/v1/accounts';
 const TOKEN_URL    = 'https://securetoken.googleapis.com/v1/token';
 const FS_BASE      = `https://firestore.googleapis.com/v1/projects/${FB_PROJECT}/databases/(default)/documents`;
@@ -3318,8 +3320,8 @@ function renderAdminPlayers() {
             : `<button class="admin-btn danger" onclick="adminToggleBan('${pid}')">🚫 Ban</button>`}
           ${p.role!=='admin'
             ? `<button class="admin-btn gold" onclick="adminConfirmPromote('${pid}')">👑 Promote</button>`
-            : p.email!==ADMIN_EMAIL ? `<button class="admin-btn" onclick="adminDemote('${pid}')">⬇ Demote</button>` : ''}
-          ${p.email!==ADMIN_EMAIL ? `<button class="admin-btn danger" onclick="adminDeletePlayer('${pid}')">🗑️ Delete</button>` : ''}
+            : (p.email!==ADMIN_EMAIL && _isSuperAdmin()) ? `<button class="admin-btn" onclick="adminDemote('${pid}')">⬇ Demote</button>` : ''}
+          ${(p.email!==ADMIN_EMAIL && _isSuperAdmin()) ? `<button class="admin-btn danger" onclick="adminDeletePlayer('${pid}')">🗑️ Delete</button>` : (p.email!==ADMIN_EMAIL && p.role!=='admin') ? `<button class="admin-btn danger" onclick="adminDeletePlayer('${pid}')">🗑️ Delete</button>` : ''}
         </div>
       </div>`;
     }).join('')}`;
@@ -3340,8 +3342,8 @@ function adminEditProfile(pid) {
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="form-group"><label class="form-label">Display Name *</label><input class="form-input" id="aep-name" value="${p.name||''}"></div>
-      <div class="form-group"><label class="form-label">Role</label>
-        <select class="form-input" id="aep-role" ${p.email===ADMIN_EMAIL?'disabled':''}>
+      <div class="form-group"><label class="form-label">Role ${!_isSuperAdmin()?'<span style="font-size:10px;color:var(--dim)">(Super Admin only)</span>':''}</label>
+        <select class="form-input" id="aep-role" ${(p.email===ADMIN_EMAIL || !_isSuperAdmin())?'disabled':''}>
           <option value="player" ${p.role!=='admin'?'selected':''}>Player</option>
           <option value="admin"  ${p.role==='admin'?'selected':''}>Admin</option>
         </select>
@@ -3374,7 +3376,7 @@ async function saveAdminEdit(pid) {
   p.wins       = Math.max(0, Number(_v('aep-wins'))||0);
   p.losses     = Math.max(0, Number(_v('aep-losses'))||0);
   p.tournaments= Math.max(0, Number(_v('aep-events'))||0);
-  if (p.email !== ADMIN_EMAIL) p.role = _v('aep-role') || p.role;
+  if (p.email !== ADMIN_EMAIL && _isSuperAdmin()) p.role = _v('aep-role') || p.role;
   const ok = await fsSet('players', pid, p);
   if (ok) {
     if (pid === DB.me?.id) _refreshUI();
@@ -3410,6 +3412,7 @@ async function adminDoPromote(pid) {
   _cacheDB(); closeModal(); renderAdminPlayers();
 }
 async function adminDemote(pid) {
+  if (!_isSuperAdmin()) { toast('Only the super admin can demote admins 🔒','error'); return; }
   if (pid === DB.me?.id) { toast("Can't demote yourself",'error'); return; }
   const p = _findPlayer(pid); if (!p) return;
   p.role = 'player';
@@ -3591,6 +3594,10 @@ async function adminEditUID(pid) {
 
 function adminDeletePlayer(pid) {
   const p = _findPlayer(pid); if (!p) return;
+  // Only superadmin can delete other admins
+  if (p.role === 'admin' && !_isSuperAdmin()) {
+    toast('Only the super admin can delete admin accounts 🔒','error'); return;
+  }
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🗑️ Delete Player</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.2);border-radius:var(--radius);padding:14px;margin-bottom:16px">
