@@ -1602,9 +1602,7 @@ async function lpSignUp() {
     const uid8 = 'FP-' + Math.random().toString(36).substr(2,8).toUpperCase();
     const playerDoc = {
       id:d.localId, uid:uid8, name, email, phone:phone||'',
-      balance:0, wins:0, losses:0, tournaments:0,
-      badges:[], gameProfiles:[], role: email===ADMIN_EMAIL ? 'admin' : 'player',
-      teamIds:[], guildId:'', joinedDate:new Date().toISOString(),
+      balance: DB.config?.rules?.startingBalance || 1200, wins:0, losses:0, tournaments:0,
       lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
     };
     await fsSet('players', d.localId, playerDoc);
@@ -1666,7 +1664,7 @@ async function _enterApp() {
     const uid8 = 'FP-' + Math.random().toString(36).substr(2,8).toUpperCase();
     DB.me = {
       id:S.uid, uid:uid8, name: S.email.split('@')[0], email:S.email, phone:'',
-      balance:0, wins:0, losses:0, tournaments:0,
+      balance: DB.config?.rules?.startingBalance || 1200, wins:0, losses:0, tournaments:0,
       badges:[], gameProfiles:[], role: S.email===ADMIN_EMAIL ? 'admin' : 'player',
       teamIds:[], guildId:'', joinedDate:new Date().toISOString(),
       lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
@@ -1915,7 +1913,36 @@ async function joinTSolo(tid) {
   const t  = DB.tournaments.find(t => (t.id||t._fsId) === tid);
   if (!t || !me) return;
   if ((t.players||[]).includes(me.id)) { toast('Already joined','info'); return; }
-  if (t.entryFee && me.balance < t.entryFee) { toast(`Need ${t.entryFee} AC to join`,'error'); return; }
+
+  // Check game profile exists for this game
+  const gameId = (t.game||'').toLowerCase().replace(/\s+/g,'_');
+  const games  = _getGames();
+  const matchedGame = games.find(g => g.name?.toLowerCase() === (t.game||'').toLowerCase() || g.id === gameId);
+  if (matchedGame) {
+    const hasProfile = (me.gameProfiles||[]).some(p => p.game === matchedGame.id && p.username?.trim());
+    if (!hasProfile) {
+      openModal(`
+        <div class="modal-close-row"><div class="modal-title">🎮 Game Profile Required</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+        <p style="font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:14px">
+          You need to add your <b style="color:var(--g1)">${t.game}</b> username before joining this tournament.
+        </p>
+        <div class="form-group"><label class="form-label">Your ${t.game} Username / ID</label>
+          <input class="form-input" id="quick-gp-uid" placeholder="Enter in-game name or UID...">
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-primary" id="btn-qgp" onclick="saveQuickGameProfile('${matchedGame.id}','${tid}')">Save & Join</button>
+          <button class="btn-details" onclick="closeModal();showPage('profile')">Go to Profile</button>
+        </div>
+      `);
+      return;
+    }
+  }
+
+  if (t.entryFee && me.balance < t.entryFee) {
+    toast(`Need ${t.entryFee} ${_AC()} to join — redirecting to Wallet...`,'error');
+    setTimeout(() => { showPage('wallet'); setWalletTab('deposit', null); }, 1200);
+    return;
+  }
 
   t.players = [...(t.players||[]), me.id];
   if (t.entryFee) me.balance = Math.max(0, (me.balance||0) - t.entryFee);
@@ -1926,6 +1953,23 @@ async function joinTSolo(tid) {
   else toast('Error joining tournament','error');
   renderTournaments();
   renderDash();
+}
+
+async function saveQuickGameProfile(gameId, tid) {
+  const uid = document.getElementById('quick-gp-uid')?.value.trim();
+  if (!uid) { toast('Enter your in-game username','error'); return; }
+  _btn('btn-qgp', true);
+  const me = DB.me;
+  me.gameProfiles = me.gameProfiles||[];
+  const idx = me.gameProfiles.findIndex(p => p.game === gameId);
+  if (idx>=0) me.gameProfiles[idx].username = uid;
+  else me.gameProfiles.push({ game:gameId, username:uid });
+  await fsSet('players', me.id, me);
+  _cacheDB();
+  closeModal();
+  toast('Game profile saved!','success');
+  // Now attempt join
+  joinTSolo(tid);
 }
 
 function viewTournament(tid) {
@@ -2378,8 +2422,12 @@ function openTopup(gameId, amount, price, label, currency) {
       <span style="font-size:12px;color:var(--dim)">Your Balance</span>
       <span style="font-weight:800;color:var(--gold)">${me?.balance||0} AC</span>
     </div>
-    ${(me?.balance||0) < Number(price) ? '<div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--red);margin-bottom:12px;text-align:center">⚠️ Insufficient balance. Deposit AC first.</div>' : ''}
-    <button class="btn-primary" id="btn-topup" onclick="confirmTopup('${gameId}','${amount}','${price}')" ${(me?.balance||0) < Number(price) ? 'style="opacity:.5;pointer-events:none"' : ''}>Confirm — ${price} AC</button>
+    ${(me?.balance||0) < Number(price) ? `
+      <div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--red);margin-bottom:12px;text-align:center">
+        ⚠️ Insufficient balance — you need ${Number(price)-(me?.balance||0)} more ${_AC()}
+      </div>
+      <button class="btn-primary" onclick="closeModal();showPage('wallet');setWalletTab('deposit',null)">💰 Deposit ${_AC()} First</button>
+    ` : `<button class="btn-primary" id="btn-topup" onclick="confirmTopup('${gameId}','${amount}','${price}')">✅ Confirm — ${price} ${_AC()}</button>`}
   `);
 }
 
@@ -2387,7 +2435,11 @@ async function confirmTopup(gameId, amount, price) {
   const me = DB.me;
   const uid = _v('topup-uid').trim();
   if (!uid) { toast('Enter your game username/UID','error'); return; }
-  if ((me?.balance||0) < Number(price)) { toast('Insufficient balance','error'); return; }
+  if ((me?.balance||0) < Number(price)) {
+    toast(`Insufficient balance — redirecting to Wallet`,'error');
+    closeModal(); showPage('wallet'); setWalletTab('deposit', null);
+    return;
+  }
   _btn('btn-topup', true);
   me.balance = (me.balance||0) - Number(price);
   me.gameProfiles = me.gameProfiles || [];
@@ -2397,22 +2449,41 @@ async function confirmTopup(gameId, amount, price) {
   const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'topup', amount:Number(price), game:gameId, gameUid:uid, status:'pending', date:new Date().toISOString() };
   DB.transactions.push(tx);
   await Promise.all([fsSet('players', me.id, me), fsSet('transactions', tx.id, tx)]);
-  toast('Top-up submitted! Pending admin approval.','success');
+  toast('Top-up order submitted! ✅ Admin will deliver within 5–30 minutes.','success');
   _cacheDB(); closeModal(); renderDash();
 }
 
 function openStoreBuy(iid) {
   const item = DB.storeItems.find(i => (i.id||i._fsId) === iid); if (!item) return;
   const me   = DB.me;
+  const canAfford = (me?.balance||0) >= item.price;
+  // Pre-fill game profile if item is linked to a game
+  const gp = item.game ? (me?.gameProfiles||[]).find(p => p.game === item.game) : null;
   openModal(`
     <div class="modal-close-row"><div class="modal-title">${item.icon||'📦'} ${item.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <p style="font-size:13px;color:var(--dim);margin-bottom:14px;line-height:1.5">${item.desc||''}</p>
-    ${item.instructions ? `<div style="background:var(--panel);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--dim);margin-bottom:14px">${item.instructions}</div>` : ''}
-    <div style="display:flex;justify-content:space-between;margin-bottom:16px;align-items:center">
-      <span style="font-size:12px;color:var(--dim)">Your Balance: <b style="color:var(--gold)">${me?.balance||0} AC</b></span>
-      <span style="font-size:20px;font-weight:800;color:var(--gold)">${item.price} AC</span>
+    ${item.desc ? `<p style="font-size:13px;color:var(--dim);margin-bottom:12px;line-height:1.5">${item.desc}</p>` : ''}
+    ${item.bonus ? `<div style="background:rgba(74,222,128,.08);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--g1);margin-bottom:12px">🎁 ${item.bonus}</div>` : ''}
+    ${item.instructions ? `
+      <div class="form-group">
+        <label class="form-label">${item.instructions}</label>
+        <input class="form-input" id="buy-game-uid" value="${gp?.username||''}" placeholder="Enter here...">
+      </div>` : ''}
+    <div style="background:var(--panel);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:12px;color:var(--dim)">Your Balance</span>
+      <span style="font-weight:800;color:var(--gold)">${(me?.balance||0).toLocaleString()} ${_AC()}</span>
     </div>
-    <button class="btn-primary" id="btn-buy" onclick="buyStoreItem('${iid}')">Purchase — ${item.price} AC</button>
+    <div style="text-align:center;margin-bottom:14px">
+      <div style="font-size:26px;font-weight:900;color:var(--gold)">${item.price} ${_AC()}</div>
+      ${item.amountStr ? `<div style="font-size:12px;color:var(--dim);margin-top:2px">${item.amountStr}</div>` : ''}
+    </div>
+    ${!canAfford ? `
+      <div style="background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);border-radius:var(--radius);padding:10px 14px;font-size:12px;color:var(--red);margin-bottom:12px;text-align:center">
+        ⚠️ Insufficient balance — you need ${item.price - (me?.balance||0)} more ${_AC()}
+      </div>
+      <button class="btn-primary" onclick="closeModal();showPage('wallet');setWalletTab('deposit',null)">💰 Deposit ${_AC()} First</button>
+    ` : `
+      <button class="btn-primary" id="btn-buy" onclick="buyStoreItem('${iid}')">✅ Confirm Purchase — ${item.price} ${_AC()}</button>
+    `}
   `);
 }
 
@@ -2420,12 +2491,22 @@ async function buyStoreItem(iid) {
   const item = DB.storeItems.find(i => (i.id||i._fsId) === iid);
   const me   = DB.me; if (!item || !me) return;
   if ((me.balance||0) < item.price) { toast('Insufficient balance','error'); return; }
+  // If item needs game UID, require it
+  const gameUid = document.getElementById('buy-game-uid')?.value.trim();
+  if (item.instructions && !gameUid) { toast('Please fill in the required field','error'); return; }
   _btn('btn-buy', true);
   me.balance -= item.price;
-  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'purchase', amount:item.price, item:item.name, status:'approved', date:new Date().toISOString() };
+  // Save game profile if applicable
+  if (item.game && gameUid) {
+    me.gameProfiles = me.gameProfiles||[];
+    const idx = me.gameProfiles.findIndex(p => p.game === item.game);
+    if (idx>=0) me.gameProfiles[idx].username = gameUid;
+    else me.gameProfiles.push({ game:item.game, username:gameUid });
+  }
+  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'purchase', amount:item.price, item:item.name, gameUid:gameUid||'', status:'pending', date:new Date().toISOString() };
   DB.transactions.push(tx);
   await Promise.all([fsSet('players', me.id, me), fsSet('transactions', tx.id, tx)]);
-  toast('Purchased successfully! ✅','success');
+  toast('Order placed! ✅ Admin will process your purchase.','success');
   _cacheDB(); closeModal(); renderDash();
 }
 
@@ -2442,7 +2523,13 @@ function renderWallet() {
 function setWalletTab(tab, el) {
   _walletTab = tab;
   document.querySelectorAll('.wallet-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
+  if (el) el.classList.add('active');
+  else {
+    // Activate the matching tab button programmatically
+    document.querySelectorAll('.wallet-tab').forEach(t => {
+      if (t.getAttribute('onclick')?.includes(`'${tab}'`)) t.classList.add('active');
+    });
+  }
   renderWalletContent();
 }
 
@@ -2467,42 +2554,68 @@ function renderWalletContent() {
       : `<div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:12px;font-size:12px;color:var(--dim);margin-bottom:12px;text-align:center">⚠️ Admin has not configured payment methods yet. Contact admin for deposit info.</div>`;
     el.innerHTML = `
       ${payInfo}
-      <div class="form-group"><label class="form-label">Amount (AC) *</label><input class="form-input" type="number" id="dep-amount" placeholder="Min ${DB.config?.minDeposit||10} AC" min="${DB.config?.minDeposit||10}"></div>
+      <div class="form-group"><label class="form-label">Amount (${_AC()}) *</label><input class="form-input" type="number" id="dep-amount" placeholder="Min ${DB.config?.rules?.minDeposit||100} ${_AC()}" min="${DB.config?.rules?.minDeposit||100}"></div>
+      <div class="form-group"><label class="form-label">Your Phone / Account Number *</label><input class="form-input" id="dep-phone" placeholder="e.g. 01712345678"></div>
+      <div class="form-group"><label class="form-label">Transaction / Reference ID</label><input class="form-input" id="dep-ref" placeholder="e.g. TXN123456789"></div>
       <div class="form-group">
-        <label class="form-label">Payment Screenshot *</label>
+        <label class="form-label">Payment Screenshot (optional)</label>
         <div class="upload-zone" onclick="document.getElementById('dep-proof').click()">
           <input type="file" id="dep-proof" accept="image/*" onchange="handleDepProof(this)">
-          <div id="dep-proof-preview" style="pointer-events:none">📸<br><span style="font-size:12px;color:var(--dim)">Click to upload payment proof</span></div>
+          <div id="dep-proof-preview" style="pointer-events:none">📸<br><span style="font-size:12px;color:var(--dim)">Tap to upload screenshot</span></div>
         </div>
       </div>
-      <button class="btn-primary" id="btn-dep" onclick="submitDeposit()">Submit Deposit Request</button>`;
+      <button class="btn-primary" id="btn-dep" onclick="submitDeposit()">📤 Submit Deposit Request</button>`;
   } else if (_walletTab === 'withdraw') {
+    const wMethods = DB.paymentMethods||[];
+    const methodOpts = wMethods.length
+      ? wMethods.map((m,i)=>`<option value="${m.name}">${m.icon||'💳'} ${m.name}${m.number?' · '+m.number:''}</option>`).join('')
+      : `<option value="bkash">bKash</option><option value="nagad">Nagad</option><option value="rocket">Rocket</option><option value="bank">Bank Transfer</option>`;
+    const minWd = DB.config?.rules?.minWithdraw || 200;
     el.innerHTML = `
-      <div class="form-group"><label class="form-label">Amount (AC) *</label><input class="form-input" type="number" id="wd-amount" placeholder="Min 10 AC" min="10"></div>
-      <div class="form-group"><label class="form-label">Method</label>
-        <select class="form-input" id="wd-method">
-          <option value="bkash">bKash</option><option value="nagad">Nagad</option>
-          <option value="rocket">Rocket</option><option value="bank">Bank Transfer</option>
-        </select>
+      <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:12px;color:var(--dim)">Your Balance</span>
+        <span style="font-size:18px;font-weight:800;color:var(--gold)">${(DB.me?.balance||0).toLocaleString()} ${_AC()}</span>
       </div>
-      <div class="form-group"><label class="form-label">Account Number / Reference *</label><input class="form-input" id="wd-ref" placeholder="Your account number"></div>
-      <button class="btn-primary" id="btn-wd" onclick="submitWithdraw()">Submit Withdrawal Request</button>`;
+      <div class="form-group"><label class="form-label">Amount (${_AC()}) * — Min ${minWd}</label>
+        <input class="form-input" type="number" id="wd-amount" placeholder="Min ${minWd} ${_AC()}" min="${minWd}">
+      </div>
+      <div class="form-group"><label class="form-label">Payment Method *</label>
+        <select class="form-input" id="wd-method">${methodOpts}</select>
+      </div>
+      <div class="form-group"><label class="form-label">Your Account Number *</label>
+        <input class="form-input" id="wd-ref" placeholder="e.g. 01712345678">
+      </div>
+      <button class="btn-primary" id="btn-wd" onclick="submitWithdraw()">💸 Submit Withdrawal Request</button>`;
   } else {
     const myTx = DB.transactions.filter(t => t.uid === DB.me?.id).sort((a,b) => new Date(b.date) - new Date(a.date));
     if (!myTx.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">📋</div><p>No transactions yet</p></div>'; return; }
-    el.innerHTML = `<div style="overflow-x:auto">
-      <table class="tx-table" style="min-width:100%">
-        <thead><tr><th>Type</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
-        <tbody>${myTx.map(t => `
-          <tr>
-            <td style="font-weight:600;text-transform:capitalize">${t.type||'—'}</td>
-            <td class="text-gold">${t.amount||0} AC</td>
-            <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
-            <td style="color:var(--dim);font-size:11px">${t.date ? t.date.split('T')[0] : '—'}</td>
-          </tr>`
-        ).join('')}</tbody>
-      </table>
-    </div>`;
+    const txTypeIcon = {deposit:'💰',withdraw:'💸',topup:'🎮',purchase:'🛒'};
+    const txTypeColor = {deposit:'var(--g1)',withdraw:'var(--red)',topup:'var(--blue)',purchase:'var(--gold)'};
+    el.innerHTML = myTx.map(t => `
+      <div class="card" style="margin-bottom:8px;padding:12px">
+        <div style="display:flex;align-items:flex-start;gap:10px">
+          <div style="width:38px;height:38px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;border:1px solid var(--border)">${txTypeIcon[t.type]||'💳'}</div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+              <span style="font-weight:700;font-size:13px;text-transform:capitalize">${t.type||'—'}${t.item?' — '+t.item:''}</span>
+              <span style="font-size:15px;font-weight:800;color:${txTypeColor[t.type]||'var(--g1)'}">
+                ${t.type==='deposit'?'+':'−'}${t.amount||0} ${_AC()}
+              </span>
+            </div>
+            <div style="font-size:11px;color:var(--dim);margin-top:3px;display:flex;flex-wrap:wrap;gap:8px">
+              ${t.method ? `<span>${t.method}</span>` : ''}
+              ${t.phone  ? `<span>📱 ${t.phone}</span>` : ''}
+              ${t.ref    ? `<span>Ref: ${t.ref}</span>` : ''}
+              ${t.game   ? `<span>🎮 ${t.game}</span>` : ''}
+              ${t.gameUid? `<span>UID: ${t.gameUid}</span>` : ''}
+              <span>${t.date ? t.date.split('T')[0] : '—'}</span>
+            </div>
+          </div>
+          <span class="tx-status ${t.status||'pending'}" style="flex-shrink:0">${t.status||'pending'}</span>
+        </div>
+        ${t.proof ? `<div style="margin-top:8px"><img src="${t.proof}" style="max-height:80px;border-radius:8px;border:1px solid var(--border2)"></div>` : ''}
+      </div>`
+    ).join('');
   }
 }
 
@@ -2518,7 +2631,11 @@ function handleDepProof(input) {
 
 async function submitDeposit() {
   const amount = Number(_v('dep-amount'));
-  if (!amount || amount < 10) { toast('Minimum deposit is 10 AC','error'); return; }
+  const phone  = _v('dep-phone').trim();
+  const ref    = _v('dep-ref').trim();
+  const minDep = DB.config?.rules?.minDeposit || 100;
+  if (!amount || amount < minDep) { toast(`Minimum deposit is ${minDep} ${_AC()}`,'error'); return; }
+  if (!phone) { toast('Enter your phone / account number','error'); return; }
   _btn('btn-dep', true);
   const me = DB.me;
   let proof = '';
@@ -2526,10 +2643,10 @@ async function submitDeposit() {
   if (fi?.files[0]) {
     proof = await new Promise(res => { const r=new FileReader(); r.onload=e=>res(e.target.result); r.readAsDataURL(fi.files[0]); });
   }
-  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'deposit', amount, status:'pending', proof, date:new Date().toISOString() };
+  const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'deposit', amount, phone, ref, proof, status:'pending', date:new Date().toISOString() };
   DB.transactions.push(tx);
   const ok = await fsSet('transactions', tx.id, tx);
-  if (ok) { toast('Deposit request submitted! ✅','success'); _cacheDB(); renderWalletContent(); }
+  if (ok) { toast('Deposit request submitted! ✅ Admin will review shortly.','success'); _cacheDB(); renderWalletContent(); }
   else    { toast('Error submitting deposit','error'); _btn('btn-dep', false); }
 }
 
@@ -2537,15 +2654,19 @@ async function submitWithdraw() {
   const amount = Number(_v('wd-amount'));
   const method = _v('wd-method');
   const ref    = _v('wd-ref').trim();
-  if (!amount || amount < 10) { toast('Minimum withdrawal is 10 AC','error'); return; }
-  if (!ref)                   { toast('Enter account number','error'); return; }
+  const minWd  = DB.config?.rules?.minWithdraw || 200;
+  if (!amount || amount < minWd) { toast(`Minimum withdrawal is ${minWd} ${_AC()}`,'error'); return; }
+  if (!ref) { toast('Enter your account number','error'); return; }
   const me = DB.me;
-  if ((me?.balance||0) < amount) { toast('Insufficient balance','error'); return; }
+  if ((me?.balance||0) < amount) {
+    toast(`Insufficient balance — you have ${me?.balance||0} ${_AC()}`,'error');
+    return;
+  }
   _btn('btn-wd', true);
   const tx = { id:'tx_'+Date.now(), uid:me.id, uname:me.name, type:'withdraw', amount, method, ref, status:'pending', date:new Date().toISOString() };
   DB.transactions.push(tx);
   const ok = await fsSet('transactions', tx.id, tx);
-  if (ok) { toast('Withdrawal request submitted!','success'); _cacheDB(); renderWalletContent(); }
+  if (ok) { toast('Withdrawal request submitted! ✅ Admin will process shortly.','success'); _cacheDB(); renderWalletContent(); }
   else    { toast('Error submitting withdrawal','error'); _btn('btn-wd', false); }
 }
 
@@ -3919,43 +4040,43 @@ function renderAdminTransactions() {
       ${pending.map(t => _txCard(t, true)).join('')}
     </div>
     <div class="divider"></div>` : ''}
-    <div style="font-size:12px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">📋 All Transactions</div>
-    <div style="overflow-x:auto">
-      <table class="tx-table" style="min-width:500px">
-        <thead><tr><th>Player</th><th>Type</th><th>Amount</th><th>Status</th><th>Date</th><th>Action</th></tr></thead>
-        <tbody>${all.map(t=>`
-          <tr>
-            <td style="font-weight:600">${t.uname||'—'}</td>
-            <td style="text-transform:capitalize">${t.type||'—'}</td>
-            <td class="text-gold">${t.amount||0} AC</td>
-            <td><span class="tx-status ${t.status||'pending'}">${t.status||'pending'}</span></td>
-            <td style="color:var(--dim);font-size:11px">${t.date?t.date.split('T')[0]:'—'}</td>
-            <td>${t.status==='pending'
-              ? `<div style="display:flex;gap:4px"><button class="admin-btn success" onclick="approveTx('${t.id||t._fsId}')">✅</button><button class="admin-btn danger" onclick="rejectTx('${t.id||t._fsId}')">❌</button></div>`
-              : '<span style="color:var(--dim2)">—</span>'}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <div style="font-size:12px;color:var(--dim);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">📋 All Transactions (${all.length})</div>
+    ${all.filter(t=>t.status!=='pending').length===0 ? '<div class="empty-state" style="padding:20px"><p>No completed transactions yet</p></div>' :
+      all.filter(t=>t.status!=='pending').map(t => _txCard(t, false)).join('')}
   `;
 }
 
 function _txCard(t, actions) {
   const txid = t.id||t._fsId;
+  const typeColor = {deposit:'var(--g1)',withdraw:'var(--red)',topup:'var(--blue)',purchase:'var(--gold)'}[t.type]||'var(--gold)';
+  const typeIcon  = {deposit:'💰',withdraw:'💸',topup:'🎮',purchase:'🛒'}[t.type]||'💳';
   return `
   <div style="background:var(--panel);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:12px;margin-bottom:8px">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
       <div>
-        <span style="font-weight:700">${t.uname||'—'}</span>
-        <span style="font-size:11px;color:var(--dim);margin-left:8px;text-transform:capitalize">${t.type}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:18px">${typeIcon}</span>
+          <div>
+            <div style="font-weight:700;font-size:13px">${t.uname||'—'} <span style="font-size:10px;background:var(--panel2);padding:2px 7px;border-radius:10px;color:${typeColor};text-transform:capitalize;border:1px solid ${typeColor}44">${t.type}</span></div>
+            <div style="font-size:11px;color:var(--dim);margin-top:2px">${t.date?t.date.split('T')[0]:'—'}</div>
+          </div>
+        </div>
       </div>
-      <span style="font-size:18px;font-weight:900;color:var(--gold)">${t.amount} AC</span>
+      <span style="font-size:20px;font-weight:900;color:${typeColor}">${t.amount} ${_AC()}</span>
     </div>
-    ${t.proof ? `<div style="margin-bottom:8px"><img src="${t.proof}" style="max-height:80px;border-radius:6px;object-fit:cover;cursor:pointer" onclick="window.open('${t.proof}')"></div>` : ''}
-    <div style="font-size:11px;color:var(--dim);margin-bottom:${actions?'10px':'0'}">${t.date?t.date.split('T')[0]:'—'} ${t.method?'· via '+t.method:''} ${t.ref?'· '+t.ref:''}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--dim);background:var(--panel2);border-radius:8px;padding:7px 10px;margin-bottom:${(t.proof||actions)?'8px':'0'}">
+      ${t.method ? `<span>💳 ${t.method}</span>` : ''}
+      ${t.phone  ? `<span>📱 ${t.phone}</span>`  : ''}
+      ${t.ref    ? `<span>🔖 Ref: ${t.ref}</span>` : ''}
+      ${t.item   ? `<span>📦 ${t.item}</span>`   : ''}
+      ${t.game   ? `<span>🎮 ${t.game}</span>`   : ''}
+      ${t.gameUid? `<span>🆔 ${t.gameUid}</span>` : ''}
+      ${!t.method&&!t.phone&&!t.ref&&!t.item&&!t.game ? `<span style="color:var(--dim2)">No additional details</span>` : ''}
+    </div>
+    ${t.proof ? `<div style="margin-bottom:8px"><img src="${t.proof}" style="max-height:100px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid var(--border2)" onclick="window.open('${t.proof}')"><div style="font-size:10px;color:var(--dim);margin-top:3px">📸 Tap to view full screenshot</div></div>` : ''}
     ${actions ? `<div style="display:flex;gap:8px">
-      <button class="btn-join" style="padding:10px;font-size:12px" onclick="approveTx('${txid}')">✅ Approve</button>
-      <button class="btn-details" style="color:var(--red);border-color:rgba(248,113,113,.3)" onclick="rejectTx('${txid}')">❌ Reject</button>
+      <button class="btn-join" style="padding:10px;font-size:12px;flex:1" onclick="approveTx('${txid}')">✅ Approve</button>
+      <button class="btn-details" style="color:var(--red);border-color:rgba(248,113,113,.3);flex:1" onclick="rejectTx('${txid}')">❌ Reject</button>
     </div>` : ''}
   </div>`;
 }
