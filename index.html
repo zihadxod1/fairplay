@@ -2718,8 +2718,30 @@ function renderProfile() {
       <div class="section-header"><div class="section-title">🏅 Badges</div></div>
       <div class="badges-grid">
         ${(me.badges||[]).length
-          ? me.badges.map(b => { const bd=badgeDefs[b]||{emoji:'🏅',name:b}; return `<div class="badge-item"><span class="badge-emoji">${bd.emoji}</span>${bd.name}</div>`; }).join('')
-          : '<div style="font-size:12px;color:var(--dim);padding:4px">No badges yet — keep competing!</div>'}
+          ? me.badges.map(bid => {
+              // First look up in DB.badges (custom badges created in admin)
+              const dbBadge = DB.badges.find(b=>(b.id||b._fsId)===bid || b.name===bid);
+              if (dbBadge) {
+                const img = dbBadge.imgData||dbBadge.imgUrl;
+                const rColor = {common:'var(--silver,#aaa)',rare:'#60a5fa',epic:'#c084fc',legendary:'var(--gold)'}[dbBadge.rarity]||'var(--dim)';
+                return `
+                  <div class="badge-item" title="${dbBadge.desc||dbBadge.name}" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid ${rColor}55;background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+                    <div style="width:36px;height:36px;border-radius:8px;background:${dbBadge.bgColor||'var(--panel)'};display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;border:1px solid ${rColor}44">
+                      ${img ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover">` : (dbBadge.emoji||'🏅')}
+                    </div>
+                    <span style="font-size:10px;font-weight:700;color:var(--text);text-align:center;line-height:1.2;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dbBadge.name}</span>
+                    <span style="font-size:9px;color:${rColor};text-transform:capitalize">${dbBadge.rarity||'common'}</span>
+                  </div>`;
+              }
+              // Fall back to hardcoded badge definitions
+              const bd = badgeDefs[bid]||{emoji:'🏅',name:bid};
+              return `
+                <div class="badge-item" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid var(--border2);background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+                  <span style="font-size:28px">${bd.emoji}</span>
+                  <span style="font-size:10px;font-weight:700;color:var(--text);text-align:center;line-height:1.2">${bd.name}</span>
+                </div>`;
+            }).join('')
+          : '<div style="font-size:12px;color:var(--dim);padding:4px 0">No badges yet — keep competing!</div>'}
       </div>
     </div>
 
@@ -2952,7 +2974,25 @@ function viewPlayerModal(pid) {
     ${guild ? `<div style="font-size:13px;margin-bottom:8px">🛡️ <b>${guild.name}</b> [${guild.tag}]</div>` : ''}
     ${teams.length ? `<div style="font-size:13px;margin-bottom:8px">👥 ${teams.map(t=>t.name).join(', ')}</div>` : ''}
     <div class="badges-grid" style="margin-bottom:10px">
-      ${(p.badges||[]).map(b => { const bd=badgeDefs[b]||{emoji:'🏅',name:b}; return `<div class="badge-item"><span class="badge-emoji">${bd.emoji}</span>${bd.name}</div>`; }).join('') || '<span style="font-size:12px;color:var(--dim)">No badges</span>'}
+      ${(p.badges||[]).length
+        ? (p.badges||[]).map(bid => {
+            const dbBadge = DB.badges.find(b=>(b.id||b._fsId)===bid || b.name===bid);
+            if (dbBadge) {
+              const img = dbBadge.imgData||dbBadge.imgUrl;
+              return `<div class="badge-item" title="${dbBadge.name}" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px;border-radius:8px;background:var(--panel2);min-width:50px;max-width:64px">
+                <div style="width:30px;height:30px;border-radius:6px;background:${dbBadge.bgColor||'var(--panel)'};display:flex;align-items:center;justify-content:center;font-size:16px;overflow:hidden">
+                  ${img ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover">` : (dbBadge.emoji||'🏅')}
+                </div>
+                <span style="font-size:9px;font-weight:700;text-align:center;line-height:1.2;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dbBadge.name}</span>
+              </div>`;
+            }
+            const bd = badgeDefs[bid]||{emoji:'🏅',name:bid};
+            return `<div class="badge-item" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px;border-radius:8px;background:var(--panel2);min-width:50px;max-width:64px">
+              <span style="font-size:22px">${bd.emoji}</span>
+              <span style="font-size:9px;font-weight:700;text-align:center;line-height:1.2">${bd.name}</span>
+            </div>`;
+          }).join('')
+        : '<span style="font-size:12px;color:var(--dim)">No badges</span>'}
     </div>
     ${p.joinedDate ? `<div style="font-size:11px;color:var(--dim2)">Joined: ${p.joinedDate.split('T')[0]}</div>` : ''}
   `);
