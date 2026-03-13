@@ -255,6 +255,7 @@ img{display:block;max-width:100%}
   background:linear-gradient(135deg,var(--g3),var(--g4));
   display:flex;align-items:center;justify-content:center;
   font-size:22px;border:2px solid var(--border2);overflow:hidden;flex-shrink:0;
+  position:relative;
 }
 .drawer-avatar img{width:100%;height:100%;object-fit:cover}
 .drawer-user-info{flex:1;min-width:0}
@@ -489,13 +490,13 @@ img{display:block;max-width:100%}
 .tc-stat-label{font-size:9px;color:var(--dim);letter-spacing:1px;text-transform:uppercase;font-weight:600}
 .tc-stat-value{font-size:13px;font-weight:700;margin-top:2px}
 .tc-players{display:flex;align-items:center;gap:8px;margin-bottom:10px}
-.avatar-stack{display:flex}
+.avatar-stack{display:flex;overflow:visible}
 .avatar-stack-item{
   width:24px;height:24px;border-radius:50%;
   background:linear-gradient(135deg,var(--g3),var(--g4));
   border:2px solid var(--bg2);margin-left:-6px;
   display:flex;align-items:center;justify-content:center;
-  font-size:11px;overflow:hidden;
+  font-size:11px;overflow:hidden;position:relative;
 }
 .avatar-stack-item:first-child{margin-left:0}
 .tc-slot-info{font-size:12px;color:var(--dim)}
@@ -795,6 +796,18 @@ img{display:block;max-width:100%}
   z-index:10;pointer-events:none;
 }
 .sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+/* XS badge pin for tournament avatar stack (24px avatars) */
+.xs-badge-pin{
+  position:absolute;top:-3px;right:-3px;
+  width:11px;height:11px;border-radius:50%;
+  background:var(--bg2);
+  border:1.5px solid var(--gold);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;font-size:6px;
+  box-shadow:0 0 0 1px var(--bg);
+  z-index:10;pointer-events:none;
+}
+.xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .profile-avatar{
   width:80px;height:80px;border-radius:50%;
   background:linear-gradient(135deg,var(--g3),var(--g4));
@@ -1109,7 +1122,10 @@ img{display:block;max-width:100%}
       <div class="nav-icon-btn" onclick="showNotifications()">
         🔔<div class="nav-notif-dot" id="notif-dot"></div>
       </div>
-      <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')"></div>
+      <div style="position:relative;display:inline-flex">
+        <div class="nav-avatar" id="nav-avatar" onclick="showPage('profile')"></div>
+        <div id="nav-badge-pin"></div>
+      </div>
       <div class="hamburger" onclick="openDrawer()">
         <span></span><span></span><span></span>
       </div>
@@ -1127,7 +1143,10 @@ img{display:block;max-width:100%}
       <span class="drawer-close" onclick="closeDrawer()">✕</span>
     </div>
     <div class="drawer-user">
-      <div class="drawer-avatar" id="drawer-avatar"></div>
+      <div style="position:relative;display:inline-flex;flex-shrink:0">
+        <div class="drawer-avatar" id="drawer-avatar"></div>
+        <div id="drawer-badge-pin"></div>
+      </div>
       <div class="drawer-user-info">
         <div class="drawer-user-name" id="drawer-name">—</div>
         <div class="drawer-user-role" id="drawer-role">Player</div>
@@ -1822,12 +1841,16 @@ function _refreshUI() {
   if (!DB.me) return;
   const me = DB.me;
   const inner = _avatarInner(me);
-  // Nav avatar
+  // Nav avatar + badge pin
   const nAv = document.getElementById('nav-avatar');
   if (nAv) nAv.innerHTML = inner;
-  // Drawer
+  const nBP = document.getElementById('nav-badge-pin');
+  if (nBP) nBP.innerHTML = _badgePinHTML(me,'sm-badge-pin');
+  // Drawer avatar + badge pin
   const dAv = document.getElementById('drawer-avatar');
   if (dAv) dAv.innerHTML = inner;
+  const dBP = document.getElementById('drawer-badge-pin');
+  if (dBP) dBP.innerHTML = _badgePinHTML(me,'sm-badge-pin');
   const dNm = document.getElementById('drawer-name');
   if (dNm) dNm.textContent = me.name || 'Player';
   const dRl = document.getElementById('drawer-role');
@@ -1954,7 +1977,10 @@ function _tCard(t) {
 
   const stack = (t.players||[]).slice(0,4).map(pid => {
     const p = DB.players.find(pp => _pid(pp) === pid);
-    return `<div class="avatar-stack-item">${p ? _avatarInner(p) : '👤'}</div>`;
+    return `<div style="position:relative;display:inline-flex;margin-left:-6px;flex-shrink:0" class="${i===0?'':''}">
+      <div class="avatar-stack-item" style="${i===0?'margin-left:0':''}">${p ? _avatarInner(p) : '👤'}</div>
+      ${p ? _badgePinHTML(p,'xs-badge-pin') : ''}
+    </div>`;
   }).join('');
 
   return `
