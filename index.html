@@ -2248,6 +2248,15 @@ async function leaveTeam(tid) {
 
 function viewTeam(tid) {
   const t = DB.teams.find(t => (t.id||t._fsId) === tid); if (!t) return;
+  const me = DB.me;
+  const isLeader = t.leaderId === me?.id;
+  const isAdmin  = me?.role === 'admin';
+  const canEdit  = isLeader || isAdmin;
+
+  const logoHtml = (t.logo||'').startsWith('data:')||(t.logo||'').startsWith('http')
+    ? `<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`
+    : t.logo||'👥';
+
   const members = (t.memberIds||[]).map(mid => {
     const p = DB.players.find(pp => _pid(pp) === mid);
     return p ? `<div class="lb-row" style="cursor:default">
@@ -2255,12 +2264,28 @@ function viewTeam(tid) {
       <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===t.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
     </div>` : '';
   }).join('');
+
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">${t.logo||'👥'} ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div style="display:flex;gap:8px;margin-bottom:16px">
-      <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Tag</div><div class="tc-stat-value">[${t.tag}]</div></div>
-      <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Members</div><div class="tc-stat-value">${(t.memberIds||[]).length}</div></div>
-      <div class="tc-stat" style="flex:2"><div class="tc-stat-label">ID</div><div class="tc-stat-value" style="font-size:11px;font-family:monospace" onclick="navigator.clipboard.writeText('${tid}')">${tid} 📋</div></div>
+    <div class="modal-close-row"><div class="modal-title">👥 ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+
+    <!-- Logo + upload -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:12px;background:var(--panel2);border-radius:var(--radius);border:1px solid var(--border)">
+      <div id="vt-logo-box" style="width:64px;height:64px;border-radius:12px;background:var(--panel);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:30px;overflow:hidden;flex-shrink:0">${logoHtml}</div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:800">${t.name} <span style="font-size:12px;color:var(--dim)">[${t.tag}]</span></div>
+        <div style="font-size:12px;color:var(--dim);margin-top:2px">${(t.memberIds||[]).length} members</div>
+        ${canEdit ? `
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="admin-btn" style="font-size:11px" onclick="document.getElementById('vt-img-file').click()">🖼️ Change Logo (Image)</button>
+          <input type="file" id="vt-img-file" accept="image/png,image/jpg,image/jpeg,image/webp" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,false)">
+          ${isAdmin ? `<button class="admin-btn gold" style="font-size:11px" onclick="document.getElementById('vt-gif-file').click()">✨ Upload GIF (Admin)</button>
+          <input type="file" id="vt-gif-file" accept="image/gif,image/*" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,true)">` : ''}
+        </div>` : ''}
+      </div>
+    </div>
+
+    <div style="display:flex;gap:8px;margin-bottom:14px">
+      <div class="tc-stat" style="flex:2"><div class="tc-stat-label">ID</div><div class="tc-stat-value" style="font-size:11px;font-family:monospace;cursor:pointer" onclick="navigator.clipboard.writeText('${tid}');toast('Copied!','success')">${tid} 📋</div></div>
     </div>
     <div style="display:flex;flex-direction:column;gap:6px">${members || '<div class="empty-state" style="padding:16px"><p>No members</p></div>'}</div>
   `);
@@ -2364,7 +2389,16 @@ async function leaveGuild(gid) {
 
 function viewGuild(gid) {
   const g = DB.guilds.find(g => (g.id||g._fsId) === gid); if (!g) return;
-  const leader  = DB.players.find(p => _pid(p) === g.leaderId);
+  const me = DB.me;
+  const isLeader = g.leaderId === me?.id;
+  const isAdmin  = me?.role === 'admin';
+  const canEdit  = isLeader || isAdmin;
+  const leader   = DB.players.find(p => _pid(p) === g.leaderId);
+
+  const logoHtml = (g.logo||'').startsWith('data:')||(g.logo||'').startsWith('http')
+    ? `<img src="${g.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`
+    : g.logo||'🛡️';
+
   const members = (g.memberIds||[]).map(mid => {
     const p = DB.players.find(pp => _pid(pp) === mid);
     return p ? `<div class="lb-row" style="cursor:default">
@@ -2372,17 +2406,64 @@ function viewGuild(gid) {
       <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===g.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
     </div>` : '';
   }).join('');
+
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🛡️ ${g.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Tag</div><div class="tc-stat-value">[${g.tag}]</div></div>
-      <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Leader</div><div class="tc-stat-value">${leader?.name||'—'}</div></div>
-      <div class="tc-stat" style="flex:1"><div class="tc-stat-label">Members</div><div class="tc-stat-value">${(g.memberIds||[]).length}</div></div>
+
+    <!-- Logo + upload -->
+    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:12px;background:var(--panel2);border-radius:var(--radius);border:1px solid var(--border)">
+      <div id="vg-logo-box" style="width:64px;height:64px;border-radius:12px;background:var(--panel);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:30px;overflow:hidden;flex-shrink:0">${logoHtml}</div>
+      <div style="flex:1">
+        <div style="font-size:16px;font-weight:800">${g.name} <span style="font-size:12px;color:var(--dim)">[${g.tag}]</span></div>
+        <div style="font-size:12px;color:var(--dim);margin-top:2px">Leader: ${leader?.name||'—'} · ${(g.memberIds||[]).length} members</div>
+        ${canEdit ? `
+        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <button class="admin-btn" style="font-size:11px" onclick="document.getElementById('vg-img-file').click()">🖼️ Change Logo (Image)</button>
+          <input type="file" id="vg-img-file" accept="image/png,image/jpg,image/jpeg,image/webp" style="display:none" onchange="uploadEntityLogo('guild','${gid}',this,false)">
+          ${isAdmin ? `<button class="admin-btn gold" style="font-size:11px" onclick="document.getElementById('vg-gif-file').click()">✨ Upload GIF (Admin)</button>
+          <input type="file" id="vg-gif-file" accept="image/gif,image/*" style="display:none" onchange="uploadEntityLogo('guild','${gid}',this,true)">` : ''}
+        </div>` : ''}
+      </div>
     </div>
+
     ${g.description ? `<p style="font-size:13px;color:var(--dim);margin-bottom:12px">${g.description}</p>` : ''}
-    <div style="font-size:11px;color:var(--dim2);font-family:monospace;margin-bottom:12px" onclick="navigator.clipboard.writeText('${gid}')">ID: ${gid} 📋</div>
+    <div style="font-size:11px;color:var(--dim2);font-family:monospace;margin-bottom:12px;cursor:pointer" onclick="navigator.clipboard.writeText('${gid}');toast('Copied!','success')">ID: ${gid} 📋</div>
     <div style="display:flex;flex-direction:column;gap:6px">${members}</div>
   `);
+}
+
+// ================================================================
+// SHARED: Upload logo for team or guild
+// type: 'team'|'guild', id: entity id, input: file input, allowGif: bool (admin only)
+// ================================================================
+async function uploadEntityLogo(type, id, input, allowGif) {
+  const file = input.files[0]; if (!file) return;
+  const isGif = file.type === 'image/gif';
+  if (isGif && !allowGif) { toast('GIF upload is for admins only 🔒','error'); input.value=''; return; }
+  if (file.size > 8*1024*1024) { toast('File too large (max 8MB)','error'); input.value=''; return; }
+  toast('Uploading...','info');
+  const reader = new FileReader();
+  reader.onload = async e => {
+    const data = e.target.result;
+    const collection = type === 'team' ? 'teams' : 'guilds';
+    const arr = type === 'team' ? DB.teams : DB.guilds;
+    const entity = arr.find(x => (x.id||x._fsId) === id);
+    if (!entity) return;
+    entity.logo = data;
+    const ok = await fsSet(collection, id, entity);
+    if (ok) {
+      _cacheDB();
+      // Update preview box inside the open modal
+      const boxId = type === 'team' ? 'vt-logo-box' : 'vg-logo-box';
+      const box = document.getElementById(boxId);
+      if (box) box.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`;
+      // Refresh the list behind
+      if (type === 'team') renderTeams(); else renderGuilds();
+      toast(`${type === 'team' ? 'Team' : 'Guild'} logo updated! ✅`,'success');
+    } else { toast('Upload failed','error'); }
+    input.value = '';
+  };
+  reader.readAsDataURL(file);
 }
 
 // ================================================================
