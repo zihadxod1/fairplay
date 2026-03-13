@@ -1975,10 +1975,10 @@ function _tCard(t) {
   else if (t.status !== 'open' || isFull) actionBtn = `<button class="btn-join" disabled>${isFull ? '🔒 Full' : '⏳ Closed'}</button>`;
   else                                    actionBtn = `<button class="btn-join" onclick="joinTSolo('${tid}')">⚔️ Join</button>`;
 
-  const stack = (t.players||[]).slice(0,4).map(pid => {
+  const stack = (t.players||[]).slice(0,4).map((pid, i) => {
     const p = DB.players.find(pp => _pid(pp) === pid);
-    return `<div style="position:relative;display:inline-flex;margin-left:-6px;flex-shrink:0" class="${i===0?'':''}">
-      <div class="avatar-stack-item" style="${i===0?'margin-left:0':''}">${p ? _avatarInner(p) : '👤'}</div>
+    return `<div style="position:relative;display:inline-flex;${i===0?'':'margin-left:-6px;'}flex-shrink:0">
+      <div class="avatar-stack-item">${p ? _avatarInner(p) : '👤'}</div>
       ${p ? _badgePinHTML(p,'xs-badge-pin') : ''}
     </div>`;
   }).join('');
