@@ -756,6 +756,32 @@ img{display:block;max-width:100%}
   margin-bottom:16px;position:relative;
 }
 .profile-avatar-wrap{position:relative;display:inline-block;margin-bottom:12px}
+/* Badge pinned to top-left of avatar */
+.avatar-badge-pin{
+  position:absolute;top:-6px;left:-6px;
+  width:32px;height:32px;border-radius:50%;
+  background:var(--bg2);
+  border:2.5px solid var(--gold);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;font-size:16px;
+  box-shadow:0 0 0 2px var(--bg),0 2px 8px rgba(0,0,0,.6);
+  z-index:10;cursor:pointer;
+  transition:transform .15s,box-shadow .15s;
+}
+.avatar-badge-pin:hover{transform:scale(1.15);box-shadow:0 0 0 2px var(--bg),0 3px 12px rgba(251,191,36,.4)}
+.avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+/* Hero avatar badge pin (smaller) */
+.hero-badge-pin{
+  position:absolute;top:-4px;left:-4px;
+  width:22px;height:22px;border-radius:50%;
+  background:var(--bg2);
+  border:2px solid var(--gold);
+  display:flex;align-items:center;justify-content:center;
+  overflow:hidden;font-size:11px;
+  box-shadow:0 0 0 1.5px var(--bg);
+  z-index:10;
+}
+.hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:50%}
 .profile-avatar{
   width:80px;height:80px;border-radius:50%;
   background:linear-gradient(135deg,var(--g3),var(--g4));
@@ -1117,7 +1143,10 @@ img{display:block;max-width:100%}
     <div class="page active" id="page-dashboard">
       <div class="hero-card">
         <div class="hero-top">
-          <div class="hero-avatar" id="hero-avatar" onclick="openAvatarPicker(DB.me.id)"></div>
+          <div style="position:relative;display:inline-block;flex-shrink:0">
+            <div class="hero-avatar" id="hero-avatar" onclick="openAvatarPicker(DB.me.id)"></div>
+            <div id="hero-badge-pin"></div>
+          </div>
           <div class="hero-info">
             <div class="hero-welcome">Welcome back</div>
             <div class="hero-name" id="hero-name">Loading...</div>
@@ -1740,6 +1769,25 @@ function _avatarInner(p) {
   return EMOJIS[p._emojiIdx ?? 0] || '👤';
 }
 
+// Returns HTML for the badge pin overlay on an avatar (top-left corner)
+function _badgePinHTML(player, cls='avatar-badge-pin') {
+  const bids = player?.badges||[];
+  if (!bids.length) return '';
+  const bid = bids[0]; // show first badge
+  const dbBadge = DB.badges.find(b=>(b.id||b._fsId)===bid || b.name===bid);
+  // hardcoded fallback icons
+  const hardcoded = {owner:'👑',tournament:'🏆',winner:'🥇',veteran:'⚔️',legend:'🌟',newbie:'🌱'};
+  if (dbBadge) {
+    const img = dbBadge.imgData||dbBadge.imgUrl;
+    const inner = img
+      ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+      : `<span style="font-size:${cls==='hero-badge-pin'?'11px':'16px'}">${dbBadge.emoji||'🏅'}</span>`;
+    return `<div class="${cls}" title="${dbBadge.name}">${inner}</div>`;
+  }
+  const emoji = hardcoded[bid] || '🏅';
+  return `<div class="${cls}" title="${bid}">${emoji}</div>`;
+}
+
 function _refreshUI() {
   if (!DB.me) return;
   const me = DB.me;
@@ -1818,6 +1866,8 @@ function renderDash() {
 
   const hAv = document.getElementById('hero-avatar');
   if (hAv) { hAv.innerHTML = _avatarInner(me); hAv.onclick = () => openAvatarPicker(me.id); }
+  const hBP = document.getElementById('hero-badge-pin');
+  if (hBP) hBP.outerHTML = `<div id="hero-badge-pin">${_badgePinHTML(me,'hero-badge-pin')}</div>`;
 
   const badge = document.getElementById('hero-badge');
   if (badge) { badge.textContent = me.role==='admin' ? 'ADMIN' : 'PLAYER'; badge.className = `badge-role ${me.role==='admin'?'admin':'player'}`; }
@@ -2689,6 +2739,7 @@ function renderProfile() {
   document.getElementById('profile-content').innerHTML = `
     <div class="profile-header">
       <div class="profile-avatar-wrap">
+        ${_badgePinHTML(me)}
         <div class="profile-avatar" onclick="openAvatarPicker('${me.id}')">${_avatarInner(me)}</div>
         <div class="profile-avatar-edit" onclick="openAvatarPicker('${me.id}')">✏️</div>
       </div>
