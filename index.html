@@ -3060,11 +3060,17 @@ function renderProfile() {
                 const dbGame = _getGames().find(g => g.id === gp.game);
                 const displayName = dbGame?.name || gp.game;
                 return `<div class="game-profile-item">
-                  <div class="gp-game" style="display:flex;align-items:center;gap:8px">
-                    ${_gameIconHtml(gp.game, 20)}
-                    <span>${displayName}</span>
+                  <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+                    ${_gameIconHtml(gp.game, 22)}
+                    <div style="min-width:0">
+                      <div class="gp-game">${displayName}</div>
+                      <div class="gp-username">${gp.username}</div>
+                    </div>
                   </div>
-                  <div class="gp-username">${gp.username}</div>
+                  <div style="display:flex;gap:6px;flex-shrink:0;margin-left:8px">
+                    <button class="admin-btn" style="padding:5px 10px;font-size:11px" data-gid="${gp.game}" data-uname="${gp.username}" onclick="openEditGameProfile(this.dataset.gid,this.dataset.uname)">✏️</button>
+                    <button class="admin-btn danger" style="padding:5px 10px;font-size:11px" data-gid="${gp.game}" onclick="deleteGameProfile(this.dataset.gid)">🗑️</button>
+                  </div>
                 </div>`;
               }).join('');
             })()
@@ -3132,6 +3138,61 @@ async function saveGameProfile() {
   const ok = await fsSet('players', me.id, me);
   if (ok) { toast('Game profile saved!','success'); _cacheDB(); closeModal(); renderProfile(); }
   else    { toast('Error saving profile','error'); _btn('btn-gp', false); }
+}
+
+
+function openEditGameProfile(gameId, currentUsername) {
+  const dbGame = _getGames().find(g => g.id === gameId);
+  const displayName = dbGame?.name || gameId;
+  openModal(`
+    <div class="modal-close-row">
+      <div class="modal-title" style="display:flex;align-items:center;gap:8px">
+        ${_gameIconHtml(gameId, 22)} Edit ${displayName}
+      </div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
+    <div style="background:var(--panel);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px">
+      ${_gameIconHtml(gameId, 32)}
+      <div>
+        <div style="font-weight:700;font-size:14px">${displayName}</div>
+        <div style="font-size:11px;color:var(--dim)">Update your in-game username or UID</div>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Username / UID</label>
+      <input class="form-input" id="egp-username" value="${currentUsername}" placeholder="Enter your in-game username or UID">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-primary" id="btn-egp" onclick="saveEditGameProfile('${gameId}')" style="flex:1">💾 Save</button>
+      <button class="btn-secondary" style="color:var(--red);border-color:rgba(248,113,113,.3);padding:0 16px" onclick="deleteGameProfile('${gameId}')">🗑️</button>
+    </div>
+  `);
+  setTimeout(() => { const el = document.getElementById('egp-username'); if(el){el.focus();el.select();} }, 100);
+}
+
+async function saveEditGameProfile(gameId) {
+  const username = _v('egp-username').trim();
+  if (!username) { toast('Enter username or UID','error'); return; }
+  _btn('btn-egp', true);
+  const me = DB.me;
+  me.gameProfiles = me.gameProfiles || [];
+  const idx = me.gameProfiles.findIndex(p => p.game === gameId);
+  if (idx >= 0) me.gameProfiles[idx].username = username;
+  else me.gameProfiles.push({ game: gameId, username });
+  const ok = await fsSet('players', me.id, me);
+  if (ok) { toast('Game profile updated!','success'); _cacheDB(); closeModal(); renderProfile(); }
+  else    { toast('Error saving','error'); _btn('btn-egp', false); }
+}
+
+async function deleteGameProfile(gameId) {
+  const dbGame = _getGames().find(g => g.id === gameId);
+  const name = dbGame?.name || gameId;
+  if (!confirm('Remove ' + name + ' from your game profiles?')) return;
+  const me = DB.me;
+  me.gameProfiles = (me.gameProfiles||[]).filter(p => p.game !== gameId);
+  const ok = await fsSet('players', me.id, me);
+  if (ok) { toast(name + ' removed','success'); _cacheDB(); closeModal(); renderProfile(); }
+  else    toast('Error removing profile','error');
 }
 
 // ================================================================
