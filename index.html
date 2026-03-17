@@ -1500,10 +1500,16 @@ async function fsSet(col, docId, data) {
   try {
     // Players doc must never contain avatarCustom (base64 can exceed Firestore's 1MB doc limit).
     // Photos are stored separately in the 'avatars' collection.
+    // Badges doc must never contain imgData for the same reason — stored in 'badge_images'.
     let safeData = data;
     if (col === 'players' && data && data.avatarCustom !== undefined) {
       safeData = Object.assign({}, data);
       delete safeData.avatarCustom;
+      delete safeData._fsId;
+    }
+    if (col === 'badges' && data && data.imgData !== undefined) {
+      safeData = Object.assign({}, data);
+      delete safeData.imgData; // stored in badge_images collection
       delete safeData._fsId;
     }
     const url  = `${FS_BASE}/${col}/${encodeURIComponent(docId)}`;
@@ -1608,8 +1614,9 @@ async function fbLoadAll() {
     // Apply saved config (theme, branding, banner, etc.)
     _applyConfig();
 
-    // Load avatars for players (non-blocking)
+    // Load avatars + badge images (non-blocking, runs in background)
     _loadAvatars();
+    _loadBadgeImages();
 
     // Cache to localStorage
     _cacheDB();
@@ -1633,6 +1640,24 @@ async function _loadAvatars() {
     const activePg = document.querySelector('.page.active');
     if (activePg) renderPage(activePg.id.replace('page-',''));
   } catch(e) { console.warn('_loadAvatars error:', e); }
+}
+
+async function _loadBadgeImages() {
+  // Badge images are stored in 'badge_images' collection (separate from badge metadata)
+  // to avoid Firestore's 1MB document size limit.
+  try {
+    const imgDocs = await fsList('badge_images');
+    for (const doc of imgDocs) {
+      const bid = doc.id || doc._fsId;
+      if (!bid || !doc.data) continue;
+      const b = DB.badges.find(b => (b.id||b._fsId) === bid);
+      if (b) b.imgData = doc.data;
+    }
+    _cacheDB();
+    // Re-render admin badges panel if it's open
+    const adminContent = document.getElementById('admin-content');
+    if (adminContent && document.querySelector('.page#page-admin.active')) renderAdminBadges();
+  } catch(e) { console.warn('_loadBadgeImages error:', e); }
 }
 
 function _cacheDB() {
@@ -5196,10 +5221,11 @@ async function saveAdminBadge() {
   _btn('btn-bd', true);
   const editId = _v('bd-edit-id');
   const id     = editId || 'badge_'+Date.now();
+  const imgData = document.getElementById('bd-img-data')?.value || '';
   const badge  = {
     id, name, desc:_v('bd-desc').trim(),
     emoji:_v('bd-emoji')||'🏅',
-    imgData:document.getElementById('bd-img-data')?.value||'',
+    imgData,  // kept in memory / local DB
     imgUrl:_v('bd-img-url').trim(),
     rarity:_v('bd-rarity')||'common',
     bgColor:document.getElementById('bd-bg')?.value||'#111a12',
@@ -5211,8 +5237,22 @@ async function saveAdminBadge() {
   } else {
     DB.badges.push(badge);
   }
-  await fsSet('badges', id, badge);
-  toast(editId?'Badge updated ✅':'Badge created! 🎖️','success');
+  // Save badge metadata to 'badges' collection (fsSet auto-strips imgData)
+  const metaOk = await fsSet('badges', id, badge);
+  // Save badge image separately to 'badge_images' collection (no size limit issue)
+  let imgOk = true;
+  if (imgData) {
+    imgOk = await fsSet('badge_images', id, { id, data: imgData });
+  } else if (editId) {
+    // If image was cleared during edit, clear it from badge_images too
+    await fsSet('badge_images', id, { id, data: '' });
+  }
+  if (metaOk) {
+    toast(editId?'Badge updated ✅':'Badge created! 🎖️','success');
+  } else {
+    toast('Error saving badge — check connection','error');
+  }
+  _btn('btn-bd', false);
   _cacheDB(); clearBadgeForm(); renderAdminBadges();
 }
 
@@ -5257,7 +5297,7 @@ function clearBadgeForm() {
 async function deleteAdminBadge(bid) {
   if (!confirm('Delete this badge permanently?')) return;
   DB.badges = DB.badges.filter(b=>(b.id||b._fsId)!==bid);
-  await fsDelete('badges', bid);
+  await Promise.all([fsDelete('badges', bid), fsDelete('badge_images', bid)]);
   toast('Badge deleted','info'); _cacheDB(); renderAdminBadges();
 }
 
