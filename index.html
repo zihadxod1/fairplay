@@ -1585,13 +1585,13 @@ async function fbLoadAll() {
     }
   } catch(e) {}
 
-  // Then fetch fresh from Firestore
+  // Then fetch fresh from Firestore — badge_images fetched in same round-trip
   try {
-    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs] =
+    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs] =
       await Promise.all([
         fsList('players'), fsList('tournaments'), fsList('teams'), fsList('guilds'),
         fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications'),
-        fsList('badges')
+        fsList('badges'), fsList('badge_images')
       ]);
 
     DB.players       = players.filter(Boolean);
@@ -1605,6 +1605,14 @@ async function fbLoadAll() {
     DB.badges        = badgesDocs.filter(Boolean);
     DB.me            = DB.players.find(p => _pid(p) === S.uid) || null;
 
+    // Merge badge images into badge objects BEFORE any rendering
+    for (const doc of badgeImgDocs) {
+      const bid = doc.id || doc._fsId;
+      if (!bid || !doc.data) continue;
+      const b = DB.badges.find(b => (b.id||b._fsId) === bid);
+      if (b) b.imgData = doc.data;
+    }
+
     // Load platform meta
     const payMeta = await fsGet('_meta','paymentMethods');
     if (payMeta?.methods) DB.paymentMethods = payMeta.methods;
@@ -1614,12 +1622,12 @@ async function fbLoadAll() {
     // Apply saved config (theme, branding, banner, etc.)
     _applyConfig();
 
-    // Load avatars + badge images (non-blocking, runs in background)
-    _loadAvatars();
-    _loadBadgeImages();
-
-    // Cache to localStorage
+    // Cache everything (badges now include imgData)
     _cacheDB();
+
+    // Load avatars non-blocking (large base64 data, separate collection)
+    _loadAvatars();
+
   } catch(e) { console.warn('fbLoadAll error:', e); }
 }
 
@@ -1643,8 +1651,8 @@ async function _loadAvatars() {
 }
 
 async function _loadBadgeImages() {
-  // Badge images are stored in 'badge_images' collection (separate from badge metadata)
-  // to avoid Firestore's 1MB document size limit.
+  // Badge images stored separately in 'badge_images' to avoid 1MB Firestore limit.
+  // Called after saveAdminBadge to sync newly saved images into memory.
   try {
     const imgDocs = await fsList('badge_images');
     for (const doc of imgDocs) {
@@ -1654,9 +1662,9 @@ async function _loadBadgeImages() {
       if (b) b.imgData = doc.data;
     }
     _cacheDB();
-    // Re-render admin badges panel if it's open
-    const adminContent = document.getElementById('admin-content');
-    if (adminContent && document.querySelector('.page#page-admin.active')) renderAdminBadges();
+    // Re-render whatever page is active so images appear immediately
+    const activePg = document.querySelector('.page.active');
+    if (activePg) renderPage(activePg.id.replace('page-',''));
   } catch(e) { console.warn('_loadBadgeImages error:', e); }
 }
 
