@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#060b07">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>FAIR PLAY — Esports Platform</title>
+<title>FF BOOYAH — Esports Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -1092,7 +1092,7 @@ img{display:block;max-width:100%}
 
 <!-- LOADING -->
 <div id="loading-screen">
-  <div class="loading-logo">⚔ FAIR PLAY</div>
+  <div class="loading-logo">✗ FF BOOYAH</div>
   <div class="loading-spinner"></div>
   <div class="loading-text">Connecting to arena...</div>
 </div>
@@ -1112,8 +1112,8 @@ img{display:block;max-width:100%}
   <div class="login-box">
     <div class="login-logo">
       <div class="logo-icon">⚔️</div>
-      <h1>FAIR PLAY</h1>
-      <p>Esports Arena Platform</p>
+      <h1>FF BOOYAH</h1>
+      <p>Esports Arena</p>
     </div>
     <div class="login-tabs">
       <div class="login-tab active" onclick="lpSwitch('signin')">Sign In</div>
@@ -1146,7 +1146,7 @@ img{display:block;max-width:100%}
   <!-- NAV -->
   <nav id="nav-bar">
     <div class="nav-logo" onclick="showPage('dashboard')">
-      <span>⚔ FAIR PLAY</span>
+      <span>✗ FF BOOYAH</span>
       <span>ESPORTS ARENA</span>
     </div>
     <div class="nav-right">
@@ -1170,7 +1170,7 @@ img{display:block;max-width:100%}
   <div id="drawer-overlay" onclick="closeDrawer()"></div>
   <div id="drawer">
     <div class="drawer-header">
-      <span class="drawer-logo">⚔ FAIR PLAY</span>
+      <span class="drawer-logo">✗ FF BOOYAH</span>
       <span class="drawer-close" onclick="closeDrawer()">✕</span>
     </div>
     <div class="drawer-user">
@@ -1830,7 +1830,7 @@ async function _enterApp() {
   }, 60000);
 
   updateNotifDot();
-  console.log('%c⚔ FAIR PLAY %cArena loaded', 'font-size:18px;font-weight:900;color:#4ade80','font-size:12px;color:#fbbf24');
+  console.log('%c✗ FF BOOYAH %cArena loaded', 'font-size:18px;font-weight:900;color:#4ade80','font-size:12px;color:#fbbf24');
 }
 
 // ================================================================
@@ -1878,10 +1878,19 @@ function _avatarInner(p) {
 }
 
 // Returns HTML for the badge pin overlay on an avatar (top-right corner)
+// Normalize a badge entry: handles both plain string IDs and accidentally-stored objects
+function _normBid(bid) {
+  if (!bid) return null;
+  if (typeof bid === 'string') return bid;
+  if (typeof bid === 'object') return bid.id || bid._fsId || bid.name || null;
+  return String(bid);
+}
+
 function _badgePinHTML(player, cls='avatar-badge-pin') {
   const bids = player?.badges||[];
   if (!bids.length) return '';
-  const bid = bids[0]; // show first (primary) badge
+  const bid = _normBid(bids[0]); // show first (primary) badge
+  if (!bid) return '';
   const dbBadge = DB.badges.find(b=>(b.id||b._fsId)===bid || b.name===bid);
   const hardcoded = {owner:'👑',tournament:'🏆',winner:'🥇',veteran:'⚔️',legend:'🌟',newbie:'🌱'};
   if (dbBadge) {
@@ -3056,14 +3065,16 @@ function renderProfile() {
       <div class="section-header"><div class="section-title">🏅 Badges</div></div>
       <div class="badges-grid">
         ${(me.badges||[]).length
-          ? me.badges.map(bid => {
-              // First look up in DB.badges (custom badges created in admin)
+          ? me.badges.map(rawBid => {
+              const bid = _normBid(rawBid); // normalize: handle string IDs and accidentally-stored objects
+              if (!bid) return '';
               const dbBadge = DB.badges.find(b=>(b.id||b._fsId)===bid || b.name===bid);
               if (dbBadge) {
                 const img = dbBadge.imgData||dbBadge.imgUrl;
                 const rColor = {common:'var(--silver,#aaa)',rare:'#60a5fa',epic:'#c084fc',legendary:'var(--gold)'}[dbBadge.rarity]||'var(--dim)';
                 return `
-                  <div class="badge-item" title="${dbBadge.desc||dbBadge.name}" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid ${rColor}55;background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+                  <div class="badge-item" title="${dbBadge.desc||dbBadge.name}" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid ${rColor}55;background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+                    <button onclick="removeBadgeFromProfile('${bid}')" title="Remove badge" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:rgba(248,113,113,.9);border:none;color:#fff;font-size:10px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2">×</button>
                     <div style="width:36px;height:36px;border-radius:4px;background:${dbBadge.bgColor||'var(--panel)'};display:flex;align-items:center;justify-content:center;font-size:20px;overflow:hidden;border:1px solid ${rColor}44">
                       ${img ? `<img src="${img}" style="width:100%;height:100%;object-fit:cover">` : (dbBadge.emoji||'🏅')}
                     </div>
@@ -3071,13 +3082,21 @@ function renderProfile() {
                     <span style="font-size:9px;color:${rColor};text-transform:capitalize">${dbBadge.rarity||'common'}</span>
                   </div>`;
               }
-              // Fall back to hardcoded badge definitions
-              const bd = badgeDefs[bid]||{emoji:'🏅',name:bid};
-              return `
-                <div class="badge-item" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid var(--border2);background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+              // Fall back to hardcoded legacy badges
+              const hardcoded = {owner:{emoji:'👑',name:'Owner'},tournament:{emoji:'🏆',name:'Winner'},winner:{emoji:'🥇',name:'Champion'},veteran:{emoji:'⚔️',name:'Veteran'},legend:{emoji:'🌟',name:'Legend'},newbie:{emoji:'🌱',name:'Newcomer'}};
+              const bd = (badgeDefs||{})[bid] || hardcoded[bid] || null;
+              if (bd) return `
+                <div class="badge-item" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid var(--border2);background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+                  <button onclick="removeBadgeFromProfile('${bid}')" title="Remove badge" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:rgba(248,113,113,.9);border:none;color:#fff;font-size:10px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2">×</button>
                   <span style="font-size:28px">${bd.emoji}</span>
                   <span style="font-size:10px;font-weight:700;color:var(--text);text-align:center;line-height:1.2">${bd.name}</span>
                 </div>`;
+              // Badge not found — show placeholder with remove button so user can clean it up
+              return `<div class="badge-item" style="position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;padding:8px 6px;border-radius:10px;border:1px solid rgba(248,113,113,.3);background:var(--panel2);min-width:58px;max-width:70px;cursor:default">
+                <button onclick="removeBadgeFromProfile('${bid}')" title="Remove badge" style="position:absolute;top:-6px;right:-6px;width:18px;height:18px;border-radius:50%;background:rgba(248,113,113,.9);border:none;color:#fff;font-size:10px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;z-index:2">×</button>
+                <span style="font-size:20px">❓</span>
+                <span style="font-size:9px;color:var(--red);text-align:center;line-height:1.2">Unknown</span>
+              </div>`;
             }).join('')
           : '<div style="font-size:12px;color:var(--dim);padding:4px 0">No badges yet — keep competing!</div>'}
       </div>
@@ -3490,7 +3509,9 @@ function viewPlayerModal(pid) {
     ${teams.length ? `<div style="font-size:13px;margin-bottom:8px">👥 ${teams.map(t=>t.name).join(', ')}</div>` : ''}
     <div class="badges-grid" style="margin-bottom:10px">
       ${(p.badges||[]).length
-        ? (p.badges||[]).map(bid => {
+        ? (p.badges||[]).map(rawBid => {
+            const bid = _normBid(rawBid);
+            if (!bid) return '';
             const dbBadge = DB.badges.find(b=>(b.id||b._fsId)===bid || b.name===bid);
             if (dbBadge) {
               const img = dbBadge.imgData||dbBadge.imgUrl;
@@ -3501,7 +3522,9 @@ function viewPlayerModal(pid) {
                 <span style="font-size:9px;font-weight:700;text-align:center;line-height:1.2;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${dbBadge.name}</span>
               </div>`;
             }
-            const bd = badgeDefs[bid]||{emoji:'🏅',name:bid};
+            const hardcoded2 = {owner:{emoji:'👑',name:'Owner'},tournament:{emoji:'🏆',name:'Winner'},winner:{emoji:'🥇',name:'Champion'},veteran:{emoji:'⚔️',name:'Veteran'},legend:{emoji:'🌟',name:'Legend'},newbie:{emoji:'🌱',name:'Newcomer'}};
+            const bd = badgeDefs[bid] || hardcoded2[bid];
+            if (!bd) return ''; // skip unknown badges cleanly
             return `<div class="badge-item" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px;border-radius:8px;background:var(--panel2);min-width:50px;max-width:64px">
               <span style="font-size:22px">${bd.emoji}</span>
               <span style="font-size:9px;font-weight:700;text-align:center;line-height:1.2">${bd.name}</span>
@@ -5323,9 +5346,13 @@ function searchPlayerForBadge() {
     <div style="display:flex;flex-wrap:wrap;gap:6px">
       ${DB.badges.map(b => {
         const bid = b.id||b._fsId;
-        const has = (p.badges||[]).includes(bid)||(p.badges||[]).includes(b.name);
+        const playerBadgeIds = (p.badges||[]).map(_normBid).filter(Boolean);
+        const has = playerBadgeIds.includes(bid) || playerBadgeIds.includes(b.name);
+        const iconHtml = (b.imgData||b.imgUrl)
+          ? `<img src="${b.imgData||b.imgUrl}" style="width:18px;height:18px;border-radius:3px;object-fit:cover;vertical-align:middle">`
+          : `<span style="font-size:16px">${b.emoji||'🏅'}</span>`;
         return `<div onclick="adminToggleBadgeAssign('${pid}','${bid}')" style="display:flex;align-items:center;gap:6px;padding:6px 10px;border-radius:8px;border:1px solid ${has?'var(--g1)':'var(--border)'};background:${has?'rgba(74,222,128,.1)':'var(--panel)'};cursor:pointer;transition:.15s">
-          <span style="font-size:16px">${b.imgData||b.imgUrl?`<img src="${b.imgData||b.imgUrl}" style="width:18px;height:18px;border-radius:3px;object-fit:cover">`:(b.emoji||'🏅')}</span>
+          ${iconHtml}
           <span style="font-size:11px;font-weight:600;color:${has?'var(--g1)':'var(--dim)'}">${b.name}</span>
           ${has?'<span style="font-size:10px;color:var(--g1)">✓</span>':''}
         </div>`;
@@ -5334,14 +5361,24 @@ function searchPlayerForBadge() {
   `;
 }
 
+async function removeBadgeFromProfile(bid) {
+  const me = DB.me; if (!me) return;
+  // Normalize + remove this specific badge ID
+  me.badges = (me.badges||[]).map(_normBid).filter(b => b && b !== bid);
+  const ok = await fsSet('players', me.id, me);
+  if (ok) { toast('Badge removed ✅','success'); _cacheDB(); renderProfile(); }
+  else toast('Error removing badge','error');
+}
+
 async function adminToggleBadgeAssign(pid, bid) {
   const p = _findPlayer(pid); if (!p) return;
-  p.badges = p.badges||[];
+  // Normalize badges array — remove any accidentally-stored objects, keep only clean string IDs
+  p.badges = (p.badges||[]).map(_normBid).filter(Boolean);
   const idx = p.badges.indexOf(bid);
-  if (idx>=0) p.badges.splice(idx,1);
-  else p.badges.push(bid);
+  if (idx >= 0) p.badges.splice(idx, 1);
+  else p.badges.push(bid); // bid is always a plain string ID from onclick
   await fsSet('players', pid, p);
-  toast(idx>=0?'Badge removed':'Badge assigned ✅','success');
+  toast(idx >= 0 ? 'Badge removed' : 'Badge assigned ✅', 'success');
   _cacheDB(); searchPlayerForBadge();
 }
 
@@ -5528,10 +5565,10 @@ function renderAdminSettings() {
     <div class="settings-section-title">🎨 Branding</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       <div class="form-group" style="grid-column:span 2"><label class="form-label">Platform Name</label>
-        <input class="form-input" id="br-name" value="${br.name||'FAIR PLAY'}" oninput="previewBranding()">
+        <input class="form-input" id="br-name" value="${br.name||'FF BOOYAH'}" oninput="previewBranding()">
       </div>
       <div class="form-group" style="grid-column:span 2"><label class="form-label">Tagline</label>
-        <input class="form-input" id="br-tagline" value="${br.tagline||'Esports Arena Platform'}" oninput="previewBranding()">
+        <input class="form-input" id="br-tagline" value="${br.tagline||'Esports Arena'}" oninput="previewBranding()">
       </div>
       <div class="form-group"><label class="form-label">Accent Letter (logo italic)</label>
         <input class="form-input" id="br-letter" value="${br.letter||'P'}" maxlength="1" oninput="previewBranding()">
@@ -5542,8 +5579,8 @@ function renderAdminSettings() {
     </div>
     <div style="background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:12px;text-align:center">
       <div style="font-size:24px" id="br-preview-icon">${br.icon||'⚔️'}</div>
-      <div style="font-size:20px;font-weight:900;letter-spacing:2px;background:linear-gradient(135deg,var(--g1),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" id="br-preview-name">${br.name||'FAIR PLAY'}</div>
-      <div style="font-size:11px;color:var(--dim)" id="br-preview-tagline">${br.tagline||'Esports Arena Platform'}</div>
+      <div style="font-size:20px;font-weight:900;letter-spacing:2px;background:linear-gradient(135deg,var(--g1),var(--gold));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text" id="br-preview-name">${br.name||'FF BOOYAH'}</div>
+      <div style="font-size:11px;color:var(--dim)" id="br-preview-tagline">${br.tagline||'Esports Arena'}</div>
     </div>
     <button class="btn-primary" id="btn-br" onclick="saveBranding()">✅ Apply Branding</button>
   </div>
@@ -5699,8 +5736,8 @@ function renderAdminSettings() {
 // Settings — Branding
 function previewBranding() {
   const icon = _v('br-icon')||'⚔️';
-  const name = _v('br-name')||'FAIR PLAY';
-  const tag  = _v('br-tagline')||'Esports Arena Platform';
+  const name = _v('br-name')||'FF BOOYAH';
+  const tag  = _v('br-tagline')||'Esports Arena';
   const prI  = document.getElementById('br-preview-icon'); if(prI) prI.textContent=icon;
   const prN  = document.getElementById('br-preview-name'); if(prN) prN.textContent=name;
   const prT  = document.getElementById('br-preview-tagline'); if(prT) prT.textContent=tag;
@@ -5709,7 +5746,7 @@ async function saveBranding() {
   _btn('btn-br', true);
   if (!DB.config) DB.config={};
   DB.config.branding = {
-    name:   _v('br-name').trim()||'FAIR PLAY',
+    name:   _v('br-name').trim()||'FF BOOYAH',
     tagline:_v('br-tagline').trim(),
     letter: _v('br-letter').trim()||'P',
     icon:   _v('br-icon').trim()||'⚔️'
@@ -5911,8 +5948,8 @@ function _applyConfig() {
   // 2. Branding
   const br = cfg.branding||{};
   if (br.name) {
-    document.querySelectorAll('.nav-logo').forEach(el => { if(el.querySelector('span:first-child')) el.querySelector('span:first-child').textContent = (br.icon||'⚔') + ' ' + br.name; });
-    document.querySelectorAll('.drawer-logo').forEach(el => el.textContent = (br.icon||'⚔') + ' ' + br.name);
+    document.querySelectorAll('.nav-logo').forEach(el => { if(el.querySelector('span:first-child')) el.querySelector('span:first-child').textContent = (br.icon||'✗') + ' ' + br.name; });
+    document.querySelectorAll('.drawer-logo').forEach(el => el.textContent = (br.icon||'✗') + ' ' + br.name);
     document.title = br.name + ' — Esports Platform';
   }
   if (br.icon) {
