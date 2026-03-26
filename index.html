@@ -2740,9 +2740,12 @@ function renderStore() {
             : curEmoji ? `<span style="font-size:20px;line-height:1">${curEmoji}</span>` : '';
           return `
           <div class="topup-card" onclick="openTopup('${game.id}','${p.amount}','${p.price}','${p.label||''}','${cur}')">
-            ${gameIconHtml ? `<div style="position:absolute;top:8px;left:8px;display:flex;align-items:center;justify-content:center">${gameIconHtml}</div>` : ''}
-            <div class="topup-amount">${Number(p.amount).toLocaleString()}</div>
-            <div class="topup-label">${p.label ? `<span style="color:var(--text);font-weight:600">${p.label}</span><br>` : ''}${curText}</div>
+            ${gameIconHtml ? `<div style="position:absolute;top:8px;left:8px">${gameIconHtml}</div>` : ''}
+            <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap">
+              <div class="topup-amount">${Number(p.amount).toLocaleString()}</div>
+              ${(p.label||curText) ? `<div style="font-size:11px;font-weight:800;color:var(--text);line-height:1;white-space:nowrap">${p.label||curText}${curEmoji?` <span style="font-size:13px">${curEmoji}</span>`:''}</div>` : ''}
+            </div>
+            ${(p.label && curText) ? `<div style="font-size:10px;color:var(--dim);margin-top:1px">${curText}</div>` : ''}
             <div class="topup-bonus">${p.bonus ? p.bonus+' Bonus' : '<span style="color:var(--dim2)">0% Bonus</span>'}</div>
             <div class="topup-price">${p.price} <span>AC</span></div>
           </div>`;
