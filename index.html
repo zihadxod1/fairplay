@@ -4787,30 +4787,58 @@ function renderAdminTransactions() {
 }
 
 function _txCard(t, actions) {
-  const txid = t.id||t._fsId;
+  const txid     = t.id||t._fsId;
   const typeColor = {deposit:'var(--g1)',withdraw:'var(--red)',topup:'var(--blue)',purchase:'var(--gold)'}[t.type]||'var(--gold)';
-  const typeIcon  = {deposit:'💰',withdraw:'💸',topup:'🎮',purchase:'🛒'}[t.type]||'💳';
+  const typeLabel = {deposit:'Deposit',withdraw:'Withdraw',topup:'Top-up',purchase:'Purchase'}[t.type]||t.type||'TX';
+
+  // Player avatar + badge
+  const player = DB.players.find(p => _pid(p) === t.uid);
+  const avatarHtml = `
+    <div style="position:relative;display:inline-flex;flex-shrink:0">
+      <div style="width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;border:2px solid var(--border2)">
+        ${player ? _avatarInner(player) : '👤'}
+      </div>
+      ${player ? _badgePinHTML(player,'sm-badge-pin') : ''}
+    </div>`;
+
+  // Game logo for topup
+  const gameObj = t.game ? _getGames().find(g => g.id === t.game || g.name?.toLowerCase() === t.game?.toLowerCase()) : null;
+  const gameLogoHtml = gameObj
+    ? `<span style="display:inline-flex;align-items:center;gap:4px">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:4px;overflow:hidden;background:var(--panel2);flex-shrink:0">
+          ${gameObj.logoIsImg && gameObj.icon
+            ? `<img src="${gameObj.icon}" style="width:100%;height:100%;object-fit:cover">`
+            : `<span style="font-size:11px">${gameObj.icon||'🎮'}</span>`}
+        </span>
+        <span>${gameObj.name||t.game}</span>
+      </span>`
+    : (t.game ? `<span>🎮 ${t.game}</span>` : '');
+
   return `
-  <div style="background:var(--panel);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:12px;margin-bottom:8px">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:6px">
-      <div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <span style="font-size:18px">${typeIcon}</span>
-          <div>
-            <div style="font-weight:700;font-size:13px">${t.uname||'—'} <span style="font-size:10px;background:var(--panel2);padding:2px 7px;border-radius:10px;color:${typeColor};text-transform:capitalize;border:1px solid ${typeColor}44">${t.type}</span></div>
-            <div style="font-size:11px;color:var(--dim);margin-top:2px">${t.date?t.date.split('T')[0]:'—'}</div>
+  <div style="background:var(--panel);border:1px solid rgba(251,191,36,.15);border-radius:var(--radius);padding:12px;margin-bottom:8px">
+    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;margin-bottom:8px">
+      <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
+        ${avatarHtml}
+        <div style="min-width:0">
+          <div style="font-weight:700;font-size:13px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            ${t.uname||'Unknown'}
+            <span style="font-size:10px;background:${typeColor}22;padding:2px 7px;border-radius:10px;color:${typeColor};border:1px solid ${typeColor}44;font-weight:600;white-space:nowrap">${typeLabel}</span>
           </div>
+          <div style="font-size:11px;color:var(--dim);margin-top:2px">${t.date?t.date.split('T')[0]:'—'}</div>
         </div>
       </div>
-      <span style="font-size:20px;font-weight:900;color:${typeColor}">${t.amount} ${_AC()}</span>
+      <span style="font-size:18px;font-weight:900;color:${typeColor};white-space:nowrap;flex-shrink:0">${t.amount} ${_AC()}</span>
     </div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;color:var(--dim);background:var(--panel2);border-radius:8px;padding:7px 10px;margin-bottom:${(t.proof||actions)?'8px':'0'}">
-      ${t.method ? `<span>💳 ${t.method}</span>` : ''}
-      ${t.phone  ? `<span>📱 ${t.phone}</span>`  : ''}
-      ${t.ref    ? `<span>🔖 Ref: ${t.ref}</span>` : ''}
-      ${t.item   ? `<span>📦 ${t.item}</span>`   : ''}
-      ${t.game   ? `<span>🎮 ${t.game}</span>`   : ''}
-      ${t.gameUid? `<span>🆔 ${t.gameUid}</span>` : ''}
+    <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:11px;color:var(--dim);background:var(--panel2);border-radius:8px;padding:7px 10px;margin-bottom:${(t.proof||actions)?'8px':'0'}">
+      ${t.method  ? `<span>💳 ${t.method}</span>` : ''}
+      ${t.phone   ? `<span>📱 ${t.phone}</span>`  : ''}
+      ${t.ref     ? `<span>🔖 Ref: ${t.ref}</span>` : ''}
+      ${t.item    ? `<span>📦 ${t.item}</span>`   : ''}
+      ${gameLogoHtml}
+      ${t.gameUid ? `<span style="display:inline-flex;align-items:center;gap:4px">
+        🆔 <span style="font-family:monospace">${t.gameUid}</span>
+        <button onclick="event.stopPropagation();copyText('${t.gameUid}')" title="Copy UID" style="background:var(--panel);border:1px solid var(--border2);border-radius:4px;color:var(--g1);font-size:10px;padding:1px 6px;cursor:pointer;line-height:1.4;flex-shrink:0">📋</button>
+      </span>` : ''}
       ${!t.method&&!t.phone&&!t.ref&&!t.item&&!t.game ? `<span style="color:var(--dim2)">No additional details</span>` : ''}
     </div>
     ${t.proof ? `<div style="margin-bottom:8px"><img src="${t.proof}" style="max-height:100px;border-radius:6px;object-fit:cover;cursor:pointer;border:1px solid var(--border2)" onclick="window.open('${t.proof}')"><div style="font-size:10px;color:var(--dim);margin-top:3px">📸 Tap to view full screenshot</div></div>` : ''}
