@@ -700,14 +700,16 @@ img{display:block;max-width:100%}
 .store-price span{font-size:10px;color:var(--dim)}
 .topup-card{
   background:var(--panel);border:1px solid var(--border);
-  border-radius:var(--radius);padding:14px;
+  border-radius:var(--radius);padding:14px 10px;
   cursor:pointer;transition:var(--transition);text-align:center;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  position:relative;
 }
-.topup-card:hover{border-color:var(--border2);transform:translateY(-2px)}
-.topup-amount{font-size:20px;font-weight:800;color:var(--g1)}
-.topup-label{font-size:11px;color:var(--dim);margin-bottom:6px}
-.topup-bonus{font-size:10px;color:var(--gold);font-weight:600;margin-top:4px}
-.topup-price{font-size:14px;font-weight:700;color:var(--text);margin-top:8px}
+.topup-card:hover{border-color:var(--g1);transform:translateY(-2px);box-shadow:0 4px 16px rgba(74,222,128,.1)}
+.topup-amount{font-size:22px;font-weight:900;color:var(--g1);line-height:1}
+.topup-label{font-size:10px;color:var(--dim);margin-top:2px;margin-bottom:4px;line-height:1.4}
+.topup-bonus{font-size:10px;color:var(--gold);font-weight:600;min-height:14px}
+.topup-price{font-size:14px;font-weight:700;color:var(--text);margin-top:6px;border-top:1px solid var(--border);padding-top:6px;width:100%}
 .topup-price span{font-size:10px;color:var(--dim)}
 
 /* ===== WALLET ===== */
@@ -1747,7 +1749,7 @@ async function lpSignUp() {
     const uid8 = 'FP-' + Math.random().toString(36).substr(2,8).toUpperCase();
     const playerDoc = {
       id:d.localId, uid:uid8, name, email, phone:phone||'',
-      balance: DB.config?.rules?.startingBalance || 1200, wins:0, losses:0, tournaments:0,
+      balance: DB.config?.rules?.startingBalance || 0, wins:0, losses:0, tournaments:0,
       lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
     };
     await fsSet('players', d.localId, playerDoc);
@@ -1804,12 +1806,27 @@ async function _enterApp() {
   _showLoading('Loading arena data...');
   await fbLoadAll();
 
+  // Auto-purge specific deleted accounts (run once silently, only as admin)
+  if (S.email === ADMIN_EMAIL) {
+    const _PURGE_IDS = ['5ufhQlGghBd6OyQFjddOjgk0drA2'];
+    for (const pid of _PURGE_IDS) {
+      if (DB.players.find(p => _pid(p) === pid)) {
+        DB.teams.forEach(t => { if((t.memberIds||[]).includes(pid)){ t.memberIds=t.memberIds.filter(id=>id!==pid); fsSet('teams',t.id||t._fsId,t); }});
+        DB.guilds.forEach(g => { if((g.memberIds||[]).includes(pid)){ g.memberIds=g.memberIds.filter(id=>id!==pid); fsSet('guilds',g.id||g._fsId,g); }});
+        DB.tournaments.forEach(t => { if((t.players||[]).includes(pid)){ t.players=t.players.filter(id=>id!==pid); fsSet('tournaments',t.id||t._fsId,t); }});
+        DB.players = DB.players.filter(p => _pid(p) !== pid);
+        await Promise.all([fsDelete('players',pid), fsDelete('avatars',pid)]);
+        _cacheDB();
+      }
+    }
+  }
+
   // Ensure player doc exists
   if (!DB.me) {
     const uid8 = 'FP-' + Math.random().toString(36).substr(2,8).toUpperCase();
     DB.me = {
       id:S.uid, uid:uid8, name: S.email.split('@')[0], email:S.email, phone:'',
-      balance: DB.config?.rules?.startingBalance || 1200, wins:0, losses:0, tournaments:0,
+      balance: DB.config?.rules?.startingBalance || 0, wins:0, losses:0, tournaments:0,
       badges:[], gameProfiles:[], role: S.email===ADMIN_EMAIL ? 'admin' : 'player',
       teamIds:[], guildId:'', joinedDate:new Date().toISOString(),
       lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
@@ -2715,14 +2732,21 @@ function renderStore() {
       <p style="font-size:12px;color:var(--dim);margin-bottom:12px;line-height:1.5">${instrs}</p>
       ${note ? `<div style="background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:10px;font-size:12px;color:var(--gold);margin-bottom:12px">${note}</div>` : ''}
       <div class="store-grid">
-        ${filtered.map(p => `
+        ${filtered.map(p => {
+          const curText = cur.replace(/[\u{1F300}-\u{1FFFF}]|[\u2600-\u27BF]|[\uD800-\uDBFF][\uDC00-\uDFFF]/gu,'').trim();
+          const curEmoji = (cur.match(/[\u{1F300}-\u{1FFFF}]|[\u2600-\u27BF]|[\uD800-\uDBFF][\uDC00-\uDFFF]/gu)||[]).join('');
+          const gameIconHtml = (game?.logoIsImg && game?.icon)
+            ? `<img src="${game.icon}" style="width:28px;height:28px;border-radius:7px;object-fit:cover">`
+            : curEmoji ? `<span style="font-size:20px;line-height:1">${curEmoji}</span>` : '';
+          return `
           <div class="topup-card" onclick="openTopup('${game.id}','${p.amount}','${p.price}','${p.label||''}','${cur}')">
+            ${gameIconHtml ? `<div style="position:absolute;top:8px;left:8px;display:flex;align-items:center;justify-content:center">${gameIconHtml}</div>` : ''}
             <div class="topup-amount">${Number(p.amount).toLocaleString()}</div>
-            <div class="topup-label">${cur}</div>
-            ${p.bonus ? `<div class="topup-bonus">${p.bonus} Bonus</div>` : ''}
+            <div class="topup-label">${p.label ? `<span style="color:var(--text);font-weight:600">${p.label}</span><br>` : ''}${curText}</div>
+            <div class="topup-bonus">${p.bonus ? p.bonus+' Bonus' : '<span style="color:var(--dim2)">0% Bonus</span>'}</div>
             <div class="topup-price">${p.price} <span>AC</span></div>
-          </div>`
-        ).join('') || '<div class="empty-state" style="grid-column:span 2;padding:20px"><p>No packages found</p></div>'}
+          </div>`;
+        }).join('') || '<div class="empty-state" style="grid-column:span 2;padding:20px"><p>No packages found</p></div>'}
       </div>`;
   } else {
     let items = DB.storeItems.filter(i => (i.cat||'cosmetics') === _storeCat);
@@ -2753,17 +2777,27 @@ function openTopup(gameId, amount, price, label, currency) {
   const me   = DB.me;
   const game = _getGames().find(g => g.id === gameId);
   const gp   = (me?.gameProfiles||[]).find(p => p.game === gameId);
-  const gameIconHtml = (game?.logoIsImg && game?.icon)
-    ? `<img src="${game.icon}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:6px">`
-    : `<span style="font-size:20px;margin-right:4px">${game?.icon||'🎮'}</span>`;
+
+  // Title icon (small, in header only)
+  const titleIconHtml = (game?.logoIsImg && game?.icon)
+    ? `<img src="${game.icon}" style="width:28px;height:28px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:8px">`
+    : `<span style="font-size:20px;margin-right:6px">${game?.icon||'🎮'}</span>`;
+
+
+
   openModal(`
     <div class="modal-close-row">
-      <div class="modal-title" style="display:flex;align-items:center">${gameIconHtml}Top-up ${game?.name||gameId}</div>
+      <div class="modal-title" style="display:flex;align-items:center">${titleIconHtml}Top-up ${game?.name||gameId}</div>
       <span class="modal-close-btn" onclick="closeModal()">✕</span>
     </div>
     <div style="background:var(--panel);border-radius:var(--radius);padding:16px;margin-bottom:16px;text-align:center">
-      <div style="font-size:32px;font-weight:900;color:var(--g1)">${Number(amount).toLocaleString()}</div>
-      <div style="font-size:12px;color:var(--dim)">${currency||'Points'} — ${label}</div>
+      <div style="display:inline-flex;align-items:center;justify-content:center;gap:10px;margin-bottom:6px">
+        <div style="font-size:40px;font-weight:900;color:var(--g1);line-height:1">${Number(amount).toLocaleString()}</div>
+        <div style="text-align:left;line-height:1.4">
+          <div style="font-size:15px;font-weight:800;color:var(--g1);letter-spacing:.3px">${label||currency||'Points'}</div>
+          <div style="font-size:11px;color:var(--dim);font-weight:400">${label ? currency : ''}</div>
+        </div>
+      </div>
       <div style="font-size:22px;font-weight:800;color:var(--gold);margin-top:8px">${price} AC</div>
     </div>
     <div class="form-group">
@@ -4981,7 +5015,10 @@ function adminEditTopup(gid) {
       <div style="font-size:11px;color:var(--g1);font-weight:700;margin-bottom:10px">➕ Add Package</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div class="form-group" style="margin-bottom:6px"><label class="form-label">Label</label><input class="form-input" id="eti-pkg-label" placeholder="Starter Pack"></div>
-        <div class="form-group" style="margin-bottom:6px"><label class="form-label">Amount *</label><input class="form-input" type="number" id="eti-pkg-amount" placeholder="1000"></div>
+        <div class="form-group" style="margin-bottom:6px">
+          <label class="form-label">Amount * <span style="color:var(--g1);font-weight:700">(${game?.topup?.currency||'Points'})</span></label>
+          <input class="form-input" type="number" id="eti-pkg-amount" placeholder="1000">
+        </div>
         <div class="form-group" style="margin-bottom:6px"><label class="form-label">Price (AC) *</label><input class="form-input" type="number" id="eti-pkg-price" placeholder="100"></div>
         <div class="form-group" style="margin-bottom:6px"><label class="form-label">Bonus Text</label><input class="form-input" id="eti-pkg-bonus" placeholder="+10% Bonus"></div>
       </div>
@@ -5712,7 +5749,7 @@ function renderAdminSettings() {
     <div class="settings-section-title">⚙️ Platform Rules</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
       ${[
-        ['Starting Balance (AC)', 'rul-start',   rul.startingBalance||1200],
+        ['Starting Balance (AC)', 'rul-start',   rul.startingBalance||0],
         ['Min Deposit (AC)',      'rul-min-dep',  rul.minDeposit||100],
         ['Max Deposit (AC)',      'rul-max-dep',  rul.maxDeposit||100000],
         ['Min Withdraw (AC)',     'rul-min-wd',   rul.minWithdraw||10],
@@ -5906,7 +5943,7 @@ async function saveAdminRules() {
   _btn('btn-rul', true);
   if (!DB.config) DB.config={};
   DB.config.rules = {
-    startingBalance: Number(_v('rul-start'))||1200,
+    startingBalance: Number(_v('rul-start'))||0,
     minDeposit:      Number(_v('rul-min-dep'))||100,
     maxDeposit:      Number(_v('rul-max-dep'))||100000,
     minWithdraw:     Number(_v('rul-min-wd'))||10,
