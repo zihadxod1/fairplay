@@ -2741,8 +2741,17 @@ function renderStore() {
           // Label: show package label if set, else currency name
           const topLabel = p.label ? p.label : curText;
           const subLabel = p.label ? curText : '';
+          // Encode params safely via data attributes to avoid apostrophe/emoji breakage in onclick
+          const safeLabel = (p.label||'').replace(/"/g,'&quot;');
+          const safeCur   = cur.replace(/"/g,'&quot;');
           return `
-          <div class="topup-card" onclick="openTopup('${game.id}','${p.amount}','${p.price}','${p.label||''}','${cur}')">
+          <div class="topup-card"
+            data-gid="${game.id}"
+            data-amount="${p.amount}"
+            data-price="${p.price}"
+            data-label="${safeLabel}"
+            data-cur="${safeCur}"
+            onclick="openTopupFromCard(this)">
             ${iconHtml ? `<div style="position:absolute;top:8px;right:8px">${iconHtml}</div>` : ''}
             <div style="padding-right:${iconHtml?'34px':'0'}">
               <div style="display:flex;align-items:baseline;gap:4px;flex-wrap:nowrap">
@@ -2782,6 +2791,15 @@ function selectStoreGame(gameId) {
 }
 
 function filterStore() { renderStore(); }
+
+function openTopupFromCard(el) {
+  const gid    = el.dataset.gid;
+  const amount = el.dataset.amount;
+  const price  = el.dataset.price;
+  const label  = el.dataset.label || '';
+  const cur    = el.dataset.cur   || '';
+  openTopup(gid, amount, price, label, cur);
+}
 
 function openTopup(gameId, amount, price, label, currency) {
   const me   = DB.me;
