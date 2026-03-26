@@ -700,16 +700,16 @@ img{display:block;max-width:100%}
 .store-price span{font-size:10px;color:var(--dim)}
 .topup-card{
   background:var(--panel);border:1px solid var(--border);
-  border-radius:var(--radius);padding:14px 10px;
+  border-radius:var(--radius);padding:12px 10px 12px 44px;
   cursor:pointer;transition:var(--transition);text-align:center;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  position:relative;overflow:hidden;min-height:110px;box-sizing:border-box;
 }
 .topup-card:hover{border-color:var(--g1);transform:translateY(-2px);box-shadow:0 4px 16px rgba(74,222,128,.1)}
-.topup-amount{font-size:22px;font-weight:900;color:var(--g1);line-height:1}
+.topup-amount{font-size:20px;font-weight:900;color:var(--g1);line-height:1;flex-shrink:0}
 .topup-label{font-size:10px;color:var(--dim);margin-top:2px;margin-bottom:4px;line-height:1.4}
 .topup-bonus{font-size:10px;color:var(--gold);font-weight:600;min-height:14px}
-.topup-price{font-size:14px;font-weight:700;color:var(--text);margin-top:6px;border-top:1px solid var(--border);padding-top:6px;width:100%}
+.topup-price{font-size:13px;font-weight:700;color:var(--text);margin-top:5px;border-top:1px solid var(--border);padding-top:5px;width:100%;text-align:center}
 .topup-price span{font-size:10px;color:var(--dim)}
 
 /* ===== WALLET ===== */
@@ -2740,12 +2740,12 @@ function renderStore() {
             : curEmoji ? `<span style="font-size:20px;line-height:1">${curEmoji}</span>` : '';
           return `
           <div class="topup-card" onclick="openTopup('${game.id}','${p.amount}','${p.price}','${p.label||''}','${cur}')">
-            ${gameIconHtml ? `<div style="position:absolute;top:8px;left:8px">${gameIconHtml}</div>` : ''}
-            <div style="display:flex;align-items:center;justify-content:center;gap:6px;flex-wrap:wrap">
-              <div class="topup-amount">${Number(p.amount).toLocaleString()}</div>
-              ${(p.label||curText) ? `<div style="font-size:11px;font-weight:800;color:var(--text);line-height:1;white-space:nowrap">${p.label||curText}${curEmoji?` <span style="font-size:13px">${curEmoji}</span>`:''}</div>` : ''}
+            ${gameIconHtml ? `<div style="position:absolute;top:8px;left:8px;line-height:0">${gameIconHtml}</div>` : ''}
+            <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;max-width:100%;overflow:hidden">
+              <span class="topup-amount">${Number(p.amount).toLocaleString()}</span>
+              <span style="font-size:11px;font-weight:800;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:90px">${p.label||curText}${curEmoji?` ${curEmoji}`:''}</span>
             </div>
-            ${(p.label && curText) ? `<div style="font-size:10px;color:var(--dim);margin-top:1px">${curText}</div>` : ''}
+            <div style="font-size:10px;color:var(--dim);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.label ? curText : ''}</div>
             <div class="topup-bonus">${p.bonus ? p.bonus+' Bonus' : '<span style="color:var(--dim2)">0% Bonus</span>'}</div>
             <div class="topup-price">${p.price} <span>AC</span></div>
           </div>`;
