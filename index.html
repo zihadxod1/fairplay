@@ -1611,8 +1611,24 @@ async function fbLoadAll() {
     for (const doc of badgeImgDocs) {
       const bid = doc.id || doc._fsId;
       if (!bid || !doc.data) continue;
-      const b = DB.badges.find(b => (b.id||b._fsId) === bid);
+      const b = DB.badges.find(b => (b.id||b._fsId) === bid || b.id === doc._fsId);
       if (b) b.imgData = doc.data;
+    }
+
+    // Load this player's private notifications from private_notifications collection
+    // Filter client-side by targetUid so each player only sees their own private DMs
+    if (S.uid) {
+      try {
+        const allPrivate = await fsList('private_notifications');
+        // Admin sees all private notifs they sent; regular players only see their own
+        const isAdmin = DB.me?.role === 'admin';
+        const myPrivate  = isAdmin
+          ? allPrivate  // admin sees all sent DMs
+          : allPrivate.filter(n => n.targetUid === S.uid);
+        // Merge into DB.notifications — deduplicate by id
+        const existingIds = new Set(DB.notifications.map(n => n.id||n._fsId));
+        myPrivate.forEach(n => { if (!existingIds.has(n.id||n._fsId)) DB.notifications.push(n); });
+      } catch(e) { console.warn('private_notifications load error:', e); }
     }
 
     // Load platform meta
@@ -1658,13 +1674,13 @@ async function _loadBadgeImages() {
   try {
     const imgDocs = await fsList('badge_images');
     for (const doc of imgDocs) {
+      // doc._fsId is the Firestore doc name; doc.id is the field we set
       const bid = doc.id || doc._fsId;
       if (!bid || !doc.data) continue;
-      const b = DB.badges.find(b => (b.id||b._fsId) === bid);
+      const b = DB.badges.find(b => (b.id||b._fsId) === bid || b.id === doc._fsId);
       if (b) b.imgData = doc.data;
     }
-    _cacheDB();
-    // Re-render whatever page is active so images appear immediately
+    _cacheDB(); // save with imgData now merged
     const activePg = document.querySelector('.page.active');
     if (activePg) renderPage(activePg.id.replace('page-',''));
   } catch(e) { console.warn('_loadBadgeImages error:', e); }
@@ -3509,22 +3525,35 @@ function _afterAvatarChange(pid) {
 // ================================================================
 // NOTIFICATIONS
 // ================================================================
+
+// Returns only notifications this player should see:
+// - Broadcast (no targetUid) → everyone sees it
+// - Private (targetUid set) → only the target player sees it
+function _myNotifs(me) {
+  if (!me) return [];
+  return DB.notifications.filter(n =>
+    !n.targetUid || n.targetUid === _pid(me) || n.targetUid === me.uid
+  );
+}
+
 function updateNotifDot() {
   const me     = DB.me;
-  const unread = DB.notifications.filter(n => !(n.readBy||[]).includes(me?.id));
+  const myN    = _myNotifs(me);
+  const unread = myN.filter(n => !(n.readBy||[]).includes(me?.id));
   document.getElementById('notif-dot').classList.toggle('show', unread.length > 0);
 }
 
 function showNotifications() {
   const me    = DB.me;
-  const notifs = [...DB.notifications].sort((a,b) => new Date(b.date) - new Date(a.date));
+  const notifs = _myNotifs(me).sort((a,b) => new Date(b.date) - new Date(a.date));
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🔔 Notifications</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
     ${notifs.length
       ? notifs.map(n => {
           const isRead = (n.readBy||[]).includes(me?.id);
+          const isPrivate = !!n.targetUid;
           return `<div class="notif-item ${isRead?'':'unread'}">
-            <div class="notif-title">${n.title||'Notification'}</div>
+            <div class="notif-title">${n.title||'Notification'}${isPrivate ? ' <span style="font-size:9px;background:rgba(74,222,128,.15);color:var(--g1);border:1px solid var(--border2);border-radius:4px;padding:1px 5px;vertical-align:middle">Private</span>' : ''}</div>
             <div class="notif-body">${n.body||''}</div>
             <div class="notif-date">${n.date ? n.date.split('T')[0] : '—'} ${!isRead ? '<span style="color:var(--g1)">• New</span>' : ''}</div>
           </div>`;
@@ -4927,16 +4956,21 @@ function renderAdminNotifications() {
     </div>
     ${recent.map(n => {
       const nid = n.id||n._fsId;
+      const isPrivate = !!n.targetUid;
+      const targetPlayer = isPrivate ? DB.players.find(p=>_pid(p)===n.targetUid) : null;
+      const targetName = targetPlayer ? targetPlayer.name : (isPrivate ? '(unknown)' : null);
       return `
-      <div class="card" style="margin-bottom:8px;padding:12px">
+      <div class="card" style="margin-bottom:8px;padding:12px;border-left:3px solid ${isPrivate?'var(--blue)':'var(--g1)'}">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
           <div style="flex:1;min-width:0">
             <div style="font-weight:700;font-size:13px">${n.title||'—'}</div>
             <div style="font-size:12px;color:var(--dim);margin-top:2px;line-height:1.5">${n.body||''}</div>
-            <div style="font-size:10px;color:var(--dim2);margin-top:5px;display:flex;gap:10px;flex-wrap:wrap">
-              <span>${n.date?n.date.split('T')[0]:'—'}</span>
-              <span>Read by ${(n.readBy||[]).length} player(s)</span>
-              ${n.targetUid?'<span style="color:var(--blue)">DM · 1 player</span>':'<span style="color:var(--g1)">Broadcast · All</span>'}
+            <div style="font-size:10px;color:var(--dim2);margin-top:5px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <span>📅 ${n.date?n.date.split('T')[0]:'—'}</span>
+              ${isPrivate
+                ? `<span style="background:rgba(96,165,250,.15);color:var(--blue);border:1px solid rgba(96,165,250,.3);border-radius:10px;padding:1px 7px;font-weight:600">🔒 Private → ${targetName}</span>`
+                : `<span style="background:rgba(74,222,128,.1);color:var(--g1);border:1px solid var(--border2);border-radius:10px;padding:1px 7px;font-weight:600">📢 Broadcast</span>`}
+              <span style="color:var(--dim)">Read by ${(n.readBy||[]).length}</span>
             </div>
           </div>
           <button class="admin-btn danger" style="flex-shrink:0;padding:5px 8px" onclick="adminDeleteNotif('${nid}')">🗑️</button>
@@ -4972,26 +5006,31 @@ async function adminSendNotif() {
   const type   = _v('notif-type');
   if (!title||!body) { toast('Fill title and message','error'); return; }
   _btn('btn-notif', true);
-  const typeIcons = { admin:'📣', system:'🔧', promo:'🎁', warning:'⚠️' };
+  const typeIcons = { admin:'📣', system:'🔧', tournament:'🏆', promo:'🎁', warning:'⚠️' };
   const fullTitle = `${typeIcons[type]||'📣'} ${title}`;
 
   if (target==='specific') {
     const uid = _v('notif-uid').trim();
-    const p   = DB.players.find(pp=>pp.uid===uid||pp.name===uid);
+    const p   = DB.players.find(pp=>pp.uid?.toLowerCase()===uid.toLowerCase()||pp.name?.toLowerCase()===uid.toLowerCase()||pp.name?.toLowerCase().includes(uid.toLowerCase()));
     if (!p) { toast('Player not found','error'); _btn('btn-notif',false); return; }
-    const id    = 'notif_'+Date.now();
-    const notif = { id, title:fullTitle, body, date:new Date().toISOString(), readBy:[], targetUid:_pid(p), type };
-    DB.notifications.push(notif);
-    await fsSet('notifications', id, notif);
-    toast(`DM sent to ${p.name} 📨`,'success');
+    const pid   = _pid(p);
+    const id    = 'pnotif_'+Date.now();
+    // Private: saved to 'private_notifications' collection with key {pid}_{id}
+    // so only that player's client fetches it — other players never load it
+    const notif = { id, title:fullTitle, body, date:new Date().toISOString(), readBy:[], targetUid:pid, type, private:true };
+    DB.notifications.push(notif); // admin sees it locally
+    await fsSet('private_notifications', pid+'_'+id, notif);
+    toast(`Private DM sent to ${p.name} ✉️`,'success');
   } else {
     const id    = 'notif_'+Date.now();
+    // Broadcast: saved to public 'notifications' collection, everyone loads it
     const notif = { id, title:fullTitle, body, date:new Date().toISOString(), readBy:[], type };
     DB.notifications.push(notif);
     await fsSet('notifications', id, notif);
-    toast(`Sent to all ${DB.players.length} players 📢`,'success');
+    toast(`📢 Broadcast sent to all ${DB.players.length} players`,'success');
     updateNotifDot();
   }
+  _btn('btn-notif', false);
   _cacheDB(); renderAdminNotifications();
 }
 
@@ -5003,14 +5042,28 @@ function toggleNotifTarget() {
 
 async function adminDeleteAllNotifs() {
   if (!confirm(`Delete all ${DB.notifications.length} notifications?`)) return;
-  for (const n of DB.notifications) await fsDelete('notifications', n.id||n._fsId);
+  for (const n of DB.notifications) {
+    const nid = n.id||n._fsId;
+    if (n?.private || n?.targetUid) {
+      await fsDelete('private_notifications', n.targetUid+'_'+nid);
+    } else {
+      await fsDelete('notifications', nid);
+    }
+  }
   DB.notifications=[];
   toast('All notifications deleted','info'); _cacheDB(); renderAdminNotifications();
 }
 
 async function adminDeleteNotif(nid) {
+  const n = DB.notifications.find(n=>(n.id||n._fsId)===nid);
   DB.notifications = DB.notifications.filter(n=>(n.id||n._fsId)!==nid);
-  await fsDelete('notifications', nid);
+  // Delete from correct collection based on type
+  if (n?.private || n?.targetUid) {
+    const docKey = n.targetUid+'_'+nid;
+    await fsDelete('private_notifications', docKey);
+  } else {
+    await fsDelete('notifications', nid);
+  }
   toast('Notification deleted','info'); _cacheDB(); renderAdminNotifications();
 }
 
@@ -5214,6 +5267,7 @@ function renderAdminBadges() {
               </div>
             </div>
             <input type="hidden" id="bd-img-data">
+            <input type="hidden" id="bd-img-cleared" value="">
           </div>
           <div class="form-group"><label class="form-label">Or Paste Image URL</label>
             <input class="form-input" id="bd-img-url" placeholder="https://example.com/badge.gif" oninput="updateBadgePreview()">
@@ -5224,9 +5278,12 @@ function renderAdminBadges() {
             </select>
           </div>
           <div class="form-group"><label class="form-label">Background Color</label>
-            <div style="display:flex;align-items:center;gap:10px">
-              <div class="color-swatch"><input type="color" id="bd-bg" value="#111a12" oninput="updateBadgePreview()"></div>
-              <span style="font-size:12px;color:var(--dim)">Badge background</span>
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+              <div class="color-swatch" title="Pick background color"><input type="color" id="bd-bg" value="#111a12" oninput="document.getElementById('bd-bg-none').value='0';updateBadgePreview()"></div>
+              <span id="bd-bg-label" style="font-size:11px;color:var(--dim)">Pick color</span>
+              <button type="button" class="admin-btn danger" style="font-size:11px;padding:4px 10px" onclick="setBadgeBgNone()">✕ Remove</button>
+              <button type="button" class="admin-btn" style="font-size:11px;padding:4px 10px" onclick="document.getElementById('bd-bg').value='#111a12';document.getElementById('bd-bg-none').value='0';document.getElementById('bd-bg-label').textContent='Pick color';updateBadgePreview()">↩ Reset</button>
+              <input type="hidden" id="bd-bg-none" value="0">
             </div>
           </div>
 
@@ -5293,7 +5350,8 @@ function updateBadgePreview() {
   const rarity = _v('bd-rarity')||'common';
   const imgData= document.getElementById('bd-img-data')?.value;
   const imgUrl = _v('bd-img-url');
-  const bg     = document.getElementById('bd-bg')?.value||'#111a12';
+  const bgNoneFlag = document.getElementById('bd-bg-none')?.value === '1';
+  const bg     = bgNoneFlag ? 'transparent' : (document.getElementById('bd-bg')?.value||'#111a12');
   const rarityInfo = {common:{label:'⚪ Common',c:'var(--silver)'},rare:{label:'🔵 Rare',c:'var(--blue)'},epic:{label:'🟣 Epic',c:'var(--purple)'},legendary:{label:'🟡 Legendary',c:'var(--gold)'}};
   const ri = rarityInfo[rarity]||rarityInfo.common;
   const icon = document.getElementById('badge-preview-icon');
@@ -5328,15 +5386,28 @@ function handleBadgeImg(input) {
 }
 
 function clearBadgeImg() {
-  const dat = document.getElementById('bd-img-data');
-  const box = document.getElementById('bd-img-preview-box');
-  const clr = document.getElementById('bd-img-clear-btn');
-  const fi  = document.getElementById('bd-img-file');
-  if (dat) dat.value = '';
-  if (box) box.innerHTML = '🖼️';
-  if (clr) clr.style.display = 'none';
-  if (fi)  fi.value = '';
+  const dat     = document.getElementById('bd-img-data');
+  const box     = document.getElementById('bd-img-preview-box');
+  const clr     = document.getElementById('bd-img-clear-btn');
+  const fi      = document.getElementById('bd-img-file');
+  const cleared = document.getElementById('bd-img-cleared');
+  if (dat)     dat.value = '';
+  if (box)     box.innerHTML = '🖼️';
+  if (clr)     clr.style.display = 'none';
+  if (fi)      fi.value = '';
+  if (cleared) cleared.value = '1'; // flag: image was explicitly removed
   updateBadgePreview();
+}
+
+function setBadgeBgNone() {
+  const bg   = document.getElementById('bd-bg');
+  const none = document.getElementById('bd-bg-none');
+  const lbl  = document.getElementById('bd-bg-label');
+  if (bg)   bg.value = '#111a12';
+  if (none) none.value = '1';
+  if (lbl)  lbl.textContent = 'No background';
+  const icon = document.getElementById('badge-preview-icon');
+  if (icon) icon.style.background = 'transparent';
 }
 
 async function saveAdminBadge() {
@@ -5352,7 +5423,7 @@ async function saveAdminBadge() {
     imgData,  // kept in memory / local DB
     imgUrl:_v('bd-img-url').trim(),
     rarity:_v('bd-rarity')||'common',
-    bgColor:document.getElementById('bd-bg')?.value||'#111a12',
+    bgColor:document.getElementById('bd-bg-none')?.value==='1' ? 'transparent' : (document.getElementById('bd-bg')?.value||'#111a12'),
     createdAt:new Date().toISOString()
   };
   if (editId) {
@@ -5364,13 +5435,20 @@ async function saveAdminBadge() {
   // Save badge metadata to 'badges' collection (fsSet auto-strips imgData)
   const metaOk = await fsSet('badges', id, badge);
   // Save badge image separately to 'badge_images' collection (no size limit issue)
+  // Only write to badge_images if:
+  //   a) new image uploaded (imgData has content), OR
+  //   b) image explicitly cleared (bd-img-cleared flag is set)
   let imgOk = true;
+  const imgExplicitlyClearedEl = document.getElementById('bd-img-cleared');
+  const imgExplicitlyCleared = imgExplicitlyClearedEl?.value === '1';
   if (imgData) {
     imgOk = await fsSet('badge_images', id, { id, data: imgData });
-  } else if (editId) {
-    // If image was cleared during edit, clear it from badge_images too
+  } else if (editId && imgExplicitlyCleared) {
+    // Only clear from Firestore if admin clicked "Remove Image"
     await fsSet('badge_images', id, { id, data: '' });
   }
+  // Reset the explicit-cleared flag
+  if (imgExplicitlyClearedEl) imgExplicitlyClearedEl.value = '';
   if (metaOk) {
     toast(editId?'Badge updated ✅':'Badge created! 🎖️','success');
   } else {
@@ -5400,7 +5478,11 @@ function editAdminBadge(bid) {
     if (clr) clr.style.display = 'none';
   }
   const rarSel = document.getElementById('bd-rarity'); if(rarSel) rarSel.value=b.rarity||'common';
-  const bgInp  = document.getElementById('bd-bg');     if(bgInp)  bgInp.value=b.bgColor||'#111a12';
+  const isTransparent = b.bgColor === 'transparent';
+  const bgInp  = document.getElementById('bd-bg');       if(bgInp)  bgInp.value=isTransparent?'#111a12':(b.bgColor||'#111a12');
+  const bgNone = document.getElementById('bd-bg-none');  if(bgNone) bgNone.value=isTransparent?'1':'0';
+  const bgLbl  = document.getElementById('bd-bg-label'); if(bgLbl)  bgLbl.textContent=isTransparent?'No background':'Pick color';
+  const cleared2 = document.getElementById('bd-img-cleared'); if(cleared2) cleared2.value='';
   const btn = document.getElementById('btn-bd'); if(btn) btn.innerHTML='💾 Save Badge';
   updateBadgePreview();
   document.getElementById('bd-name').scrollIntoView({behavior:'smooth'});
@@ -5410,11 +5492,15 @@ function clearBadgeForm() {
   ['bd-name','bd-desc','bd-emoji','bd-img-url','bd-edit-id'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value = id==='bd-emoji'?'🏅':'';
   });
-  const dat=document.getElementById('bd-img-data'); if(dat) dat.value='';
+  const dat=document.getElementById('bd-img-data');        if(dat) dat.value='';
   const box=document.getElementById('bd-img-preview-box'); if(box) box.innerHTML='🖼️';
-  const clr=document.getElementById('bd-img-clear-btn'); if(clr) clr.style.display='none';
-  const fi =document.getElementById('bd-img-file'); if(fi) fi.value='';
-  const btn=document.getElementById('btn-bd'); if(btn) btn.innerHTML='✨ Create Badge';
+  const clr=document.getElementById('bd-img-clear-btn');   if(clr) clr.style.display='none';
+  const fi =document.getElementById('bd-img-file');        if(fi) fi.value='';
+  const btn=document.getElementById('btn-bd');             if(btn) btn.innerHTML='✨ Create Badge';
+  const cleared=document.getElementById('bd-img-cleared'); if(cleared) cleared.value='';
+  const bgNone=document.getElementById('bd-bg-none');      if(bgNone) bgNone.value='0';
+  const bgLbl=document.getElementById('bd-bg-label');      if(bgLbl)  bgLbl.textContent='Pick color';
+  const bgInp=document.getElementById('bd-bg');            if(bgInp)  bgInp.value='#111a12';
   updateBadgePreview();
 }
 
