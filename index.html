@@ -1501,7 +1501,6 @@ async function fsGet(col, docId) {
 async function fsSet(col, docId, data) {
   try {
     // Players doc must never contain avatarCustom (base64 can exceed Firestore's 1MB doc limit).
-    // Photos are stored separately in the 'avatars' collection.
     // Badges doc must never contain imgData for the same reason — stored in 'badge_images'.
     let safeData = data;
     if (col === 'players' && data && data.avatarCustom !== undefined) {
@@ -1514,9 +1513,19 @@ async function fsSet(col, docId, data) {
       delete safeData.imgData; // stored in badge_images collection
       delete safeData._fsId;
     }
-    const url  = `${FS_BASE}/${col}/${encodeURIComponent(docId)}`;
     const body = JSON.stringify({ fields: _obj2fs(safeData) });
-    const r    = await _fsRequest(url, { method:'PATCH', body });
+    // Guard: Firestore rejects documents > 1MB — catch before sending
+    if (body.length > 950000) {
+      console.warn(`fsSet: doc too large for Firestore (${col}/${docId}) — ${Math.round(body.length/1024)}KB`);
+      toast('Image too large for server storage. Please use a smaller file.','error');
+      return false;
+    }
+    const url = `${FS_BASE}/${col}/${encodeURIComponent(docId)}`;
+    const r   = await _fsRequest(url, { method:'PATCH', body });
+    if (!r.ok) {
+      const err = await r.json().catch(()=>({}));
+      console.warn(`fsSet failed (${r.status}):`, err?.error?.message || r.statusText);
+    }
     return r.ok;
   } catch(e) { console.warn('fsSet error:', e); return false; }
 }
@@ -5263,7 +5272,7 @@ function renderAdminBadges() {
                 </button>
                 <input type="file" id="bd-img-file" accept="image/*,image/gif,.gif" style="display:none" onchange="handleBadgeImg(this)">
                 <button id="bd-img-clear-btn" class="admin-btn danger" style="display:none;font-size:11px;padding:6px" onclick="clearBadgeImg()">🗑️ Remove Image</button>
-                <div style="font-size:10px;color:var(--dim)">PNG, JPG, GIF, WEBP · max 8MB · GIFs animate!</div>
+                <div style="font-size:10px;color:var(--dim)">PNG, JPG, WEBP max 5MB · GIF max 700KB (animated)</div>
               </div>
             </div>
             <input type="hidden" id="bd-img-data">
@@ -5367,20 +5376,61 @@ function updateBadgePreview() {
 
 function handleBadgeImg(input) {
   const file = input.files[0]; if (!file) return;
-  if (file.size > 8*1024*1024) { toast('File too large (max 8MB)','error'); return; }
+  if (file.size > 8*1024*1024) { toast('File too large (max 8MB)','error'); input.value=''; return; }
+
   const reader = new FileReader();
   reader.onload = e => {
-    const data = e.target.result;
-    const dat  = document.getElementById('bd-img-data');
-    const box  = document.getElementById('bd-img-preview-box');
-    const clr  = document.getElementById('bd-img-clear-btn');
-    if (dat) dat.value = data;
-    if (box) box.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`;
-    if (clr) clr.style.display = 'block';
-    // Clear URL field so data takes priority
-    const urlEl = document.getElementById('bd-img-url');
-    if (urlEl) urlEl.value = '';
-    updateBadgePreview();
+    const rawData = e.target.result;
+    const isGif   = file.type === 'image/gif';
+
+    const applyData = data => {
+      // Firestore 1MB doc limit: base64 of 700KB raw = ~933KB safe
+      const maxBytes = 700 * 1024;
+      // base64 string length * 0.75 ≈ raw bytes
+      if (data.length * 0.75 > maxBytes * 1.4) {
+        toast('Image too large for storage — please use a smaller file (under 700KB)','error');
+        input.value = '';
+        return;
+      }
+      const dat = document.getElementById('bd-img-data');
+      const box = document.getElementById('bd-img-preview-box');
+      const clr = document.getElementById('bd-img-clear-btn');
+      if (dat) dat.value = data;
+      if (box) box.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">`;
+      if (clr) clr.style.display = 'block';
+      const urlEl = document.getElementById('bd-img-url');
+      if (urlEl) urlEl.value = '';
+      updateBadgePreview();
+    };
+
+    if (isGif) {
+      // GIFs can't be re-encoded via canvas — use as-is but check size
+      applyData(rawData);
+    } else {
+      // Compress static images via canvas to stay under Firestore limit
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 256; // badge icons don't need to be large
+        let w = img.width, h = img.height;
+        if (w > MAX_DIM || h > MAX_DIM) {
+          const scale = Math.min(MAX_DIM/w, MAX_DIM/h);
+          w = Math.round(w*scale); h = Math.round(h*scale);
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        // Try quality 0.85 first, then lower if still too big
+        let compressed = canvas.toDataURL('image/webp', 0.85);
+        if (compressed.length * 0.75 > 700*1024*1.4) {
+          compressed = canvas.toDataURL('image/webp', 0.6);
+        }
+        if (compressed.length * 0.75 > 700*1024*1.4) {
+          compressed = canvas.toDataURL('image/jpeg', 0.5);
+        }
+        applyData(compressed);
+      };
+      img.src = rawData;
+    }
   };
   reader.readAsDataURL(file);
 }
