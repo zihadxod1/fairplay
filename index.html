@@ -445,6 +445,24 @@ img{display:block;max-width:100%}
 }
 .filter-tab:hover{border-color:var(--border2);color:var(--text)}
 .filter-tab.active{background:var(--g1);color:var(--bg);border-color:var(--g1)}
+/* Game pills for arena */
+.t-game-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  padding:6px 12px;border-radius:20px;font-size:11px;font-weight:700;
+  background:var(--panel);border:1px solid var(--border);color:var(--dim);
+  cursor:pointer;transition:var(--transition);white-space:nowrap;flex-shrink:0;
+}
+.t-game-pill:hover{border-color:var(--g1);color:var(--text)}
+.t-game-pill.active{background:rgba(74,222,128,.15);border-color:var(--g1);color:var(--g1)}
+/* Team finder cards */
+.tf-card{
+  background:var(--panel);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px;margin-bottom:10px;
+  transition:var(--transition);
+}
+.tf-card:hover{border-color:var(--border2);transform:translateY(-1px)}
+.tf-badge-lft{background:rgba(74,222,128,.15);color:var(--g1);border:1px solid var(--border2);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+.tf-badge-lfp{background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
 
 /* ===== TOURNAMENT CARD ===== */
 .tc{
@@ -1240,13 +1258,65 @@ img{display:block;max-width:100%}
 
     <!-- TOURNAMENTS -->
     <div class="page" id="page-tournaments">
-      <div class="page-header"><div class="page-title">🏆 Tournaments</div><div class="page-subtitle">Join & compete</div></div>
-      <div class="filter-tabs" id="t-filter-tabs">
-        <div class="filter-tab active" onclick="setTFilter('all',this)">All</div>
-        <div class="filter-tab" onclick="setTFilter('open',this)">Open</div>
-        <div class="filter-tab" onclick="setTFilter('my',this)">My Tournaments</div>
+      <!-- Tab switcher: Tournaments vs Team Finder -->
+      <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--border)">
+        <button id="arena-tab-t" onclick="switchArenaTab('tournaments')" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid var(--g1);color:var(--g1);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:-2px">⚔️ Tournaments</button>
+        <button id="arena-tab-tf" onclick="switchArenaTab('teamfinder')" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid transparent;color:var(--dim);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:-2px">🔍 Team Finder</button>
       </div>
-      <div id="tournaments-list"></div>
+
+      <!-- TOURNAMENTS PANEL -->
+      <div id="arena-panel-tournaments">
+        <!-- Game filter pills -->
+        <div id="t-game-pills" style="display:flex;gap:6px;padding:10px 0 6px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch">
+          <button class="t-game-pill active" data-game="all" onclick="setTGame('all',this)">🎮 All Games</button>
+        </div>
+        <!-- Status filters -->
+        <div class="filter-tabs" id="t-filter-tabs" style="margin-bottom:8px">
+          <div class="filter-tab active" onclick="setTFilter('all',this)">All</div>
+          <div class="filter-tab" onclick="setTFilter('open',this)">🟢 Open</div>
+          <div class="filter-tab" onclick="setTFilter('upcoming',this)">⏳ Upcoming</div>
+          <div class="filter-tab" onclick="setTFilter('my',this)">✅ Joined</div>
+        </div>
+        <!-- Sort + prize filter row -->
+        <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
+          <select id="t-sort" class="form-input" style="flex:1;padding:8px 10px;font-size:12px" onchange="renderTournaments()">
+            <option value="date_desc">📅 Newest First</option>
+            <option value="date_asc">📅 Oldest First</option>
+            <option value="prize_desc">🏆 Highest Prize</option>
+            <option value="fee_asc">💰 Lowest Entry</option>
+            <option value="slots_asc">👥 Most Space</option>
+          </select>
+          <select id="t-mode-filter" class="form-input" style="flex:1;padding:8px 10px;font-size:12px" onchange="renderTournaments()">
+            <option value="all">All Modes</option>
+            <option value="solo">Solo</option>
+            <option value="duo">Duo</option>
+            <option value="squad">Squad</option>
+          </select>
+        </div>
+        <div id="tournaments-list"></div>
+      </div>
+
+      <!-- TEAM FINDER PANEL -->
+      <div id="arena-panel-teamfinder" style="display:none">
+        <div style="padding:10px 0 8px">
+          <div style="font-size:13px;color:var(--dim);margin-bottom:10px">Find teams looking for players, or post your own LFT listing.</div>
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <button class="btn-primary" style="flex:1;font-size:12px;padding:10px" onclick="openPostLFT()">📢 Post LFT (Looking for Team)</button>
+            <button class="btn-secondary" style="font-size:12px;padding:10px" onclick="openPostLFP()">👥 Post LFP (Need Players)</button>
+          </div>
+        </div>
+        <!-- Game filter for team finder -->
+        <div id="tf-game-pills" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch">
+          <button class="t-game-pill active" data-game="all" onclick="setTFGame('all',this)">🎮 All Games</button>
+        </div>
+        <!-- Role filter -->
+        <div class="filter-tabs" id="tf-role-tabs" style="margin-bottom:10px">
+          <div class="filter-tab active" onclick="setTFRole('all',this)">All</div>
+          <div class="filter-tab" onclick="setTFRole('lft',this)">🙋 LFT Posts</div>
+          <div class="filter-tab" onclick="setTFRole('lfp',this)">👥 LFP Posts</div>
+        </div>
+        <div id="teamfinder-list"></div>
+      </div>
     </div>
 
     <!-- TEAMS -->
@@ -1396,7 +1466,7 @@ const LS_SESSION   = 'fp_session_v2';
 // ================================================================
 let DB = {
   me:null, players:[], tournaments:[], teams:[], guilds:[],
-  badges:[], transactions:[], storeItems:[], games:[], notifications:[],
+  badges:[], transactions:[], storeItems:[], games:[], notifications:[], teamFinderPosts:[],
   paymentMethods:[], config:{}
 };
 let S = { token:null, refresh:null, uid:null, email:null }; // session
@@ -1598,23 +1668,24 @@ async function fbLoadAll() {
 
   // Then fetch fresh from Firestore — badge_images fetched in same round-trip
   try {
-    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs] =
+    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs, tfPosts] =
       await Promise.all([
         fsList('players'), fsList('tournaments'), fsList('teams'), fsList('guilds'),
         fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications'),
-        fsList('badges'), fsList('badge_images')
+        fsList('badges'), fsList('badge_images'), fsList('team_finder')
       ]);
 
-    DB.players       = players.filter(Boolean);
-    DB.tournaments   = tournaments.filter(Boolean);
-    DB.teams         = teams.filter(Boolean);
-    DB.guilds        = guilds.filter(Boolean);
-    DB.transactions  = transactions.filter(Boolean);
-    DB.storeItems    = storeItems.filter(Boolean);
-    DB.games         = games.filter(Boolean);
-    DB.notifications = notifications.filter(Boolean);
-    DB.badges        = badgesDocs.filter(Boolean);
-    DB.me            = DB.players.find(p => _pid(p) === S.uid) || null;
+    DB.players          = players.filter(Boolean);
+    DB.tournaments      = tournaments.filter(Boolean);
+    DB.teams            = teams.filter(Boolean);
+    DB.guilds           = guilds.filter(Boolean);
+    DB.transactions     = transactions.filter(Boolean);
+    DB.storeItems       = storeItems.filter(Boolean);
+    DB.games            = games.filter(Boolean);
+    DB.notifications    = notifications.filter(Boolean);
+    DB.badges           = badgesDocs.filter(Boolean);
+    DB.teamFinderPosts  = tfPosts.filter(Boolean);
+    DB.me               = DB.players.find(p => _pid(p) === S.uid) || null;
 
     // Merge badge images into badge objects BEFORE any rendering
     for (const doc of badgeImgDocs) {
@@ -1700,7 +1771,8 @@ function _cacheDB() {
     const toSave = {
       players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
       guilds:DB.guilds, transactions:DB.transactions, storeItems:DB.storeItems,
-      games:DB.games, notifications:DB.notifications, badges:DB.badges
+      games:DB.games, notifications:DB.notifications, badges:DB.badges,
+      teamFinderPosts:DB.teamFinderPosts||[]
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch(e) {}
@@ -1800,7 +1872,7 @@ async function lpForgotPw() {
 function doLogout() {
   if (_syncTimer) clearInterval(_syncTimer);
   _clearSession();
-  DB = { me:null, players:[], tournaments:[], teams:[], guilds:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[], paymentMethods:[], config:{} };
+  DB = { me:null, players:[], tournaments:[], teams:[], guilds:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[], teamFinderPosts:[], paymentMethods:[], config:{} };
   S  = { token:null, refresh:null, uid:null, email:null };
   _storeGame = null;
   document.getElementById('app-screen').classList.remove('active');
@@ -2017,7 +2089,7 @@ function navTo(name) { showPage(name); }
 function renderPage(name) {
   const map = {
     dashboard:  renderDash,
-    tournaments:renderTournaments,
+    tournaments:renderArena,
     teams:      renderTeams,
     guilds:     renderGuilds,
     leaderboard:renderLB,
@@ -2073,6 +2145,195 @@ function renderDash() {
 // ================================================================
 // TOURNAMENTS
 // ================================================================
+// ---- Arena state ----
+let _arenaTab   = 'tournaments';
+let _tGameFilter= 'all';
+let _tfGame     = 'all';
+let _tfRole     = 'all';
+
+function switchArenaTab(tab) {
+  _arenaTab = tab;
+  document.getElementById('arena-panel-tournaments').style.display = tab === 'tournaments' ? 'block' : 'none';
+  document.getElementById('arena-panel-teamfinder').style.display  = tab === 'teamfinder'  ? 'block' : 'none';
+  const tBtn  = document.getElementById('arena-tab-t');
+  const tfBtn = document.getElementById('arena-tab-tf');
+  if (tBtn)  { tBtn.style.borderBottomColor  = tab==='tournaments' ? 'var(--g1)' : 'transparent'; tBtn.style.color  = tab==='tournaments' ? 'var(--g1)' : 'var(--dim)'; }
+  if (tfBtn) { tfBtn.style.borderBottomColor = tab==='teamfinder'  ? 'var(--g1)' : 'transparent'; tfBtn.style.color = tab==='teamfinder'  ? 'var(--g1)' : 'var(--dim)'; }
+  if (tab === 'tournaments') { _buildGamePills(); renderTournaments(); }
+  else                       { _buildTFGamePills(); renderTeamFinder(); }
+}
+
+function renderArena() {
+  _buildGamePills();
+  if (_arenaTab === 'teamfinder') { _buildTFGamePills(); renderTeamFinder(); }
+  else renderTournaments();
+}
+
+// ================================================================
+// TEAM FINDER
+// ================================================================
+function renderTeamFinder() {
+  const me = DB.me;
+  const el = document.getElementById('teamfinder-list'); if (!el) return;
+  let posts = DB.teamFinderPosts || [];
+
+  // Game filter
+  if (_tfGame !== 'all') posts = posts.filter(p => p.game === _tfGame);
+  // Role filter
+  if (_tfRole !== 'all') posts = posts.filter(p => p.type === _tfRole);
+
+  // Sort newest first
+  posts = [...posts].sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
+
+  if (!posts.length) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>No listings yet</p><p style="font-size:12px;color:var(--dim);margin-top:6px">Be the first to post a listing!</p></div>`;
+    return;
+  }
+
+  el.innerHTML = posts.map(p => {
+    const pid   = p.id || p._fsId;
+    const poster = DB.players.find(pl => _pid(pl) === p.uid);
+    const isOwn  = p.uid === me?.id;
+    const gameObj = _getGames().find(g => g.id === p.game);
+    const gameIconHtml = gameObj ? _gameIconHtml(gameObj.id, 16) : '🎮';
+    return `
+    <div class="tf-card">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="position:relative;display:inline-flex;flex-shrink:0">
+          <div style="width:40px;height:40px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;border:1px solid var(--border2)">${poster ? _avatarInner(poster) : '👤'}</div>
+          ${poster ? _badgePinHTML(poster,'sm-badge-pin') : ''}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
+            <span style="font-weight:700;font-size:13px">${poster?.name||'Unknown'}</span>
+            <span class="${p.type==='lft'?'tf-badge-lft':'tf-badge-lfp'}">${p.type==='lft'?'🙋 LFT':'👥 LFP'}</span>
+            <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--dim)">${gameIconHtml} ${gameObj?.name||p.game||'Any Game'}</span>
+          </div>
+          <div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:6px">${p.message||''}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)">
+            ${p.rank    ? `<span style="background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border)">🏅 ${p.rank}</span>` : ''}
+            ${p.region  ? `<span style="background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border)">🌏 ${p.region}</span>` : ''}
+            ${p.discord ? `<span style="background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border);cursor:pointer" onclick="copyText('${p.discord}')">💬 ${p.discord} 📋</span>` : ''}
+            <span style="color:var(--dim2)">${p.date?new Date(p.date).toLocaleDateString():'—'}</span>
+          </div>
+        </div>
+        ${isOwn ? `<button class="admin-btn danger" style="padding:5px 8px;flex-shrink:0;font-size:11px" onclick="deleteTFPost('${pid}')">🗑️</button>` : ''}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function openPostLFT() {
+  const games = _getGames();
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">🙋 Post LFT — Looking for Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Game *</label>
+      <select class="form-input" id="tf-post-game">
+        ${games.map(g=>`<option value="${g.id}">${g.icon||'🎮'} ${g.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Your Message *</label>
+      <textarea class="form-input" id="tf-post-msg" rows="3" placeholder="e.g. Looking for serious squad, I play support, diamond rank, daily grind..." style="resize:vertical"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Rank / Level</label><input class="form-input" id="tf-post-rank" placeholder="e.g. Diamond, Heroic"></div>
+      <div class="form-group"><label class="form-label">Region</label><input class="form-input" id="tf-post-region" placeholder="e.g. BD, Asia, SEA"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Discord (optional)</label><input class="form-input" id="tf-post-discord" placeholder="e.g. username#1234"></div>
+    <button class="btn-primary" id="btn-tf-post" onclick="submitTFPost('lft')">📢 Post LFT Listing</button>
+  `);
+}
+
+function openPostLFP() {
+  const games = _getGames();
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">👥 Post LFP — Looking for Players</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="form-group"><label class="form-label">Game *</label>
+      <select class="form-input" id="tf-post-game">
+        ${games.map(g=>`<option value="${g.id}">${g.icon||'🎮'} ${g.name}</option>`).join('')}
+      </select>
+    </div>
+    <div class="form-group"><label class="form-label">Your Message *</label>
+      <textarea class="form-input" id="tf-post-msg" rows="3" placeholder="e.g. Team [APEX] needs 2 more players for ranked, must be Diamond+..." style="resize:vertical"></textarea>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group"><label class="form-label">Required Rank</label><input class="form-input" id="tf-post-rank" placeholder="e.g. Diamond+"></div>
+      <div class="form-group"><label class="form-label">Region</label><input class="form-input" id="tf-post-region" placeholder="e.g. BD, Asia, SEA"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Discord (optional)</label><input class="form-input" id="tf-post-discord" placeholder="e.g. username#1234"></div>
+    <button class="btn-primary" id="btn-tf-post" onclick="submitTFPost('lfp')">👥 Post LFP Listing</button>
+  `);
+}
+
+async function submitTFPost(type) {
+  const me = DB.me; if (!me) return;
+  const msg = _v('tf-post-msg').trim();
+  if (!msg) { toast('Enter a message','error'); return; }
+  _btn('btn-tf-post', true);
+  const id   = 'tf_'+Date.now();
+  const post = {
+    id, type, uid: _pid(me),
+    game:    _v('tf-post-game'),
+    message: msg,
+    rank:    _v('tf-post-rank').trim(),
+    region:  _v('tf-post-region').trim(),
+    discord: _v('tf-post-discord').trim(),
+    date:    new Date().toISOString()
+  };
+  DB.teamFinderPosts = DB.teamFinderPosts || [];
+  DB.teamFinderPosts.push(post);
+  await fsSet('team_finder', id, post);
+  toast(type==='lft'?'LFT posted! 🙋':'LFP posted! 👥','success');
+  _cacheDB(); closeModal(); renderTeamFinder();
+}
+
+async function deleteTFPost(pid) {
+  if (!confirm('Delete this listing?')) return;
+  DB.teamFinderPosts = (DB.teamFinderPosts||[]).filter(p=>(p.id||p._fsId)!==pid);
+  await fsDelete('team_finder', pid);
+  toast('Listing deleted','info'); _cacheDB(); renderTeamFinder();
+}
+
+function _buildGamePills() {
+  const container = document.getElementById('t-game-pills'); if (!container) return;
+  const games = _getGames();
+  const active = _tGameFilter;
+  container.innerHTML = `<button class="t-game-pill${active==='all'?' active':''}" data-game="all" onclick="setTGame('all',this)">🎮 All Games</button>` +
+    games.map(g => {
+      const iconHtml = (g.logoIsImg && g.icon)
+        ? `<img src="${g.icon}" style="width:14px;height:14px;border-radius:3px;object-fit:cover">`
+        : `<span>${g.icon||'🎮'}</span>`;
+      return `<button class="t-game-pill${active===g.id?' active':''}" data-game="${g.id}" onclick="setTGame('${g.id}',this)">${iconHtml}${g.name}</button>`;
+    }).join('');
+}
+
+function _buildTFGamePills() {
+  const container = document.getElementById('tf-game-pills'); if (!container) return;
+  const games = _getGames();
+  const active = _tfGame;
+  container.innerHTML = `<button class="t-game-pill${active==='all'?' active':''}" data-game="all" onclick="setTFGame('all',this)">🎮 All Games</button>` +
+    games.map(g => `<button class="t-game-pill${active===g.id?' active':''}" data-game="${g.id}" onclick="setTFGame('${g.id}',this)">${g.icon||'🎮'} ${g.name}</button>`).join('');
+}
+
+function setTGame(g, el) {
+  _tGameFilter = g;
+  document.querySelectorAll('#t-game-pills .t-game-pill').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderTournaments();
+}
+function setTFGame(g, el) {
+  _tfGame = g;
+  document.querySelectorAll('#tf-game-pills .t-game-pill').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  renderTeamFinder();
+}
+function setTFRole(r, el) {
+  _tfRole = r;
+  document.querySelectorAll('#tf-role-tabs .filter-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderTeamFinder();
+}
+
 function setTFilter(f, el) {
   _tFilter = f;
   document.querySelectorAll('#t-filter-tabs .filter-tab').forEach(t => t.classList.remove('active'));
@@ -2096,12 +2357,40 @@ function _gameIconHtml(gameId, size=20) {
 function renderTournaments() {
   const me = DB.me;
   let ts = [...DB.tournaments];
-  if (_tFilter === 'open') ts = ts.filter(t => t.status === 'open');
-  if (_tFilter === 'my')   ts = ts.filter(t => (t.players||[]).includes(me?.id));
-  ts.sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
+
+  // Status filter
+  if (_tFilter === 'open')     ts = ts.filter(t => t.status === 'open');
+  if (_tFilter === 'upcoming') ts = ts.filter(t => t.status === 'upcoming');
+  if (_tFilter === 'my')       ts = ts.filter(t => (t.players||[]).includes(me?.id));
+
+  // Game filter
+  if (_tGameFilter !== 'all') {
+    ts = ts.filter(t => {
+      const tGameId = (t.game||'').toLowerCase().replace(/\s+/g,'_');
+      const gameObj = _getGames().find(g => g.id === tGameId || g.name?.toLowerCase() === (t.game||'').toLowerCase());
+      return gameObj?.id === _tGameFilter || tGameId === _tGameFilter;
+    });
+  }
+
+  // Mode filter
+  const modeFilter = document.getElementById('t-mode-filter')?.value || 'all';
+  if (modeFilter !== 'all') {
+    ts = ts.filter(t => (t.modes||[]).some(m => m.toLowerCase() === modeFilter));
+  }
+
+  // Sort
+  const sort = document.getElementById('t-sort')?.value || 'date_desc';
+  ts.sort((a,b) => {
+    if (sort === 'date_desc')  return new Date(b.date||0) - new Date(a.date||0);
+    if (sort === 'date_asc')   return new Date(a.date||0) - new Date(b.date||0);
+    if (sort === 'prize_desc') return (parseFloat(b.prize||0)) - (parseFloat(a.prize||0));
+    if (sort === 'fee_asc')    return (a.entryFee||0) - (b.entryFee||0);
+    if (sort === 'slots_asc')  return ((b.maxPlayers||16)-(b.players||[]).length) - ((a.maxPlayers||16)-(a.players||[]).length);
+    return 0;
+  });
 
   const el = document.getElementById('tournaments-list');
-  if (!ts.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments found</p></div>'; return; }
+  if (!ts.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🏆</div><p>No tournaments match your filters</p></div>'; return; }
   el.innerHTML = ts.map(t => _tCard(t)).join('');
 }
 
@@ -2147,6 +2436,7 @@ function _tCard(t) {
       <div class="tc-game-badge">${gameBadgeIcon}${t.game||'Unknown'}</div>
       <div class="tc-status-badge ${statusCls}">${(t.status||'upcoming').toUpperCase()}</div>
       ${t.prize ? `<div class="tc-prize-badge">🏆 ${t.prize}</div>` : ''}
+      ${t.results?.length ? `<div style="position:absolute;bottom:10px;left:10px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:rgba(251,191,36,.2);color:var(--gold);border:1px solid rgba(251,191,36,.3);z-index:1">📊 Results Posted</div>` : ''}
     </div>
     <div class="tc-body">
       <div class="tc-name">${t.name||'Tournament'}</div>
@@ -2237,27 +2527,93 @@ async function saveQuickGameProfile(gameId, tid) {
 function viewTournament(tid) {
   const t = DB.tournaments.find(t => (t.id||t._fsId) === tid);
   if (!t) return;
+
+  const gameObj = _getGames().find(g => g.id === (t.game||'').toLowerCase().replace(/\s+/g,'_') || g.name?.toLowerCase() === (t.game||'').toLowerCase());
+  const titleIcon = (gameObj?.logoIsImg && gameObj?.icon)
+    ? `<img src="${gameObj.icon}" style="width:24px;height:24px;border-radius:6px;object-fit:cover;vertical-align:middle;margin-right:6px">`
+    : `<span style="margin-right:4px">${_gameEmoji(t.game)}</span>`;
+
+  // Results section
+  let resultsHtml = '';
+  if (t.results && t.results.length > 0) {
+    const sorted = [...t.results].sort((a,b)=>a.place-b.place);
+    const placeIcon = p => p===1?'🥇':p===2?'🥈':p===3?'🥉':`#${p}`;
+    const placeColor = p => p===1?'var(--gold)':p===2?'var(--silver)':p===3?'#cd7c42':'var(--dim)';
+
+    // Podium (top 3)
+    const top3 = sorted.filter(r=>r.place<=3);
+    const podiumOrder = [sorted.find(r=>r.place===2), sorted.find(r=>r.place===1), sorted.find(r=>r.place===3)];
+    const podiumHeights = [55, 75, 40];
+
+    const podiumHtml = `
+      <div style="display:flex;align-items:flex-end;justify-content:center;gap:8px;margin:14px 0 4px">
+        ${podiumOrder.map((r,i) => {
+          if (!r) return '<div style="flex:1"></div>';
+          const p = DB.players.find(pp=>_pid(pp)===r.pid);
+          const h = podiumHeights[i];
+          const col = i===1?'251,191,36':i===0?'148,163,184':'205,124,66';
+          return `
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;max-width:110px">
+            <div style="position:relative;margin-bottom:6px">
+              <div style="width:${i===1?56:46}px;height:${i===1?56:46}px;border-radius:10px;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:${i===1?26:20}px;overflow:hidden;border:2px solid rgba(${col},.6)">${p?_avatarInner(p):'👤'}</div>
+              ${p?_badgePinHTML(p,'sm-badge-pin'):''}
+            </div>
+            <div style="font-size:11px;font-weight:700;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;width:100%;margin-bottom:3px">${r.name}</div>
+            ${r.prize?`<div style="font-size:10px;color:var(--gold);font-weight:700">🏅 ${r.prize} AC</div>`:''}
+            <div style="width:100%;height:${h}px;border-radius:8px 8px 0 0;background:linear-gradient(180deg,rgba(${col},.2),rgba(${col},.08));border-top:2px solid rgba(${col},.5);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:rgba(${col},1);margin-top:6px">${placeIcon(r.place)}</div>
+          </div>`;
+        }).join('')}
+      </div>`;
+
+    const restResults = sorted.filter(r=>r.place>3).map(r => {
+      const p = DB.players.find(pp=>_pid(pp)===r.pid);
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:800;color:${placeColor(r.place)};width:32px;text-align:center">${placeIcon(r.place)}</div>
+        <div style="width:30px;height:30px;border-radius:8px;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:14px;overflow:hidden;flex-shrink:0">${p?_avatarInner(p):'👤'}</div>
+        <div style="flex:1;font-size:13px;font-weight:600">${r.name}</div>
+        ${r.prize?`<div style="font-size:12px;font-weight:700;color:var(--gold)">+${r.prize} AC</div>`:''}
+      </div>`;
+    }).join('');
+
+    resultsHtml = `
+      <div style="background:linear-gradient(135deg,rgba(251,191,36,.06),rgba(74,222,128,.04));border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:14px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--gold);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px">🏆 Tournament Results</div>
+        ${podiumHtml}
+        ${restResults}
+      </div>`;
+  }
+
+  // Registered players list
   const registered = (t.players||[]).map(pid => {
     const p = DB.players.find(pp => _pid(pp) === pid);
+    const result = (t.results||[]).find(r=>r.pid===pid);
     return p ? `<div class="lb-row" style="cursor:default">
       <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
-      <div class="lb-info"><div class="lb-name">${p.name}</div><div class="lb-guild">${p.uid||''}</div></div>
+      <div class="lb-info">
+        <div class="lb-name">${p.name}</div>
+        <div class="lb-guild">${p.uid||''}</div>
+      </div>
+      ${result ? `<span style="font-size:12px;font-weight:700;color:${result.place===1?'var(--gold)':result.place===2?'var(--silver)':'var(--dim)'}">${result.place===1?'🥇':result.place===2?'🥈':result.place===3?'🥉':'#'+result.place}</span>` : ''}
     </div>` : '';
   }).join('');
 
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">${_gameEmoji(t.game)} ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div class="modal-close-row">
+      <div class="modal-title" style="display:flex;align-items:center">${titleIcon}${t.name}</div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
     <div class="tc-stats" style="gap:8px;margin-bottom:12px">
       <div class="tc-stat"><div class="tc-stat-label">Game</div><div class="tc-stat-value">${t.game}</div></div>
-      <div class="tc-stat"><div class="tc-stat-label">Status</div><div class="tc-stat-value">${t.status}</div></div>
+      <div class="tc-stat"><div class="tc-stat-label">Status</div><div class="tc-stat-value" style="text-transform:capitalize">${t.status||'—'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Date</div><div class="tc-stat-value">${t.date||'TBD'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Time</div><div class="tc-stat-value">${t.time||'TBD'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Format</div><div class="tc-stat-value">${t.format||'—'}</div></div>
-      <div class="tc-stat"><div class="tc-stat-label">Prize</div><div class="tc-stat-value text-gold">${t.prize||'TBD'}</div></div>
+      <div class="tc-stat"><div class="tc-stat-label">Prize Pool</div><div class="tc-stat-value text-gold">${t.prize||'TBD'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Entry Fee</div><div class="tc-stat-value">${t.entryFee ? t.entryFee+' AC' : 'Free'}</div></div>
       <div class="tc-stat"><div class="tc-stat-label">Players</div><div class="tc-stat-value">${(t.players||[]).length}/${t.maxPlayers||16}</div></div>
     </div>
     ${t.description ? `<p style="font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:12px">${t.description}</p>` : ''}
+    ${resultsHtml}
     <div class="divider"></div>
     <div class="section-title" style="margin-bottom:8px">Registered Players (${(t.players||[]).length})</div>
     <div style="display:flex;flex-direction:column;gap:6px">${registered || '<div class="empty-state" style="padding:16px"><p>No players yet</p></div>'}</div>
@@ -4258,28 +4614,114 @@ async function adminDeleteT(tid) {
 function adminRecordWins(tid) {
   const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
   const players = (t.players||[]).map(pid=>DB.players.find(p=>_pid(p)===pid)).filter(Boolean);
+  const existing = t.results || []; // [{pid, place, prize}]
+
+  // Build placement rows
+  const rows = players.map(p => {
+    const pid = _pid(p);
+    const ex  = existing.find(r=>r.pid===pid);
+    return `
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="position:relative;display:inline-flex;flex-shrink:0">
+        <div style="width:34px;height:34px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:16px">${_avatarInner(p)}</div>
+        ${_badgePinHTML(p,'sm-badge-pin')}
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700">${p.name}</div>
+        <div style="font-size:10px;color:var(--dim)">${p.uid||''}</div>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <div>
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Place</div>
+          <input type="number" id="res-place-${pid}" min="1" max="${players.length}" placeholder="—"
+            value="${ex?.place||''}" style="width:52px;padding:5px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:700;text-align:center">
+        </div>
+        <div>
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Prize (AC)</div>
+          <input type="number" id="res-prize-${pid}" min="0" placeholder="0"
+            value="${ex?.prize||''}" style="width:70px;padding:5px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--border2);color:var(--gold);font-size:13px;font-weight:700;text-align:center">
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">📊 Results — ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div style="font-size:12px;color:var(--dim);margin-bottom:12px">${players.length} registered players</div>
-    ${players.map(p => `
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="position:relative;display:inline-flex;flex-shrink:0">
-            <div style="width:32px;height:32px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden">${_avatarInner(p)}</div>
-            ${_badgePinHTML(p,'sm-badge-pin')}
-          </div>
-          <div>
-            <div style="font-size:13px;font-weight:600">${p.name}</div>
-            <div id="rs-${_pid(p)}" style="font-size:11px;color:var(--dim)">${p.wins||0}W ${p.losses||0}L</div>
-          </div>
-        </div>
-        <div style="display:flex;gap:6px">
-          <button class="admin-btn success" onclick="adminWinBtn('${_pid(p)}')">✅ Win</button>
-          <button class="admin-btn danger"  onclick="adminLossBtn('${_pid(p)}')">❌ Loss</button>
-        </div>
-      </div>`).join('')||'<div class="empty-state" style="padding:20px"><p>No players registered</p></div>'}
+    <div class="modal-close-row">
+      <div class="modal-title">🏆 Results — ${t.name}</div>
+      <span class="modal-close-btn" onclick="closeModal()">✕</span>
+    </div>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:10px">
+      Set placement and prize for each player. Leave blank to exclude.
+    </div>
+    <div style="max-height:55vh;overflow-y:auto;padding-right:4px">
+      ${rows || '<div class="empty-state" style="padding:20px"><p>No players registered</p></div>'}
+    </div>
+    ${players.length ? `
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn-primary" id="btn-save-results" onclick="adminSaveResults('${tid}')" style="flex:1">💾 Save Results</button>
+      ${t.results?.length ? `<button class="btn-secondary" onclick="adminClearResults('${tid}')" style="color:var(--red);border-color:rgba(248,113,113,.3)">🗑️ Clear</button>` : ''}
+    </div>` : ''}
   `);
 }
+
+async function adminSaveResults(tid) {
+  _btn('btn-save-results', true);
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
+  const players = (t.players||[]).map(pid=>DB.players.find(p=>_pid(p)===pid)).filter(Boolean);
+
+  const results = [];
+  const prizeGivers = [];
+
+  for (const p of players) {
+    const pid   = _pid(p);
+    const place = parseInt(document.getElementById('res-place-'+pid)?.value)||0;
+    const prize = parseInt(document.getElementById('res-prize-'+pid)?.value)||0;
+    if (!place) continue;
+
+    results.push({ pid, name:p.name, place, prize });
+
+    // Update player stats
+    p.tournaments = (p.tournaments||0) + (t.results?.find(r=>r.pid===pid) ? 0 : 1); // only count once
+    if (place === 1) p.wins = (p.wins||0) + 1;
+    else             p.losses = (p.losses||0) + 1;
+
+    // Award prize AC
+    if (prize > 0) {
+      p.balance = (p.balance||0) + prize;
+      prizeGivers.push({ pid, name:p.name, prize });
+    }
+
+    await fsSet('players', pid, p);
+    if (pid === DB.me?.id) { Object.assign(DB.me, p); }
+  }
+
+  // Sort by place
+  results.sort((a,b) => a.place - b.place);
+  t.results = results;
+  t.status  = 'closed';
+  await fsSet('tournaments', tid, t);
+
+  // Send notification to each prize winner
+  for (const { pid, name, prize } of prizeGivers) {
+    const nid   = 'notif_res_'+tid+'_'+pid;
+    const notif = { id:nid, title:'🏆 Prize Awarded!', body:`You finished in the money in ${t.name} and received ${prize} AC!`, date:new Date().toISOString(), readBy:[], targetUid:pid, type:'tournament', private:true };
+    await fsSet('private_notifications', pid+'_'+nid, notif);
+    const player = DB.players.find(pp=>_pid(pp)===pid);
+    if (player) { DB.notifications = DB.notifications || []; DB.notifications.push(notif); }
+  }
+
+  toast('Results saved! 🏆','success');
+  _cacheDB(); closeModal(); renderAdminTournaments();
+}
+
+async function adminClearResults(tid) {
+  if (!confirm('Clear all results for this tournament?')) return;
+  const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
+  t.results = [];
+  await fsSet('tournaments', tid, t);
+  toast('Results cleared','info'); _cacheDB(); closeModal(); renderAdminTournaments();
+}
+
 async function adminWinBtn(pid) {
   const p = _findPlayer(pid); if(!p) return;
   p.wins = (p.wins||0)+1;
