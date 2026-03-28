@@ -528,6 +528,33 @@ img{display:block;max-width:100%}
 .tc-slot-info{font-size:12px;color:var(--dim)}
 .tc-progress{height:3px;border-radius:2px;background:var(--panel2);margin-bottom:12px;overflow:hidden}
 .tc-progress-bar{height:100%;border-radius:2px;background:linear-gradient(90deg,var(--g2),var(--g1));transition:width .5s ease}
+/* Player slot grid — numbered team boxes like custom room lobby */
+.slot-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.slot-box{
+  border:1px solid var(--border2);border-radius:8px;
+  overflow:hidden;position:relative;background:var(--panel);
+}
+.slot-box.has-player{border-color:rgba(74,222,128,.35)}
+.slot-box.has-me{border-color:var(--gold);box-shadow:0 0 8px rgba(251,191,36,.15)}
+.slot-num{
+  font-size:10px;font-weight:800;color:var(--dim);
+  padding:4px 6px 2px;letter-spacing:.5px;
+}
+/* Filled player row — avatar + badge + name */
+.slot-entry{
+  display:flex;align-items:center;gap:6px;
+  padding:5px 8px;border-bottom:1px solid var(--border);
+  background:var(--panel);
+}
+.slot-entry:last-child{border-bottom:none}
+.slot-entry.me-entry{background:rgba(251,191,36,.06)}
+/* Empty slot row */
+.slot-empty{
+  height:22px;margin:3px 6px;border-radius:4px;
+  background:var(--panel2);border:1px solid var(--border);
+  opacity:.5;
+}
+.slot-empty:last-child{margin-bottom:6px}
 .tc-actions{display:flex;gap:8px}
 .btn-join{
   flex:1;padding:12px;
@@ -2428,6 +2455,94 @@ function _tCard(t) {
     ? `<img src="${gameObj.icon}" style="width:16px;height:16px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:4px">`
     : '';
 
+  // Determine team size from format/modes
+  const fmt      = (t.format||'solo').toLowerCase();
+  const teamSize = fmt.includes('squad') ? 4 : fmt.includes('duo') ? 2 : 1;
+  const totalSlots = Math.ceil(slots / teamSize); // number of team boxes
+  const showSlots  = Math.min(totalSlots, teamSize === 1 ? 14 : teamSize === 2 ? 12 : 8);
+
+  // Build numbered team-box grid (2-column, like FF custom room)
+  const slotBoxes = [];
+  for (let si = 0; si < showSlots; si++) {
+    const teamNum     = si + 1;
+    const playerStart = si * teamSize;
+    let hasMe = false, hasPlayer = false;
+
+    const rows = [];
+    for (let pi = 0; pi < teamSize; pi++) {
+      const pid      = (t.players||[])[playerStart + pi];
+      const p        = pid ? DB.players.find(pp => _pid(pp) === pid) : null;
+      const isMeSlot = pid === me?.id;
+      if (pid) hasPlayer = true;
+      if (isMeSlot) hasMe = true;
+
+      if (p) {
+        // Filled: show avatar + badge + name + uid
+        rows.push(`
+          <div class="slot-entry${isMeSlot?' me-entry':''}">
+            <div style="position:relative;display:inline-flex;flex-shrink:0">
+              <div style="width:26px;height:26px;border-radius:7px;overflow:hidden;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:12px;border:1px solid ${isMeSlot?'var(--gold)':'var(--border2)'}">${_avatarInner(p)}</div>
+              ${_badgePinHTML(p,'xs-badge-pin')}
+            </div>
+            <div style="min-width:0;flex:1">
+              <div style="font-size:11px;font-weight:700;color:${isMeSlot?'var(--gold)':'var(--text)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.name}</div>
+              <div style="font-size:9px;color:var(--dim);font-family:monospace">${p.uid||''}</div>
+            </div>
+          </div>`);
+      } else {
+        // Empty: clean dark bar
+        rows.push(`<div class="slot-empty"></div>`);
+      }
+    }
+
+    const boxCls = hasMe ? 'slot-box has-me' : hasPlayer ? 'slot-box has-player' : 'slot-box';
+    slotBoxes.push(`
+      <div class="${boxCls}">
+        <div class="slot-num">${teamNum}</div>
+        ${rows.join('')}
+      </div>`);
+  }
+
+  const hiddenSlots = totalSlots - showSlots;
+
+  // Slot grid is PRIVATE — only visible to players who have joined
+  // Non-joined players see a blurred/locked placeholder
+  const isAdmin = me?.role === 'admin';
+  const canSeeSlots = isJoined || isAdmin;
+
+  const slotsHtml = `
+    <div style="margin-bottom:8px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:var(--dim)">👥</span>
+          <span style="font-size:12px;font-weight:700;color:${isFull?'var(--red)':'var(--text)'}">${joined}/${slots}</span>
+          <span style="font-size:10px;color:var(--dim)">${teamSize===1?'players':teamSize===2?'duos':'squads'}</span>
+        </div>
+        <span style="font-size:10px;color:var(--dim);background:var(--panel2);padding:2px 7px;border-radius:8px;border:1px solid var(--border);text-transform:uppercase;font-weight:700;letter-spacing:.5px">${t.format||'Solo'}</span>
+      </div>
+      ${canSeeSlots
+        ? `<div class="slot-grid">${slotBoxes.join('')}</div>
+           ${hiddenSlots > 0 ? `<div style="font-size:10px;color:var(--dim);margin-top:4px;text-align:center">+${hiddenSlots} more slots</div>` : ''}`
+        : `<div style="position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--border2)">
+             <!-- Blurred preview of 2 empty slot boxes -->
+             <div style="filter:blur(3px);pointer-events:none;opacity:.4">
+               <div class="slot-grid" style="padding:4px">
+                 ${[1,2].map(n=>`
+                   <div class="slot-box">
+                     <div class="slot-num">${n}</div>
+                     ${Array(teamSize).fill('<div class="slot-empty"></div>').join('')}
+                   </div>`).join('')}
+               </div>
+             </div>
+             <!-- Lock overlay -->
+             <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(6,11,7,.6);gap:6px">
+               <div style="font-size:22px">🔒</div>
+               <div style="font-size:11px;font-weight:700;color:var(--text)">Join to see the player list</div>
+               <div style="font-size:10px;color:var(--dim)">Registered players are private</div>
+             </div>
+           </div>`}
+    </div>`;
+
   return `
   <div class="tc">
     <div class="tc-hero">
@@ -2444,14 +2559,21 @@ function _tCard(t) {
       <div class="tc-stats">
         <div class="tc-stat"><div class="tc-stat-label">Date</div><div class="tc-stat-value">${t.date||'TBD'}</div></div>
         <div class="tc-stat"><div class="tc-stat-label">Time</div><div class="tc-stat-value">${t.time||'TBD'}</div></div>
-        <div class="tc-stat"><div class="tc-stat-label">Format</div><div class="tc-stat-value">${t.format||'Solo'}</div></div>
         <div class="tc-stat"><div class="tc-stat-label">Entry Fee</div><div class="tc-stat-value text-gold">${t.entryFee ? t.entryFee+' AC' : 'Free'}</div></div>
+        <div class="tc-stat"><div class="tc-stat-label">Prize</div><div class="tc-stat-value text-gold">${t.prize||'TBD'}</div></div>
       </div>
-      <div class="tc-players">
-        <div class="avatar-stack">${stack}</div>
-        <div class="tc-slot-info">${joined}/${slots} players</div>
+      <!-- Compact player count bar -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <span style="font-size:11px;color:var(--dim)">👥</span>
+          <span style="font-size:12px;font-weight:700;color:${isFull?'var(--red)':'var(--text)'}">${joined}/${slots}</span>
+          <span style="font-size:10px;color:var(--dim)">${teamSize===1?'players':teamSize===2?'duos':'squads'}</span>
+        </div>
+        <div style="flex:1;height:4px;border-radius:2px;background:var(--panel2);margin:0 10px;overflow:hidden">
+          <div style="height:100%;border-radius:2px;width:${Math.min(100,Math.round((joined/slots)*100))}%;background:linear-gradient(90deg,var(--g2),var(--g1));transition:width .5s ease"></div>
+        </div>
+        <span style="font-size:10px;color:var(--dim);background:var(--panel2);padding:2px 7px;border-radius:8px;border:1px solid var(--border);text-transform:uppercase;font-weight:700;letter-spacing:.5px">${t.format||'Solo'}</span>
       </div>
-      <div class="tc-progress"><div class="tc-progress-bar" style="width:${pct}%"></div></div>
       <div class="tc-actions">
         ${actionBtn}
         <button class="btn-details" onclick="viewTournament('${tid}')">Details</button>
@@ -2615,8 +2737,67 @@ function viewTournament(tid) {
     ${t.description ? `<p style="font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:12px">${t.description}</p>` : ''}
     ${resultsHtml}
     <div class="divider"></div>
-    <div class="section-title" style="margin-bottom:8px">Registered Players (${(t.players||[]).length})</div>
-    <div style="display:flex;flex-direction:column;gap:6px">${registered || '<div class="empty-state" style="padding:16px"><p>No players yet</p></div>'}</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+      <div class="section-title">Registered Players (${(t.players||[]).length})</div>
+      <span style="font-size:10px;background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border);color:var(--dim);font-weight:600;text-transform:uppercase;letter-spacing:.5px">${t.format||'Solo'}</span>
+    </div>
+    ${(() => {
+      const me2 = DB.me;
+      const isJoined2 = (t.players||[]).includes(me2?.id);
+      const isAdmin2  = me2?.role === 'admin';
+      const canSee    = isJoined2 || isAdmin2;
+      const fmt2      = (t.format||'solo').toLowerCase();
+      const ts2       = fmt2.includes('squad') ? 4 : fmt2.includes('duo') ? 2 : 1;
+      const totalS    = Math.ceil((t.maxPlayers||16) / ts2);
+      const showS     = Math.min(totalS, ts2===1 ? 14 : ts2===2 ? 12 : 8);
+
+      if (!canSee) {
+        return `<div style="position:relative;border-radius:8px;overflow:hidden;border:1px solid var(--border2)">
+          <div style="filter:blur(3px);pointer-events:none;opacity:.35">
+            <div class="slot-grid" style="padding:6px;gap:6px">
+              ${[1,2].map(n=>`<div class="slot-box"><div class="slot-num">${n}</div>${Array(ts2).fill('<div class="slot-empty"></div>').join('')}</div>`).join('')}
+            </div>
+          </div>
+          <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(6,11,7,.65);gap:6px">
+            <div style="font-size:26px">🔒</div>
+            <div style="font-size:12px;font-weight:700;color:var(--text)">Join to see registered players</div>
+            <div style="font-size:11px;color:var(--dim)">Player list is private</div>
+          </div>
+        </div>`;
+      }
+
+      // Build full slot grid for modal
+      const boxes = [];
+      for (let si = 0; si < showS; si++) {
+        const ps  = si * ts2;
+        let hasMe2 = false, hasPl = false;
+        const rows2 = [];
+        for (let pi = 0; pi < ts2; pi++) {
+          const pid2 = (t.players||[])[ps+pi];
+          const p2   = pid2 ? DB.players.find(pp=>_pid(pp)===pid2) : null;
+          const isme = pid2 === me2?.id;
+          if (pid2) hasPl = true; if (isme) hasMe2 = true;
+          if (p2) {
+            rows2.push(`<div class="slot-entry${isme?' me-entry':''}">
+              <div style="position:relative;display:inline-flex;flex-shrink:0">
+                <div style="width:28px;height:28px;border-radius:7px;overflow:hidden;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:13px;border:1px solid ${isme?'var(--gold)':'var(--border2)'}">${_avatarInner(p2)}</div>
+                ${_badgePinHTML(p2,'xs-badge-pin')}
+              </div>
+              <div style="min-width:0;flex:1">
+                <div style="font-size:12px;font-weight:700;color:${isme?'var(--gold)':'var(--text)'};overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p2.name}</div>
+                <div style="font-size:10px;color:var(--dim);font-family:monospace">${p2.uid||''}</div>
+              </div>
+            </div>`);
+          } else {
+            rows2.push(`<div class="slot-empty"></div>`);
+          }
+        }
+        boxes.push(`<div class="${hasMe2?'slot-box has-me':hasPl?'slot-box has-player':'slot-box'}"><div class="slot-num">${si+1}</div>${rows2.join('')}</div>`);
+      }
+      const hidden2 = totalS - showS;
+      return `<div class="slot-grid">${boxes.join('')}</div>
+        ${hidden2>0?`<div style="font-size:10px;color:var(--dim);margin-top:6px;text-align:center">+${hidden2} more slots</div>`:''}`;
+    })()}
   `);
 }
 
@@ -4614,100 +4795,167 @@ async function adminDeleteT(tid) {
 function adminRecordWins(tid) {
   const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
   const players = (t.players||[]).map(pid=>DB.players.find(p=>_pid(p)===pid)).filter(Boolean);
-  const existing = t.results || []; // [{pid, place, prize}]
+  const fmt = (t.format||'solo').toLowerCase();
+  const teamSize = fmt.includes('squad') ? 4 : fmt.includes('duo') ? 2 : 1;
+  const isTeam   = teamSize > 1;
+  const existing = t.results || [];
 
-  // Build placement rows
-  const rows = players.map(p => {
-    const pid = _pid(p);
-    const ex  = existing.find(r=>r.pid===pid);
-    return `
-    <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <div style="position:relative;display:inline-flex;flex-shrink:0">
-        <div style="width:34px;height:34px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:16px">${_avatarInner(p)}</div>
-        ${_badgePinHTML(p,'sm-badge-pin')}
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:700">${p.name}</div>
-        <div style="font-size:10px;color:var(--dim)">${p.uid||''}</div>
-      </div>
-      <div style="display:flex;gap:6px;align-items:center">
-        <div>
-          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Place</div>
-          <input type="number" id="res-place-${pid}" min="1" max="${players.length}" placeholder="—"
-            value="${ex?.place||''}" style="width:52px;padding:5px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:700;text-align:center">
+  let rows = '';
+
+  if (isTeam) {
+    // Group players into teams of teamSize
+    const groups = [];
+    for (let i = 0; i < players.length; i += teamSize) {
+      groups.push(players.slice(i, i + teamSize));
+    }
+    rows = groups.map((grp, gi) => {
+      const pids = grp.map(p=>_pid(p));
+      const ex   = existing.find(r => r.teamIdx === gi || (r.pids && r.pids[0] === pids[0]));
+      return `
+      <div style="background:var(--panel2);border:1px solid var(--border);border-radius:var(--radius);padding:10px;margin-bottom:8px">
+        <div style="font-size:10px;color:var(--dim);font-weight:700;letter-spacing:.5px;text-transform:uppercase;margin-bottom:8px">Team ${gi+1}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+          ${grp.map(p=>`
+            <div style="display:flex;align-items:center;gap:6px;background:var(--panel);border-radius:8px;padding:5px 8px">
+              <div style="position:relative;display:inline-flex">
+                <div style="width:28px;height:28px;border-radius:8px;overflow:hidden;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:13px">${_avatarInner(p)}</div>
+                ${_badgePinHTML(p,'xs-badge-pin')}
+              </div>
+              <span style="font-size:12px;font-weight:600">${p.name}</span>
+            </div>`).join('')}
         </div>
-        <div>
-          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Prize (AC)</div>
-          <input type="number" id="res-prize-${pid}" min="0" placeholder="0"
-            value="${ex?.prize||''}" style="width:70px;padding:5px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--border2);color:var(--gold);font-size:13px;font-weight:700;text-align:center">
+        <div style="display:flex;gap:8px;align-items:center">
+          <div style="flex:1">
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Placement</div>
+            <input type="number" id="res-team-place-${gi}" min="1" max="${groups.length}" placeholder="—"
+              value="${ex?.place||''}" style="width:100%;padding:7px 10px;border-radius:8px;background:var(--panel);border:1px solid var(--border2);color:var(--text);font-size:15px;font-weight:800;text-align:center">
+          </div>
+          <div style="flex:1">
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Prize per player (AC)</div>
+            <input type="number" id="res-team-prize-${gi}" min="0" placeholder="0"
+              value="${ex?.prize||''}" style="width:100%;padding:7px 10px;border-radius:8px;background:var(--panel);border:1px solid var(--border2);color:var(--gold);font-size:15px;font-weight:800;text-align:center">
+          </div>
         </div>
-      </div>
-    </div>`;
-  }).join('');
+        <input type="hidden" id="res-team-pids-${gi}" value="${pids.join(',')}">
+      </div>`;
+    }).join('') || '<div class="empty-state" style="padding:20px"><p>No players registered</p></div>';
+  } else {
+    // Solo mode — individual placements
+    rows = players.map(p => {
+      const pid = _pid(p);
+      const ex  = existing.find(r=>r.pid===pid);
+      return `
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="position:relative;display:inline-flex;flex-shrink:0">
+          <div style="width:34px;height:34px;border-radius:10px;background:var(--panel);display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:16px">${_avatarInner(p)}</div>
+          ${_badgePinHTML(p,'sm-badge-pin')}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700">${p.name}</div>
+          <div style="font-size:10px;color:var(--dim)">${p.uid||''}</div>
+        </div>
+        <div style="display:flex;gap:6px;align-items:center">
+          <div>
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Place</div>
+            <input type="number" id="res-place-${pid}" min="1" max="${players.length}" placeholder="—"
+              value="${ex?.place||''}" style="width:52px;padding:5px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--border2);color:var(--text);font-size:13px;font-weight:700;text-align:center">
+          </div>
+          <div>
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px">Prize (AC)</div>
+            <input type="number" id="res-prize-${pid}" min="0" placeholder="0"
+              value="${ex?.prize||''}" style="width:70px;padding:5px 6px;border-radius:6px;background:var(--panel2);border:1px solid var(--border2);color:var(--gold);font-size:13px;font-weight:700;text-align:center">
+          </div>
+        </div>
+      </div>`;
+    }).join('') || '<div class="empty-state" style="padding:20px"><p>No players registered</p></div>';
+  }
 
   openModal(`
     <div class="modal-close-row">
-      <div class="modal-title">🏆 Results — ${t.name}</div>
+      <div class="modal-title">🏆 ${isTeam ? `Team Results (${teamSize==='2'?'Duo':'Squad'})` : 'Solo Results'} — ${t.name}</div>
       <span class="modal-close-btn" onclick="closeModal()">✕</span>
     </div>
-    <div style="font-size:12px;color:var(--dim);margin-bottom:10px">
-      Set placement and prize for each player. Leave blank to exclude.
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <div style="flex:1;background:var(--panel2);border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:18px;font-weight:900;color:var(--g1)">${players.length}</div>
+        <div style="font-size:10px;color:var(--dim)">Players</div>
+      </div>
+      <div style="flex:1;background:var(--panel2);border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:18px;font-weight:900;color:var(--gold)">${isTeam ? Math.ceil(players.length/teamSize) : players.length}</div>
+        <div style="font-size:10px;color:var(--dim)">${isTeam ? 'Teams' : 'Entrants'}</div>
+      </div>
+      <div style="flex:1;background:var(--panel2);border-radius:8px;padding:8px;text-align:center">
+        <div style="font-size:18px;font-weight:900;color:var(--blue)">${teamSize}v${teamSize}</div>
+        <div style="font-size:10px;color:var(--dim)">Format</div>
+      </div>
     </div>
-    <div style="max-height:55vh;overflow-y:auto;padding-right:4px">
-      ${rows || '<div class="empty-state" style="padding:20px"><p>No players registered</p></div>'}
-    </div>
+    <div style="font-size:12px;color:var(--dim);margin-bottom:10px">${isTeam ? 'Set placement & prize per player for each team.' : 'Set placement and prize for each player.'}</div>
+    <div style="max-height:55vh;overflow-y:auto;padding-right:4px">${rows}</div>
     ${players.length ? `
     <div style="display:flex;gap:8px;margin-top:14px">
-      <button class="btn-primary" id="btn-save-results" onclick="adminSaveResults('${tid}')" style="flex:1">💾 Save Results</button>
+      <button class="btn-primary" id="btn-save-results" onclick="adminSaveResults('${tid}',${isTeam},${teamSize})" style="flex:1">💾 Save Results</button>
       ${t.results?.length ? `<button class="btn-secondary" onclick="adminClearResults('${tid}')" style="color:var(--red);border-color:rgba(248,113,113,.3)">🗑️ Clear</button>` : ''}
     </div>` : ''}
   `);
 }
 
-async function adminSaveResults(tid) {
+async function adminSaveResults(tid, isTeam=false, teamSize=1) {
   _btn('btn-save-results', true);
   const t = DB.tournaments.find(t=>(t.id||t._fsId)===tid); if(!t) return;
   const players = (t.players||[]).map(pid=>DB.players.find(p=>_pid(p)===pid)).filter(Boolean);
-
   const results = [];
   const prizeGivers = [];
+  const alreadyProcessed = new Set((t.results||[]).map(r=>r.pid));
 
-  for (const p of players) {
-    const pid   = _pid(p);
-    const place = parseInt(document.getElementById('res-place-'+pid)?.value)||0;
-    const prize = parseInt(document.getElementById('res-prize-'+pid)?.value)||0;
-    if (!place) continue;
+  if (isTeam) {
+    const groups = [];
+    for (let i = 0; i < players.length; i += teamSize) groups.push(players.slice(i, i+teamSize));
 
-    results.push({ pid, name:p.name, place, prize });
+    for (let gi = 0; gi < groups.length; gi++) {
+      const grp   = groups[gi];
+      const place = parseInt(document.getElementById(`res-team-place-${gi}`)?.value)||0;
+      const prize = parseInt(document.getElementById(`res-team-prize-${gi}`)?.value)||0;
+      if (!place) continue;
 
-    // Update player stats
-    p.tournaments = (p.tournaments||0) + (t.results?.find(r=>r.pid===pid) ? 0 : 1); // only count once
-    if (place === 1) p.wins = (p.wins||0) + 1;
-    else             p.losses = (p.losses||0) + 1;
-
-    // Award prize AC
-    if (prize > 0) {
-      p.balance = (p.balance||0) + prize;
-      prizeGivers.push({ pid, name:p.name, prize });
+      for (const p of grp) {
+        const pid = _pid(p);
+        results.push({ pid, name:p.name, place, prize, teamIdx:gi });
+        if (!alreadyProcessed.has(pid)) {
+          p.tournaments = (p.tournaments||0) + 1;
+          if (place === 1) p.wins = (p.wins||0)+1; else p.losses = (p.losses||0)+1;
+        }
+        if (prize > 0) { p.balance=(p.balance||0)+prize; prizeGivers.push({pid,name:p.name,prize}); }
+        await fsSet('players', pid, p);
+        if (pid===DB.me?.id) Object.assign(DB.me, p);
+      }
     }
-
-    await fsSet('players', pid, p);
-    if (pid === DB.me?.id) { Object.assign(DB.me, p); }
+  } else {
+    for (const p of players) {
+      const pid   = _pid(p);
+      const place = parseInt(document.getElementById('res-place-'+pid)?.value)||0;
+      const prize = parseInt(document.getElementById('res-prize-'+pid)?.value)||0;
+      if (!place) continue;
+      results.push({ pid, name:p.name, place, prize });
+      if (!alreadyProcessed.has(pid)) {
+        p.tournaments = (p.tournaments||0) + 1;
+        if (place === 1) p.wins=(p.wins||0)+1; else p.losses=(p.losses||0)+1;
+      }
+      if (prize > 0) { p.balance=(p.balance||0)+prize; prizeGivers.push({pid,name:p.name,prize}); }
+      await fsSet('players', pid, p);
+      if (pid===DB.me?.id) Object.assign(DB.me, p);
+    }
   }
 
-  // Sort by place
-  results.sort((a,b) => a.place - b.place);
+  results.sort((a,b)=>a.place-b.place);
   t.results = results;
   t.status  = 'closed';
   await fsSet('tournaments', tid, t);
 
-  // Send notification to each prize winner
-  for (const { pid, name, prize } of prizeGivers) {
+  // Notify prize winners privately
+  for (const {pid, name, prize} of prizeGivers) {
     const nid   = 'notif_res_'+tid+'_'+pid;
     const notif = { id:nid, title:'🏆 Prize Awarded!', body:`You finished in the money in ${t.name} and received ${prize} AC!`, date:new Date().toISOString(), readBy:[], targetUid:pid, type:'tournament', private:true };
     await fsSet('private_notifications', pid+'_'+nid, notif);
-    const player = DB.players.find(pp=>_pid(pp)===pid);
-    if (player) { DB.notifications = DB.notifications || []; DB.notifications.push(notif); }
   }
 
   toast('Results saved! 🏆','success');
