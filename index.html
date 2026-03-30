@@ -455,14 +455,7 @@ img{display:block;max-width:100%}
 .t-game-pill:hover{border-color:var(--g1);color:var(--text)}
 .t-game-pill.active{background:rgba(74,222,128,.15);border-color:var(--g1);color:var(--g1)}
 /* Team finder cards */
-.tf-card{
-  background:var(--panel);border:1px solid var(--border);
-  border-radius:var(--radius);padding:14px;margin-bottom:10px;
-  transition:var(--transition);
-}
-.tf-card:hover{border-color:var(--border2);transform:translateY(-1px)}
-.tf-badge-lft{background:rgba(74,222,128,.15);color:var(--g1);border:1px solid var(--border2);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
-.tf-badge-lfp{background:rgba(96,165,250,.15);color:#60a5fa;border:1px solid rgba(96,165,250,.3);font-size:10px;font-weight:700;padding:2px 8px;border-radius:10px;white-space:nowrap}
+
 
 /* ===== TOURNAMENT CARD ===== */
 .tc{
@@ -580,31 +573,93 @@ img{display:block;max-width:100%}
 }
 
 /* ===== TEAMS & GUILDS ===== */
-.team-card{
-  background:var(--bg2);border:1px solid var(--border);
-  border-radius:var(--radius2);padding:14px;
-  margin-bottom:10px;display:flex;align-items:center;gap:12px;
-  transition:var(--transition);cursor:pointer;
+/* ===== TEAMS PAGE ===== */
+.teams-action-btn{
+  display:flex;align-items:center;gap:12px;
+  padding:14px 16px;border-radius:var(--radius);
+  background:var(--panel);border:1px solid var(--border2);
+  cursor:pointer;transition:var(--transition);text-align:left;width:100%;
+  color:var(--text);
 }
-.team-card:hover{border-color:var(--border2)}
-.team-logo{
-  width:48px;height:48px;border-radius:12px;
-  background:linear-gradient(135deg,var(--g3),var(--g4));
-  display:flex;align-items:center;justify-content:center;
-  font-size:22px;flex-shrink:0;border:1px solid var(--border2);
-  overflow:hidden;
+.teams-action-btn:hover{border-color:var(--border3);background:var(--panel2);transform:translateY(-1px)}
+.teams-action-btn.primary{background:linear-gradient(135deg,rgba(74,222,128,.12),rgba(74,222,128,.04));border-color:var(--border2);color:var(--g1)}
+.teams-action-btn.primary:hover{background:linear-gradient(135deg,rgba(74,222,128,.2),rgba(74,222,128,.08));border-color:var(--g1)}
+/* Squad card */
+.squad-card{
+  border-radius:14px;overflow:hidden;
+  background:var(--panel);border:1px solid var(--border);
+  margin-bottom:12px;cursor:pointer;
+  transition:var(--transition);
 }
+.squad-card:hover{border-color:var(--border2);transform:translateY(-2px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.squad-card.mine{border-color:rgba(74,222,128,.3);box-shadow:0 0 0 1px rgba(74,222,128,.1)}
+.squad-banner{
+  height:80px;position:relative;overflow:hidden;
+  background:linear-gradient(135deg,#0c1a0d,#18301a);
+}
+.squad-banner-img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0;opacity:.4;filter:blur(3px) saturate(1.3)}
+.squad-banner-grad{position:absolute;inset:0;background:linear-gradient(135deg,rgba(0,0,0,.7) 0%,rgba(0,0,0,.2) 100%)}
+.squad-banner-body{position:absolute;inset:0;display:flex;align-items:center;padding:0 14px;gap:12px}
+.squad-logo{
+  width:52px;height:52px;border-radius:12px;flex-shrink:0;
+  overflow:hidden;display:flex;align-items:center;justify-content:center;
+  font-size:24px;border:2px solid rgba(255,255,255,.15);
+  background:rgba(0,0,0,.3);
+}
+.squad-logo img{width:100%;height:100%;object-fit:cover}
+.squad-title{flex:1;min-width:0}
+.squad-name{font-size:16px;font-weight:900;color:#fff;letter-spacing:.3px;text-shadow:0 2px 8px rgba(0,0,0,.8)}
+.squad-tag{font-size:11px;color:rgba(74,222,128,.9);font-family:'JetBrains Mono',monospace;font-weight:700;margin-top:2px}
+.squad-count{text-align:right;flex-shrink:0}
+.squad-count-num{font-size:22px;font-weight:900;color:var(--g1);line-height:1}
+.squad-count-label{font-size:9px;color:rgba(255,255,255,.5);text-transform:uppercase;letter-spacing:.8px}
+/* Squad members preview row */
+.squad-members{
+  padding:10px 14px;display:flex;align-items:center;
+  justify-content:space-between;gap:10px;
+  border-top:1px solid var(--border);background:var(--panel);
+}
+.squad-avatars{display:flex;align-items:center}
+.squad-avatar-item{
+  width:28px;height:28px;border-radius:8px;overflow:hidden;
+  border:2px solid var(--panel);background:var(--panel2);
+  display:flex;align-items:center;justify-content:center;font-size:12px;
+  margin-left:-6px;flex-shrink:0;
+}
+.squad-avatar-item:first-child{margin-left:0}
+/* Squad stats row */
+.squad-stats{display:flex;gap:14px;padding:0 14px 12px}
+.squad-stat{flex:1;text-align:center}
+.squad-stat-val{font-size:15px;font-weight:900;color:var(--text)}
+.squad-stat-lbl{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+/* Member rows in modal */
+.squad-member-row{
+  display:flex;align-items:center;gap:0;
+  border-bottom:1px solid var(--border);
+  transition:.15s;
+}
+.squad-member-row:hover{background:var(--panel2)}
+.squad-member-row:last-child{border-bottom:none}
+.squad-member-icon{
+  width:54px;height:54px;flex-shrink:0;overflow:hidden;
+  background:var(--panel2);display:flex;align-items:center;
+  justify-content:center;font-size:22px;position:relative;
+}
+.squad-member-info{flex:1;min-width:0;padding:10px 10px 10px 8px}
+.squad-member-name{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.squad-member-uid{font-size:10px;color:var(--dim);font-family:'JetBrains Mono',monospace;margin-top:1px}
+.squad-member-stats{text-align:right;flex-shrink:0;padding-right:12px}
+/* My-badge */
+.my-badge{font-size:9px;padding:2px 8px;border-radius:20px;background:rgba(251,191,36,.2);color:var(--gold);font-weight:700;border:1px solid rgba(251,191,36,.3)}
+/* FF-style member row (kept for compatibility) */
+.ff-member-row{display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border);overflow:hidden;transition:.15s}
+.ff-member-row:hover{background:var(--panel2)}
+.ff-member-row:last-child{border-bottom:none}
+.ff-member-avatar{width:56px;height:52px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden;font-size:22px;position:relative;background:var(--panel2)}
+.ff-member-body{flex:1;min-width:0;padding:10px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+/* Legacy team-logo (used in some places) */
+.team-logo{width:46px;height:46px;border-radius:10px;background:linear-gradient(135deg,var(--g3),var(--g4));display:flex;align-items:center;justify-content:center;font-size:22px;overflow:hidden;border:2px solid rgba(74,222,128,.4);flex-shrink:0}
 .team-logo img{width:100%;height:100%;object-fit:cover}
-.team-info{flex:1;min-width:0}
-.team-name{font-size:15px;font-weight:700}
-.team-tag{
-  display:inline-block;font-size:10px;font-weight:700;
-  padding:2px 8px;border-radius:4px;
-  background:rgba(74,222,128,.15);color:var(--g1);
-  border:1px solid var(--border2);letter-spacing:.5px;margin-top:4px;
-}
-.team-members{font-size:11px;color:var(--dim);margin-top:4px}
-.my-badge{font-size:9px;padding:2px 6px;border-radius:4px;background:rgba(251,191,36,.15);color:var(--gold);font-weight:700;margin-left:6px}
 .btn-create{
   width:100%;padding:14px;margin-bottom:12px;
   background:var(--panel);border:2px dashed var(--border2);
@@ -1285,12 +1340,6 @@ img{display:block;max-width:100%}
 
     <!-- TOURNAMENTS -->
     <div class="page" id="page-tournaments">
-      <!-- Tab switcher: Tournaments vs Team Finder -->
-      <div style="display:flex;gap:0;margin-bottom:0;border-bottom:2px solid var(--border)">
-        <button id="arena-tab-t" onclick="switchArenaTab('tournaments')" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid var(--g1);color:var(--g1);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:-2px">⚔️ Tournaments</button>
-        <button id="arena-tab-tf" onclick="switchArenaTab('teamfinder')" style="flex:1;padding:12px;background:none;border:none;border-bottom:3px solid transparent;color:var(--dim);font-weight:700;font-size:13px;cursor:pointer;margin-bottom:-2px">🔍 Team Finder</button>
-      </div>
-
       <!-- TOURNAMENTS PANEL -->
       <div id="arena-panel-tournaments">
         <!-- Game filter pills -->
@@ -1304,7 +1353,7 @@ img{display:block;max-width:100%}
           <div class="filter-tab" onclick="setTFilter('upcoming',this)">⏳ Upcoming</div>
           <div class="filter-tab" onclick="setTFilter('my',this)">✅ Joined</div>
         </div>
-        <!-- Sort + prize filter row -->
+        <!-- Sort + mode filter row -->
         <div style="display:flex;gap:8px;margin-bottom:10px;align-items:center">
           <select id="t-sort" class="form-input" style="flex:1;padding:8px 10px;font-size:12px" onchange="renderTournaments()">
             <option value="date_desc">📅 Newest First</option>
@@ -1322,36 +1371,39 @@ img{display:block;max-width:100%}
         </div>
         <div id="tournaments-list"></div>
       </div>
-
-      <!-- TEAM FINDER PANEL -->
-      <div id="arena-panel-teamfinder" style="display:none">
-        <div style="padding:10px 0 8px">
-          <div style="font-size:13px;color:var(--dim);margin-bottom:10px">Find teams looking for players, or post your own LFT listing.</div>
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <button class="btn-primary" style="flex:1;font-size:12px;padding:10px" onclick="openPostLFT()">📢 Post LFT (Looking for Team)</button>
-            <button class="btn-secondary" style="font-size:12px;padding:10px" onclick="openPostLFP()">👥 Post LFP (Need Players)</button>
-          </div>
-        </div>
-        <!-- Game filter for team finder -->
-        <div id="tf-game-pills" style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;flex-wrap:nowrap;-webkit-overflow-scrolling:touch">
-          <button class="t-game-pill active" data-game="all" onclick="setTFGame('all',this)">🎮 All Games</button>
-        </div>
-        <!-- Role filter -->
-        <div class="filter-tabs" id="tf-role-tabs" style="margin-bottom:10px">
-          <div class="filter-tab active" onclick="setTFRole('all',this)">All</div>
-          <div class="filter-tab" onclick="setTFRole('lft',this)">🙋 LFT Posts</div>
-          <div class="filter-tab" onclick="setTFRole('lfp',this)">👥 LFP Posts</div>
-        </div>
-        <div id="teamfinder-list"></div>
-      </div>
     </div>
 
     <!-- TEAMS -->
     <div class="page" id="page-teams">
-      <div class="page-header"><div class="page-title">👥 Teams</div><div class="page-subtitle">Create & join teams</div></div>
-      <button class="btn-create" onclick="openCreateTeam()">➕ Create New Team</button>
-      <button class="btn-create" onclick="openJoinTeam()" style="border-style:solid;color:var(--dim)">🔑 Join Team by ID</button>
-      <div class="divider"></div>
+      <div class="page-header">
+        <div class="page-title">👥 Teams</div>
+        <div class="page-subtitle">Create & join squads</div>
+      </div>
+
+      <!-- Action buttons -->
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+        <button class="teams-action-btn primary" onclick="openCreateTeam()">
+          <span style="font-size:22px">➕</span>
+          <div>
+            <div style="font-weight:800;font-size:13px">Create Team</div>
+            <div style="font-size:10px;opacity:.7">Start your squad</div>
+          </div>
+        </button>
+        <button class="teams-action-btn" onclick="openJoinTeam()">
+          <span style="font-size:22px">🔑</span>
+          <div>
+            <div style="font-weight:800;font-size:13px">Join Team</div>
+            <div style="font-size:10px;opacity:.7">Enter team ID</div>
+          </div>
+        </button>
+      </div>
+
+      <!-- Tab filter -->
+      <div class="filter-tabs" id="teams-filter-tabs" style="margin-bottom:12px">
+        <div class="filter-tab active" onclick="setTeamsTab('all',this)">All Teams</div>
+        <div class="filter-tab" onclick="setTeamsTab('mine',this)">My Teams</div>
+      </div>
+
       <div id="teams-list"></div>
     </div>
 
@@ -1493,7 +1545,7 @@ const LS_SESSION   = 'fp_session_v2';
 // ================================================================
 let DB = {
   me:null, players:[], tournaments:[], teams:[], guilds:[],
-  badges:[], transactions:[], storeItems:[], games:[], notifications:[], teamFinderPosts:[],
+  badges:[], transactions:[], storeItems:[], games:[], notifications:[],
   paymentMethods:[], config:{}
 };
 let S = { token:null, refresh:null, uid:null, email:null }; // session
@@ -1695,11 +1747,11 @@ async function fbLoadAll() {
 
   // Then fetch fresh from Firestore — badge_images fetched in same round-trip
   try {
-    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs, tfPosts] =
+    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs] =
       await Promise.all([
         fsList('players'), fsList('tournaments'), fsList('teams'), fsList('guilds'),
         fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications'),
-        fsList('badges'), fsList('badge_images'), fsList('team_finder')
+        fsList('badges'), fsList('badge_images')
       ]);
 
     DB.players          = players.filter(Boolean);
@@ -1711,7 +1763,6 @@ async function fbLoadAll() {
     DB.games            = games.filter(Boolean);
     DB.notifications    = notifications.filter(Boolean);
     DB.badges           = badgesDocs.filter(Boolean);
-    DB.teamFinderPosts  = tfPosts.filter(Boolean);
     DB.me               = DB.players.find(p => _pid(p) === S.uid) || null;
 
     // Merge badge images into badge objects BEFORE any rendering
@@ -1799,7 +1850,6 @@ function _cacheDB() {
       players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
       guilds:DB.guilds, transactions:DB.transactions, storeItems:DB.storeItems,
       games:DB.games, notifications:DB.notifications, badges:DB.badges,
-      teamFinderPosts:DB.teamFinderPosts||[]
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
   } catch(e) {}
@@ -2175,171 +2225,20 @@ function renderDash() {
 // ---- Arena state ----
 let _arenaTab   = 'tournaments';
 let _tGameFilter= 'all';
-let _tfGame     = 'all';
-let _tfRole     = 'all';
-
-function switchArenaTab(tab) {
-  _arenaTab = tab;
-  document.getElementById('arena-panel-tournaments').style.display = tab === 'tournaments' ? 'block' : 'none';
-  document.getElementById('arena-panel-teamfinder').style.display  = tab === 'teamfinder'  ? 'block' : 'none';
-  const tBtn  = document.getElementById('arena-tab-t');
-  const tfBtn = document.getElementById('arena-tab-tf');
-  if (tBtn)  { tBtn.style.borderBottomColor  = tab==='tournaments' ? 'var(--g1)' : 'transparent'; tBtn.style.color  = tab==='tournaments' ? 'var(--g1)' : 'var(--dim)'; }
-  if (tfBtn) { tfBtn.style.borderBottomColor = tab==='teamfinder'  ? 'var(--g1)' : 'transparent'; tfBtn.style.color = tab==='teamfinder'  ? 'var(--g1)' : 'var(--dim)'; }
-  if (tab === 'tournaments') { _buildGamePills(); renderTournaments(); }
-  else                       { _buildTFGamePills(); renderTeamFinder(); }
-}
-
-function renderArena() {
-  _buildGamePills();
-  if (_arenaTab === 'teamfinder') { _buildTFGamePills(); renderTeamFinder(); }
-  else renderTournaments();
-}
-
-// ================================================================
-// TEAM FINDER
-// ================================================================
-function renderTeamFinder() {
-  const me = DB.me;
-  const el = document.getElementById('teamfinder-list'); if (!el) return;
-  let posts = DB.teamFinderPosts || [];
-
-  // Game filter
-  if (_tfGame !== 'all') posts = posts.filter(p => p.game === _tfGame);
-  // Role filter
-  if (_tfRole !== 'all') posts = posts.filter(p => p.type === _tfRole);
-
-  // Sort newest first
-  posts = [...posts].sort((a,b) => new Date(b.date||0) - new Date(a.date||0));
-
-  if (!posts.length) {
-    el.innerHTML = `<div class="empty-state"><div class="empty-icon">🔍</div><p>No listings yet</p><p style="font-size:12px;color:var(--dim);margin-top:6px">Be the first to post a listing!</p></div>`;
-    return;
-  }
-
-  el.innerHTML = posts.map(p => {
-    const pid   = p.id || p._fsId;
-    const poster = DB.players.find(pl => _pid(pl) === p.uid);
-    const isOwn  = p.uid === me?.id;
-    const gameObj = _getGames().find(g => g.id === p.game);
-    const gameIconHtml = gameObj ? _gameIconHtml(gameObj.id, 16) : '🎮';
-    return `
-    <div class="tf-card">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="position:relative;display:inline-flex;flex-shrink:0">
-          <div style="width:40px;height:40px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:18px;overflow:hidden;border:1px solid var(--border2)">${poster ? _avatarInner(poster) : '👤'}</div>
-          ${poster ? _badgePinHTML(poster,'sm-badge-pin') : ''}
-        </div>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px">
-            <span style="font-weight:700;font-size:13px">${poster?.name||'Unknown'}</span>
-            <span class="${p.type==='lft'?'tf-badge-lft':'tf-badge-lfp'}">${p.type==='lft'?'🙋 LFT':'👥 LFP'}</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;font-size:10px;color:var(--dim)">${gameIconHtml} ${gameObj?.name||p.game||'Any Game'}</span>
-          </div>
-          <div style="font-size:12px;color:var(--text);line-height:1.5;margin-bottom:6px">${p.message||''}</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;font-size:10px;color:var(--dim)">
-            ${p.rank    ? `<span style="background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border)">🏅 ${p.rank}</span>` : ''}
-            ${p.region  ? `<span style="background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border)">🌏 ${p.region}</span>` : ''}
-            ${p.discord ? `<span style="background:var(--panel2);padding:2px 8px;border-radius:8px;border:1px solid var(--border);cursor:pointer" onclick="copyText('${p.discord}')">💬 ${p.discord} 📋</span>` : ''}
-            <span style="color:var(--dim2)">${p.date?new Date(p.date).toLocaleDateString():'—'}</span>
-          </div>
-        </div>
-        ${isOwn ? `<button class="admin-btn danger" style="padding:5px 8px;flex-shrink:0;font-size:11px" onclick="deleteTFPost('${pid}')">🗑️</button>` : ''}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function openPostLFT() {
-  const games = _getGames();
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">🙋 Post LFT — Looking for Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Game *</label>
-      <select class="form-input" id="tf-post-game">
-        ${games.map(g=>`<option value="${g.id}">${g.icon||'🎮'} ${g.name}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group"><label class="form-label">Your Message *</label>
-      <textarea class="form-input" id="tf-post-msg" rows="3" placeholder="e.g. Looking for serious squad, I play support, diamond rank, daily grind..." style="resize:vertical"></textarea>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group"><label class="form-label">Rank / Level</label><input class="form-input" id="tf-post-rank" placeholder="e.g. Diamond, Heroic"></div>
-      <div class="form-group"><label class="form-label">Region</label><input class="form-input" id="tf-post-region" placeholder="e.g. BD, Asia, SEA"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Discord (optional)</label><input class="form-input" id="tf-post-discord" placeholder="e.g. username#1234"></div>
-    <button class="btn-primary" id="btn-tf-post" onclick="submitTFPost('lft')">📢 Post LFT Listing</button>
-  `);
-}
-
-function openPostLFP() {
-  const games = _getGames();
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">👥 Post LFP — Looking for Players</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Game *</label>
-      <select class="form-input" id="tf-post-game">
-        ${games.map(g=>`<option value="${g.id}">${g.icon||'🎮'} ${g.name}</option>`).join('')}
-      </select>
-    </div>
-    <div class="form-group"><label class="form-label">Your Message *</label>
-      <textarea class="form-input" id="tf-post-msg" rows="3" placeholder="e.g. Team [APEX] needs 2 more players for ranked, must be Diamond+..." style="resize:vertical"></textarea>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div class="form-group"><label class="form-label">Required Rank</label><input class="form-input" id="tf-post-rank" placeholder="e.g. Diamond+"></div>
-      <div class="form-group"><label class="form-label">Region</label><input class="form-input" id="tf-post-region" placeholder="e.g. BD, Asia, SEA"></div>
-    </div>
-    <div class="form-group"><label class="form-label">Discord (optional)</label><input class="form-input" id="tf-post-discord" placeholder="e.g. username#1234"></div>
-    <button class="btn-primary" id="btn-tf-post" onclick="submitTFPost('lfp')">👥 Post LFP Listing</button>
-  `);
-}
-
-async function submitTFPost(type) {
-  const me = DB.me; if (!me) return;
-  const msg = _v('tf-post-msg').trim();
-  if (!msg) { toast('Enter a message','error'); return; }
-  _btn('btn-tf-post', true);
-  const id   = 'tf_'+Date.now();
-  const post = {
-    id, type, uid: _pid(me),
-    game:    _v('tf-post-game'),
-    message: msg,
-    rank:    _v('tf-post-rank').trim(),
-    region:  _v('tf-post-region').trim(),
-    discord: _v('tf-post-discord').trim(),
-    date:    new Date().toISOString()
-  };
-  DB.teamFinderPosts = DB.teamFinderPosts || [];
-  DB.teamFinderPosts.push(post);
-  await fsSet('team_finder', id, post);
-  toast(type==='lft'?'LFT posted! 🙋':'LFP posted! 👥','success');
-  _cacheDB(); closeModal(); renderTeamFinder();
-}
-
-async function deleteTFPost(pid) {
-  if (!confirm('Delete this listing?')) return;
-  DB.teamFinderPosts = (DB.teamFinderPosts||[]).filter(p=>(p.id||p._fsId)!==pid);
-  await fsDelete('team_finder', pid);
-  toast('Listing deleted','info'); _cacheDB(); renderTeamFinder();
-}
 
 function _buildGamePills() {
-  const container = document.getElementById('t-game-pills'); if (!container) return;
-  const games = _getGames();
+  const container = document.getElementById('t-game-pills');
+  if (!container) return;
+  const games  = _getGames();
   const active = _tGameFilter;
-  container.innerHTML = `<button class="t-game-pill${active==='all'?' active':''}" data-game="all" onclick="setTGame('all',this)">🎮 All Games</button>` +
+  container.innerHTML =
+    `<button class="t-game-pill${active==='all'?' active':''}" data-game="all" onclick="setTGame('all',this)">🎮 All Games</button>` +
     games.map(g => {
       const iconHtml = (g.logoIsImg && g.icon)
-        ? `<img src="${g.icon}" style="width:14px;height:14px;border-radius:3px;object-fit:cover">`
-        : `<span>${g.icon||'🎮'}</span>`;
-      return `<button class="t-game-pill${active===g.id?' active':''}" data-game="${g.id}" onclick="setTGame('${g.id}',this)">${iconHtml}${g.name}</button>`;
+        ? `<img src="${g.icon}" style="width:14px;height:14px;border-radius:3px;object-fit:cover;vertical-align:middle">`
+        : `<span style="font-size:13px">${g.icon||'🎮'}</span>`;
+      return `<button class="t-game-pill${active===g.id?' active':''}" data-game="${g.id}" onclick="setTGame('${g.id}',this)">${iconHtml} ${g.name}</button>`;
     }).join('');
-}
-
-function _buildTFGamePills() {
-  const container = document.getElementById('tf-game-pills'); if (!container) return;
-  const games = _getGames();
-  const active = _tfGame;
-  container.innerHTML = `<button class="t-game-pill${active==='all'?' active':''}" data-game="all" onclick="setTFGame('all',this)">🎮 All Games</button>` +
-    games.map(g => `<button class="t-game-pill${active===g.id?' active':''}" data-game="${g.id}" onclick="setTFGame('${g.id}',this)">${g.icon||'🎮'} ${g.name}</button>`).join('');
 }
 
 function setTGame(g, el) {
@@ -2348,17 +2247,10 @@ function setTGame(g, el) {
   el.classList.add('active');
   renderTournaments();
 }
-function setTFGame(g, el) {
-  _tfGame = g;
-  document.querySelectorAll('#tf-game-pills .t-game-pill').forEach(b => b.classList.remove('active'));
-  el.classList.add('active');
-  renderTeamFinder();
-}
-function setTFRole(r, el) {
-  _tfRole = r;
-  document.querySelectorAll('#tf-role-tabs .filter-tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  renderTeamFinder();
+
+function renderArena() {
+  _buildGamePills();
+  renderTournaments();
 }
 
 function setTFilter(f, el) {
@@ -2804,47 +2696,145 @@ function viewTournament(tid) {
 // ================================================================
 // TEAMS
 // ================================================================
+let _teamsTab = 'all';
+
+function setTeamsTab(tab, el) {
+  _teamsTab = tab;
+  document.querySelectorAll('#teams-filter-tabs .filter-tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderTeams();
+}
+
 function renderTeams() {
   const me = DB.me;
   const el = document.getElementById('teams-list');
-  if (!DB.teams.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">👥</div><p>No teams yet</p></div>'; return; }
-  el.innerHTML = DB.teams.map(t => {
-    const tid      = t.id || t._fsId;
-    const isLeader = t.leaderId === me?.id;
-    const isMember = (t.memberIds||[]).includes(me?.id);
+  let teams = [...DB.teams];
+  if (_teamsTab === 'mine') teams = teams.filter(t=>(t.memberIds||[]).includes(me?.id));
+
+  // Sort: my teams first, then by member count
+  teams.sort((a,b) => {
+    const aMe = (a.memberIds||[]).includes(me?.id) ? 1 : 0;
+    const bMe = (b.memberIds||[]).includes(me?.id) ? 1 : 0;
+    if (bMe !== aMe) return bMe - aMe;
+    return (b.memberIds||[]).length - (a.memberIds||[]).length;
+  });
+
+  if (!teams.length) {
+    el.innerHTML = `
+      <div style="text-align:center;padding:40px 20px">
+        <div style="font-size:48px;margin-bottom:12px">👥</div>
+        <div style="font-size:15px;font-weight:700;margin-bottom:6px">${_teamsTab==='mine'?'You are not in any team yet':'No teams yet'}</div>
+        <div style="font-size:13px;color:var(--dim);margin-bottom:16px">${_teamsTab==='mine'?'Create or join a team to get started!':'Be the first to create one!'}</div>
+        <button class="btn-primary" style="display:inline-flex;gap:8px;align-items:center" onclick="openCreateTeam()">➕ Create Team</button>
+      </div>`;
+    return;
+  }
+
+  el.innerHTML = teams.map(t => {
+    const tid       = t.id || t._fsId;
+    const isLeader  = t.leaderId === me?.id;
+    const isMember  = (t.memberIds||[]).includes(me?.id);
+    const logoIsImg = (t.logo||'').startsWith('data:') || (t.logo||'').startsWith('http');
+
+    // Member avatars
+    const avatars = (t.memberIds||[]).slice(0,6).map(mid => {
+      const p = DB.players.find(pp=>_pid(pp)===mid);
+      return `<div class="squad-avatar-item">${p?_avatarInner(p):'👤'}</div>`;
+    }).join('');
+    const extra = (t.memberIds||[]).length > 6
+      ? `<span style="font-size:10px;color:var(--dim);margin-left:8px">+${(t.memberIds||[]).length-6}</span>` : '';
+
+    // Stats from members
+    const allP   = (t.memberIds||[]).map(mid=>DB.players.find(pp=>_pid(pp)===mid)).filter(Boolean);
+    const totalW = allP.reduce((s,p)=>s+(p.wins||0),0);
+    const totalL = allP.reduce((s,p)=>s+(p.losses||0),0);
+    const totalE = allP.reduce((s,p)=>s+(p.tournaments||0),0);
+
     return `
-    <div class="team-card" onclick="viewTeam('${tid}')">
-      <div class="team-logo">${(t.logo||'').startsWith('data:')||(t.logo||'').startsWith('http')?`<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`:t.logo||'👥'}</div>
-      <div class="team-info">
-        <div class="team-name">${t.name} ${isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : ''}</div>
-        <div class="team-tag">[${t.tag||'???'}]</div>
-        <div class="team-members">${(t.memberIds||[]).length} members</div>
+    <div class="squad-card${isMember?' mine':''}" onclick="viewTeam('${tid}')">
+      <!-- Banner -->
+      <div class="squad-banner">
+        ${logoIsImg ? `<img class="squad-banner-img" src="${t.logo}">` : ''}
+        <div class="squad-banner-grad"></div>
+        <div class="squad-banner-body">
+          <div class="squad-logo">
+            ${logoIsImg ? `<img src="${t.logo}">` : `<span style="font-size:22px">${t.logo||'👥'}</span>`}
+          </div>
+          <div class="squad-title">
+            <div class="squad-name">${t.name}${isMember?`<span class="my-badge" style="margin-left:8px;font-size:9px">${isLeader?'👑 Leader':'Member'}</span>`:''}</div>
+            <div class="squad-tag">[${t.tag||'???'}]</div>
+          </div>
+          <div class="squad-count">
+            <div class="squad-count-num">${(t.memberIds||[]).length}</div>
+            <div class="squad-count-label">Members</div>
+          </div>
+        </div>
       </div>
-      ${isMember && !isLeader ? `<button class="admin-btn danger" onclick="event.stopPropagation();leaveTeam('${tid}')">Leave</button>` : ''}
+      <!-- Stats bar -->
+      <div class="squad-stats" style="padding:10px 14px 0">
+        <div class="squad-stat">
+          <div class="squad-stat-val" style="color:var(--g1)">${totalW}</div>
+          <div class="squad-stat-lbl">Wins</div>
+        </div>
+        <div class="squad-stat">
+          <div class="squad-stat-val" style="color:var(--red)">${totalL}</div>
+          <div class="squad-stat-lbl">Losses</div>
+        </div>
+        <div class="squad-stat">
+          <div class="squad-stat-val" style="color:var(--gold)">${totalE}</div>
+          <div class="squad-stat-lbl">Events</div>
+        </div>
+        <div class="squad-stat">
+          <div class="squad-stat-val">${totalW+totalL>0?Math.round(totalW/(totalW+totalL)*100)+'%':'—'}</div>
+          <div class="squad-stat-lbl">Win Rate</div>
+        </div>
+      </div>
+      <!-- Members row -->
+      <div class="squad-members">
+        <div class="squad-avatars" style="margin-left:6px">${avatars}${extra}</div>
+        <div style="display:flex;gap:6px;align-items:center">
+          ${isMember && !isLeader ? `<button class="admin-btn danger" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();leaveTeam('${tid}')">Leave</button>` : ''}
+          <span style="font-size:11px;color:var(--dim)">View →</span>
+        </div>
+      </div>
     </div>`;
   }).join('');
 }
 
 function openCreateTeam() {
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">👥 Create Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Team Name *</label><input class="form-input" id="ct-name" placeholder="Enter team name"></div>
-    <div class="form-group"><label class="form-label">Tag (2-5 chars) *</label><input class="form-input" id="ct-tag" placeholder="e.g. PRO" maxlength="5"></div>
-    <div class="form-group">
-      <label class="form-label">Logo</label>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div id="ct-logo-preview" style="width:52px;height:52px;border-radius:12px;background:var(--panel2);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;flex-shrink:0">👥</div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-          <button class="btn-secondary" style="font-size:12px;padding:7px 12px" onclick="document.getElementById('ct-logo-file').click()">📷 Upload Image / GIF</button>
-          <input type="file" id="ct-logo-file" accept="image/*,.gif" style="display:none" onchange="handleTeamLogoUpload(this,'ct-logo-preview','ct-logo-data')">
-          <input class="form-input" id="ct-logo-emoji" placeholder="Or type emoji e.g. 🔥" maxlength="4" style="font-size:18px" oninput="document.getElementById('ct-logo-preview').innerHTML=this.value||'👥'">
-          <input type="hidden" id="ct-logo-data">
-        </div>
+    <div class="modal-close-row"><div class="modal-title">⚔️ Create Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+
+    <!-- Logo preview at top -->
+    <div style="display:flex;justify-content:center;margin-bottom:16px">
+      <div id="ct-logo-preview" style="width:80px;height:80px;border-radius:18px;background:var(--panel2);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:36px;overflow:hidden;cursor:pointer" onclick="document.getElementById('ct-logo-file').click()">👥</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:center;margin-bottom:16px">
+      <button class="admin-btn" style="font-size:11px" onclick="document.getElementById('ct-logo-file').click()">📷 Upload Logo</button>
+      <input type="file" id="ct-logo-file" accept="image/*,.gif" style="display:none" onchange="handleTeamLogoUpload(this,'ct-logo-preview','ct-logo-data')">
+      <input type="hidden" id="ct-logo-data">
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div class="form-group" style="grid-column:span 2">
+        <label class="form-label">Team Name *</label>
+        <input class="form-input" id="ct-name" placeholder="Enter team name" oninput="previewTeamName(this.value)">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tag (2-5 chars) *</label>
+        <input class="form-input" id="ct-tag" placeholder="PRO" maxlength="5" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Logo Emoji (optional)</label>
+        <input class="form-input" id="ct-logo-emoji" placeholder="🔥" maxlength="4" style="font-size:20px;text-align:center" oninput="document.getElementById('ct-logo-preview').innerHTML=this.value||'👥'">
       </div>
     </div>
-    <button class="btn-primary" id="btn-create-team" onclick="createTeam()">Create Team</button>
+
+    <button class="btn-primary" id="btn-create-team" onclick="createTeam()" style="width:100%;margin-top:4px">⚔️ Create Team</button>
   `);
 }
+
+function previewTeamName(v) {}
 
 function handleTeamLogoUpload(input, previewId, dataId) {
   const file = input.files[0]; if (!file) return;
@@ -2853,7 +2843,7 @@ function handleTeamLogoUpload(input, previewId, dataId) {
     const data = e.target.result;
     document.getElementById(dataId).value = data;
     const prev = document.getElementById(previewId);
-    prev.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`;
+    prev.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover">`;
   };
   reader.readAsDataURL(file);
 }
@@ -2864,42 +2854,48 @@ async function createTeam() {
   const logoData  = document.getElementById('ct-logo-data')?.value;
   const logoEmoji = _v('ct-logo-emoji').trim() || '👥';
   const logo = logoData || logoEmoji;
-  if (!name || !tag) { toast('Enter name and tag','error'); return; }
+  if (!name) { toast('Enter team name','error'); return; }
+  if (!tag || tag.length < 2) { toast('Enter a 2-5 char tag','error'); return; }
   _btn('btn-create-team', true);
   const me = DB.me;
   const id = 'team_' + Date.now();
   const team = { id, name, tag, logo, leaderId:me.id, memberIds:[me.id], createdAt:new Date().toISOString() };
   me.teamIds = [...(me.teamIds||[]), id];
   DB.teams.push(team);
-  const [ok1, ok2] = await Promise.all([fsSet('teams', id, team), fsSet('players', me.id, me)]);
-  if (ok1) { toast('Team created! 👥','success'); _cacheDB(); closeModal(); renderTeams(); }
+  const [ok1] = await Promise.all([fsSet('teams', id, team), fsSet('players', me.id, me)]);
+  if (ok1) { toast('Team created! ⚔️','success'); _cacheDB(); closeModal(); renderTeams(); }
   else { toast('Error creating team','error'); _btn('btn-create-team', false); }
 }
 
 function openJoinTeam() {
   openModal(`
     <div class="modal-close-row"><div class="modal-title">🔑 Join Team</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Team ID</label><input class="form-input" id="jt-id" placeholder="Paste team ID..."></div>
-    <button class="btn-primary" id="btn-join-team" onclick="joinTeamById()">Join Team</button>
+    <div style="text-align:center;font-size:36px;margin:16px 0 8px">🤝</div>
+    <p style="text-align:center;font-size:13px;color:var(--dim);margin-bottom:16px">Ask your team leader for the team ID and paste it below.</p>
+    <div class="form-group">
+      <label class="form-label">Team ID *</label>
+      <input class="form-input" id="jt-id" placeholder="Paste team ID here..." style="font-family:monospace">
+    </div>
+    <button class="btn-primary" id="btn-join-team" onclick="joinTeamById()" style="width:100%">🔑 Join Team</button>
   `);
 }
 
 async function joinTeamById() {
   const tid = _v('jt-id').trim();
   const t   = DB.teams.find(t => (t.id||t._fsId) === tid);
-  if (!t) { toast('Team not found','error'); return; }
+  if (!t) { toast('Team not found — check the ID','error'); return; }
   const me = DB.me;
-  if ((t.memberIds||[]).includes(me.id)) { toast('Already in this team','info'); return; }
+  if ((t.memberIds||[]).includes(me.id)) { toast('You are already in this team','info'); return; }
   _btn('btn-join-team', true);
   t.memberIds = [...(t.memberIds||[]), me.id];
   me.teamIds  = [...(me.teamIds||[]), t.id||t._fsId];
   await Promise.all([fsSet('teams', t.id||t._fsId, t), fsSet('players', me.id, me)]);
-  toast('Joined team!','success'); _cacheDB(); closeModal(); renderTeams();
+  toast(`Joined ${t.name}! ⚔️`,'success'); _cacheDB(); closeModal(); renderTeams();
 }
 
 async function leaveTeam(tid) {
   const t  = DB.teams.find(t => (t.id||t._fsId) === tid);
-  const me = DB.me; if (!t) return;
+  const me = DB.me; if (!t || !confirm(`Leave ${t.name}?`)) return;
   t.memberIds = (t.memberIds||[]).filter(id => id !== me.id);
   me.teamIds  = (me.teamIds||[]).filter(id => id !== tid);
   await Promise.all([fsSet('teams', tid, t), fsSet('players', me.id, me)]);
@@ -2908,47 +2904,115 @@ async function leaveTeam(tid) {
 
 function viewTeam(tid) {
   const t = DB.teams.find(t => (t.id||t._fsId) === tid); if (!t) return;
-  const me = DB.me;
+  const me       = DB.me;
   const isLeader = t.leaderId === me?.id;
   const isAdmin  = me?.role === 'admin';
+  const isMember = (t.memberIds||[]).includes(me?.id);
   const canEdit  = isLeader || isAdmin;
+  const logoIsImg = (t.logo||'').startsWith('data:') || (t.logo||'').startsWith('http');
 
-  const logoHtml = (t.logo||'').startsWith('data:')||(t.logo||'').startsWith('http')
-    ? `<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`
-    : t.logo||'👥';
+  const allP   = (t.memberIds||[]).map(mid=>DB.players.find(pp=>_pid(pp)===mid)).filter(Boolean);
+  const totalW = allP.reduce((s,p)=>s+(p.wins||0),0);
+  const totalL = allP.reduce((s,p)=>s+(p.losses||0),0);
+  const totalE = allP.reduce((s,p)=>s+(p.tournaments||0),0);
+  const wr     = totalW+totalL>0 ? Math.round(totalW/(totalW+totalL)*100) : 0;
 
-  const members = (t.memberIds||[]).map(mid => {
-    const p = DB.players.find(pp => _pid(pp) === mid);
-    return p ? `<div class="lb-row" style="cursor:default">
-      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
-      <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===t.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
-    </div>` : '';
+  const memberRows = (t.memberIds||[]).map(mid => {
+    const p = DB.players.find(pp=>_pid(pp)===mid);
+    if (!p) return '';
+    const isLead = mid === t.leaderId;
+    const pWr = (p.wins||0)+(p.losses||0)>0 ? Math.round((p.wins||0)/((p.wins||0)+(p.losses||0))*100) : 0;
+    return `
+    <div class="squad-member-row">
+      <div class="squad-member-icon">
+        ${_avatarInner(p)}
+        ${_badgePinHTML(p,'xs-badge-pin')}
+      </div>
+      <div class="squad-member-info">
+        <div class="squad-member-name">${isLead?'👑 ':''}<span style="color:${isLead?'var(--gold)':'var(--text)'}">${p.name}</span>${isMember&&!isLead&&isLeader?`<button class="admin-btn danger" style="font-size:9px;padding:1px 6px;margin-left:8px" onclick="kickFromTeam('${tid}','${mid}')">Kick</button>`:''}
+        </div>
+        <div class="squad-member-uid">${p.uid||''}</div>
+      </div>
+      <div class="squad-member-stats">
+        <div style="font-size:12px;font-weight:700;color:var(--g1)">${p.wins||0}W <span style="color:var(--red)">${p.losses||0}L</span></div>
+        <div style="font-size:10px;color:var(--dim)">${pWr}% WR</div>
+      </div>
+    </div>`;
   }).join('');
 
   openModal(`
-    <div class="modal-close-row"><div class="modal-title">👥 ${t.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-
-    <!-- Logo + upload -->
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:12px;background:var(--panel2);border-radius:var(--radius);border:1px solid var(--border)">
-      <div id="vt-logo-box" style="width:64px;height:64px;border-radius:12px;background:var(--panel);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:30px;overflow:hidden;flex-shrink:0">${logoHtml}</div>
-      <div style="flex:1">
-        <div style="font-size:16px;font-weight:800">${t.name} <span style="font-size:12px;color:var(--dim)">[${t.tag}]</span></div>
-        <div style="font-size:12px;color:var(--dim);margin-top:2px">${(t.memberIds||[]).length} members</div>
-        ${canEdit ? `
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-          <button class="admin-btn" style="font-size:11px" onclick="document.getElementById('vt-img-file').click()">🖼️ Change Logo (Image)</button>
-          <input type="file" id="vt-img-file" accept="image/png,image/jpg,image/jpeg,image/webp" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,false)">
-          ${isAdmin ? `<button class="admin-btn gold" style="font-size:11px" onclick="document.getElementById('vt-gif-file').click()">✨ Upload GIF (Admin)</button>
-          <input type="file" id="vt-gif-file" accept="image/gif,image/*" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,true)">` : ''}
-        </div>` : ''}
+    <!-- Banner header -->
+    <div style="margin:-16px -16px 16px;height:90px;position:relative;overflow:hidden;background:linear-gradient(135deg,#0c1a0d,#18301a)">
+      ${logoIsImg?`<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;opacity:.35;filter:blur(4px)">`:''}
+      <div style="position:absolute;inset:0;background:linear-gradient(90deg,rgba(0,0,0,.85),rgba(0,0,0,.3))"></div>
+      <div style="position:absolute;inset:0;display:flex;align-items:center;gap:14px;padding:0 18px">
+        <div style="width:60px;height:60px;border-radius:14px;overflow:hidden;background:rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;font-size:26px;border:2px solid rgba(74,222,128,.4);flex-shrink:0">
+          ${logoIsImg?`<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover">`:t.logo||'👥'}
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:18px;font-weight:900;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.8)">${t.name}</div>
+          <div style="font-size:11px;color:rgba(74,222,128,.9);font-family:monospace;font-weight:700">[${t.tag}] · ${(t.memberIds||[]).length} members</div>
+        </div>
+        <span class="modal-close-btn" onclick="closeModal()" style="color:#fff">✕</span>
       </div>
     </div>
 
-    <div style="display:flex;gap:8px;margin-bottom:14px">
-      <div class="tc-stat" style="flex:2"><div class="tc-stat-label">ID</div><div class="tc-stat-value" style="font-size:11px;font-family:monospace;cursor:pointer" onclick="navigator.clipboard.writeText('${tid}');toast('Copied!','success')">${tid} 📋</div></div>
+    <!-- 4 stats -->
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
+      ${[['Wins',totalW,'var(--g1)'],['Losses',totalL,'var(--red)'],['Events',totalE,'var(--gold)'],['WR',wr+'%','var(--text)']].map(([l,v,c])=>`
+      <div style="background:var(--panel2);border-radius:10px;padding:10px 6px;text-align:center;border:1px solid var(--border)">
+        <div style="font-size:17px;font-weight:900;color:${c}">${v}</div>
+        <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-top:2px">${l}</div>
+      </div>`).join('')}
     </div>
-    <div style="display:flex;flex-direction:column;gap:6px">${members || '<div class="empty-state" style="padding:16px"><p>No members</p></div>'}</div>
+
+    <!-- Edit tools -->
+    ${canEdit ? `
+    <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="admin-btn" style="font-size:11px" onclick="document.getElementById('vt-img-file').click()">🖼️ Change Logo</button>
+      <input type="file" id="vt-img-file" accept="image/png,image/jpg,image/jpeg,image/webp" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,false)">
+      ${isAdmin?`<button class="admin-btn gold" style="font-size:11px" onclick="document.getElementById('vt-gif-file').click()">✨ GIF Logo</button>
+      <input type="file" id="vt-gif-file" accept="image/gif,image/*" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,true)">`: ''}
+      <button class="admin-btn" style="font-size:11px" onclick="copyText('${tid}');toast('Team ID copied!','success')">📋 Copy ID</button>
+    </div>` : `
+    <div style="margin-bottom:12px">
+      <button class="admin-btn" style="font-size:11px" onclick="copyText('${tid}');toast('Team ID copied!','success')">📋 Copy Team ID</button>
+    </div>`}
+
+    <!-- Members header -->
+    <div style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:1px;margin-bottom:6px">⚔ Squad Members (${(t.memberIds||[]).length})</div>
+
+    <!-- Member list -->
+    <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;margin-bottom:12px">
+      ${memberRows||'<div class="empty-state" style="padding:16px"><p>No members</p></div>'}
+    </div>
+
+    <!-- Actions -->
+    <div style="display:flex;gap:8px">
+      ${isMember && !isLeader ? `<button class="btn-secondary" style="flex:1;color:var(--red);border-color:rgba(248,113,113,.3)" onclick="closeModal();leaveTeam('${tid}')">🚪 Leave Team</button>` : ''}
+      ${!isMember ? `<button class="btn-primary" style="flex:1" onclick="joinExistingTeam('${tid}')">⚔️ Join Team</button>` : ''}
+    </div>
   `);
+}
+
+async function joinExistingTeam(tid) {
+  const t  = DB.teams.find(t=>(t.id||t._fsId)===tid);
+  const me = DB.me; if (!t||!me) return;
+  if ((t.memberIds||[]).includes(me.id)) { toast('Already a member','info'); return; }
+  t.memberIds = [...(t.memberIds||[]), me.id];
+  me.teamIds  = [...(me.teamIds||[]), tid];
+  await Promise.all([fsSet('teams', tid, t), fsSet('players', me.id, me)]);
+  toast(`Joined ${t.name}! ⚔️`,'success'); _cacheDB(); closeModal(); renderTeams();
+}
+
+async function kickFromTeam(tid, kickPid) {
+  const t = DB.teams.find(t=>(t.id||t._fsId)===tid);
+  const p = DB.players.find(pp=>_pid(pp)===kickPid);
+  if (!t||!p||!confirm(`Kick ${p.name} from team?`)) return;
+  t.memberIds = (t.memberIds||[]).filter(id=>id!==kickPid);
+  p.teamIds   = (p.teamIds||[]).filter(id=>id!==tid);
+  await Promise.all([fsSet('teams',tid,t), fsSet('players',kickPid,p)]);
+  toast(`${p.name} removed`,'info'); _cacheDB(); closeModal(); renderTeams();
 }
 
 // ================================================================
@@ -3268,12 +3332,16 @@ function renderStore() {
   const games    = _getGames();
   const gameTabs = document.getElementById('store-game-tabs');
   const content  = document.getElementById('store-content');
+  if (!content) return; // page not active yet
 
   if (_storeCat === 'topup') {
     if (!_storeGame) _storeGame = games[0]?.id;
 
-    // Render game tabs (avoid inline onclick referencing stale `_storeGame`)
-    gameTabs.innerHTML = games.map(g => {
+    // Show game tabs (they start hidden in HTML)
+    if (gameTabs) gameTabs.style.display = 'flex';
+
+    // Render game tabs
+    if (gameTabs) gameTabs.innerHTML = games.map(g => {
       const tabIcon = (g.logoIsImg && g.icon)
         ? `<img src="${g.icon}" style="width:18px;height:18px;border-radius:4px;object-fit:cover;vertical-align:middle;margin-right:5px">`
         : `<span style="margin-right:3px">${g.icon||'🎮'}</span>`;
@@ -3330,6 +3398,7 @@ function renderStore() {
         }).join('') || '<div class="empty-state" style="grid-column:span 2;padding:20px"><p>No packages found</p></div>'}
       </div>`;
   } else {
+    if (gameTabs) gameTabs.style.display = 'none';
     let items = DB.storeItems.filter(i => (i.cat||'cosmetics') === _storeCat);
     if (search) items = items.filter(i => i.name?.toLowerCase().includes(search) || i.desc?.toLowerCase().includes(search));
     if (!items.length) { content.innerHTML = '<div class="empty-state"><div class="empty-icon">🛒</div><p>No items available</p></div>'; return; }
