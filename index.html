@@ -641,9 +641,15 @@ img{display:block;max-width:100%}
 .squad-member-row:hover{background:var(--panel2)}
 .squad-member-row:last-child{border-bottom:none}
 .squad-member-icon{
-  width:54px;height:54px;flex-shrink:0;overflow:hidden;
+  width:54px;height:54px;flex-shrink:0;
   background:var(--panel2);display:flex;align-items:center;
   justify-content:center;font-size:22px;position:relative;
+  overflow:visible;
+}
+.squad-member-icon > *:first-child{
+  width:38px;height:38px;border-radius:10px;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  background:var(--panel2);
 }
 .squad-member-info{flex:1;min-width:0;padding:10px 10px 10px 8px}
 .squad-member-name{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2739,7 +2745,10 @@ function renderTeams() {
     // Member avatars
     const avatars = (t.memberIds||[]).slice(0,6).map(mid => {
       const p = DB.players.find(pp=>_pid(pp)===mid);
-      return `<div class="squad-avatar-item">${p?_avatarInner(p):'👤'}</div>`;
+      return `<div style="position:relative;display:inline-flex;margin-left:-6px;flex-shrink:0">
+        <div class="squad-avatar-item" style="margin-left:0">${p?_avatarInner(p):'👤'}</div>
+        ${p?_badgePinHTML(p,'xs-badge-pin'):''}
+      </div>`;
     }).join('');
     const extra = (t.memberIds||[]).length > 6
       ? `<span style="font-size:10px;color:var(--dim);margin-left:8px">+${(t.memberIds||[]).length-6}</span>` : '';
@@ -2974,9 +2983,14 @@ function viewTeam(tid) {
       ${isAdmin?`<button class="admin-btn gold" style="font-size:11px" onclick="document.getElementById('vt-gif-file').click()">✨ GIF Logo</button>
       <input type="file" id="vt-gif-file" accept="image/gif,image/*" style="display:none" onchange="uploadEntityLogo('team','${tid}',this,true)">`: ''}
       <button class="admin-btn" style="font-size:11px" onclick="copyText('${tid}');toast('Team ID copied!','success')">📋 Copy ID</button>
-    </div>` : `
+    </div>` : isMember ? `
     <div style="margin-bottom:12px">
       <button class="admin-btn" style="font-size:11px" onclick="copyText('${tid}');toast('Team ID copied!','success')">📋 Copy Team ID</button>
+      <span style="font-size:10px;color:var(--dim);margin-left:8px">Share with friends to invite them</span>
+    </div>` : `
+    <div style="margin-bottom:12px;padding:8px 10px;background:var(--panel2);border-radius:8px;border:1px solid var(--border);display:flex;align-items:center;gap:6px">
+      <span style="font-size:14px">🔒</span>
+      <span style="font-size:11px;color:var(--dim)">Team ID is private — join first to share or invite</span>
     </div>`}
 
     <!-- Members header -->
