@@ -643,13 +643,12 @@ img{display:block;max-width:100%}
 .squad-member-icon{
   width:54px;height:54px;flex-shrink:0;
   background:var(--panel2);display:flex;align-items:center;
-  justify-content:center;font-size:22px;position:relative;
-  overflow:visible;
+  justify-content:center;position:relative;overflow:visible;
 }
-.squad-member-icon > *:first-child{
+.squad-member-icon .squad-av{
   width:38px;height:38px;border-radius:10px;overflow:hidden;
   display:flex;align-items:center;justify-content:center;font-size:18px;
-  background:var(--panel2);
+  background:var(--panel2);position:relative;
 }
 .squad-member-info{flex:1;min-width:0;padding:10px 10px 10px 8px}
 .squad-member-name{font-size:13px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2934,8 +2933,10 @@ function viewTeam(tid) {
     return `
     <div class="squad-member-row">
       <div class="squad-member-icon">
-        ${_avatarInner(p)}
-        ${_badgePinHTML(p,'xs-badge-pin')}
+        <div style="position:relative;display:inline-flex">
+          <div class="squad-av">${_avatarInner(p)}</div>
+          ${_badgePinHTML(p,'sm-badge-pin')}
+        </div>
       </div>
       <div class="squad-member-info">
         <div class="squad-member-name">${isLead?'👑 ':''}<span style="color:${isLead?'var(--gold)':'var(--text)'}">${p.name}</span>${isMember&&!isLead&&isLeader?`<button class="admin-btn danger" style="font-size:9px;padding:1px 6px;margin-left:8px" onclick="kickFromTeam('${tid}','${mid}')">Kick</button>`:''}
