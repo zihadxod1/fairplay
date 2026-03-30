@@ -465,16 +465,17 @@ img{display:block;max-width:100%}
 }
 .tc:hover{border-color:var(--border2);box-shadow:var(--shadow)}
 .tc-hero{
-  position:relative;height:110px;
+  position:relative;
   background:linear-gradient(135deg,var(--panel2),var(--panel));
   display:flex;align-items:center;justify-content:center;
-  overflow:hidden;
+  overflow:hidden;min-height:80px;
 }
-.tc-hero-emoji{font-size:52px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.5))}
-.tc-hero-img{width:100%;height:100%;object-fit:cover;position:absolute;inset:0}
+.tc-hero-emoji{font-size:52px;filter:drop-shadow(0 4px 12px rgba(0,0,0,.5));padding:28px 0}
+.tc-hero-img{width:100%;height:auto;display:block;object-fit:contain;position:relative}
 .tc-hero-overlay{
   position:absolute;inset:0;
-  background:linear-gradient(to bottom,rgba(6,11,7,.2) 0%,rgba(6,11,7,.8) 100%);
+  background:linear-gradient(to bottom,rgba(6,11,7,.15) 0%,rgba(6,11,7,.65) 100%);
+  pointer-events:none;
 }
 .tc-game-badge{
   position:absolute;top:10px;left:10px;
@@ -882,16 +883,16 @@ img{display:block;max-width:100%}
   position:absolute;top:-4px;right:-4px;
   width:52px;height:52px;border-radius:12px;
   background:var(--bg2);
-  border:3px solid #e8e800;
+  border:2px solid rgba(220,210,0,.7);
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:26px;
-  box-shadow:0 0 0 2px var(--bg), 0 0 18px rgba(232,232,0,.45), 0 4px 16px rgba(0,0,0,.7);
+  box-shadow:0 0 0 1px var(--bg), 0 0 8px rgba(220,210,0,.2), 0 4px 12px rgba(0,0,0,.5);
   z-index:10;cursor:pointer;
   transition:transform .18s,box-shadow .18s;
 }
 .avatar-badge-pin:hover{
-  transform:scale(1.1);
-  box-shadow:0 0 0 2px var(--bg),0 0 26px rgba(232,232,0,.65),0 6px 20px rgba(0,0,0,.7);
+  transform:scale(1.08);
+  box-shadow:0 0 0 1px var(--bg),0 0 14px rgba(220,210,0,.35),0 6px 16px rgba(0,0,0,.6);
 }
 .avatar-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:8px}
 /* Hero avatar badge pin */
@@ -899,10 +900,10 @@ img{display:block;max-width:100%}
   position:absolute;top:-6px;right:-6px;
   width:28px;height:28px;border-radius:7px;
   background:var(--bg2);
-  border:2.5px solid #e8e800;
+  border:1px solid rgba(220,210,0,.6);
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:14px;
-  box-shadow:0 0 0 1.5px var(--bg),0 0 10px rgba(232,232,0,.4);
+  box-shadow:0 0 0 1px var(--bg),0 0 5px rgba(220,210,0,.2);
   z-index:10;
 }
 .hero-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:4px}
@@ -911,10 +912,10 @@ img{display:block;max-width:100%}
   position:absolute;top:-5px;right:-5px;
   width:20px;height:20px;border-radius:5px;
   background:var(--bg2);
-  border:2px solid #e8e800;
+  border:1px solid rgba(220,210,0,.6);
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:10px;
-  box-shadow:0 0 0 1px var(--bg),0 0 7px rgba(232,232,0,.35);
+  box-shadow:0 0 0 1px var(--bg),0 0 4px rgba(220,210,0,.2);
   z-index:10;pointer-events:none;
 }
 .sm-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:3px}
@@ -923,10 +924,10 @@ img{display:block;max-width:100%}
   position:absolute;top:-4px;right:-4px;
   width:13px;height:13px;border-radius:3px;
   background:var(--bg2);
-  border:1.5px solid #e8e800;
+  border:1px solid rgba(220,210,0,.5);
   display:flex;align-items:center;justify-content:center;
   overflow:hidden;font-size:6px;
-  box-shadow:0 0 0 1px var(--bg),0 0 4px rgba(232,232,0,.3);
+  box-shadow:0 0 0 1px var(--bg),0 0 3px rgba(220,210,0,.15);
   z-index:10;pointer-events:none;
 }
 .xs-badge-pin img{width:100%;height:100%;object-fit:cover;border-radius:2px}
@@ -1294,7 +1295,6 @@ img{display:block;max-width:100%}
       <div class="drawer-nav-item active" onclick="navTo('dashboard')"><span class="nav-icon">🏠</span>Dashboard</div>
       <div class="drawer-nav-item" onclick="navTo('tournaments')"><span class="nav-icon">🏆</span>Tournaments</div>
       <div class="drawer-nav-item" onclick="navTo('teams')"><span class="nav-icon">👥</span>Teams</div>
-      <div class="drawer-nav-item" onclick="navTo('guilds')"><span class="nav-icon">🛡️</span>Guilds</div>
       <div class="drawer-nav-item" onclick="navTo('leaderboard')"><span class="nav-icon">📊</span>Leaderboard</div>
       <div class="drawer-nav-item" onclick="navTo('search')"><span class="nav-icon">🔍</span>Search</div>
       <div class="drawer-divider"></div>
@@ -1337,7 +1337,6 @@ img{display:block;max-width:100%}
         <div class="quick-btn" onclick="showPage('tournaments')"><div class="quick-icon">🏆</div><div class="quick-label">Tournaments</div></div>
         <div class="quick-btn" onclick="showPage('store')"><div class="quick-icon">🛒</div><div class="quick-label">Store</div></div>
         <div class="quick-btn" onclick="showPage('teams')"><div class="quick-icon">👥</div><div class="quick-label">My Teams</div></div>
-        <div class="quick-btn" onclick="showPage('guilds')"><div class="quick-icon">🛡️</div><div class="quick-label">Guilds</div></div>
         <div class="quick-btn" onclick="showPage('leaderboard')"><div class="quick-icon">📊</div><div class="quick-label">Leaderboard</div></div>
         <div class="quick-btn" onclick="showPage('wallet')"><div class="quick-icon">💰</div><div class="quick-label">Wallet</div></div>
       </div>
@@ -1410,15 +1409,6 @@ img{display:block;max-width:100%}
       </div>
 
       <div id="teams-list"></div>
-    </div>
-
-    <!-- GUILDS -->
-    <div class="page" id="page-guilds">
-      <div class="page-header"><div class="page-title">🛡️ Guilds</div><div class="page-subtitle">Find your clan</div></div>
-      <button class="btn-create" onclick="openCreateGuild()">➕ Create New Guild</button>
-      <button class="btn-create" onclick="openJoinGuild()" style="border-style:solid;color:var(--dim)">🔑 Join Guild by ID</button>
-      <div class="divider"></div>
-      <div id="guilds-list"></div>
     </div>
 
     <!-- LEADERBOARD -->
@@ -1549,7 +1539,7 @@ const LS_SESSION   = 'fp_session_v2';
 // STATE
 // ================================================================
 let DB = {
-  me:null, players:[], tournaments:[], teams:[], guilds:[],
+  me:null, players:[], tournaments:[], teams:[],
   badges:[], transactions:[], storeItems:[], games:[], notifications:[],
   paymentMethods:[], config:{}
 };
@@ -1752,9 +1742,9 @@ async function fbLoadAll() {
 
   // Then fetch fresh from Firestore — badge_images fetched in same round-trip
   try {
-    const [players, tournaments, teams, guilds, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs] =
+    const [players, tournaments, teams, transactions, storeItems, games, notifications, badgesDocs, badgeImgDocs] =
       await Promise.all([
-        fsList('players'), fsList('tournaments'), fsList('teams'), fsList('guilds'),
+        fsList('players'), fsList('tournaments'), fsList('teams'),
         fsList('transactions'), fsList('storeItems'), fsList('games'), fsList('notifications'),
         fsList('badges'), fsList('badge_images')
       ]);
@@ -1762,7 +1752,6 @@ async function fbLoadAll() {
     DB.players          = players.filter(Boolean);
     DB.tournaments      = tournaments.filter(Boolean);
     DB.teams            = teams.filter(Boolean);
-    DB.guilds           = guilds.filter(Boolean);
     DB.transactions     = transactions.filter(Boolean);
     DB.storeItems       = storeItems.filter(Boolean);
     DB.games            = games.filter(Boolean);
@@ -1853,7 +1842,7 @@ function _cacheDB() {
   try {
     const toSave = {
       players:DB.players, tournaments:DB.tournaments, teams:DB.teams,
-      guilds:DB.guilds, transactions:DB.transactions, storeItems:DB.storeItems,
+      transactions:DB.transactions, storeItems:DB.storeItems,
       games:DB.games, notifications:DB.notifications, badges:DB.badges,
     };
     localStorage.setItem(LS_KEY, JSON.stringify(toSave));
@@ -1954,7 +1943,7 @@ async function lpForgotPw() {
 function doLogout() {
   if (_syncTimer) clearInterval(_syncTimer);
   _clearSession();
-  DB = { me:null, players:[], tournaments:[], teams:[], guilds:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[], teamFinderPosts:[], paymentMethods:[], config:{} };
+  DB = { me:null, players:[], tournaments:[], teams:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[], teamFinderPosts:[], paymentMethods:[], config:{} };
   S  = { token:null, refresh:null, uid:null, email:null };
   _storeGame = null;
   document.getElementById('app-screen').classList.remove('active');
@@ -1991,7 +1980,6 @@ async function _enterApp() {
     for (const pid of _PURGE_IDS) {
       if (DB.players.find(p => _pid(p) === pid)) {
         DB.teams.forEach(t => { if((t.memberIds||[]).includes(pid)){ t.memberIds=t.memberIds.filter(id=>id!==pid); fsSet('teams',t.id||t._fsId,t); }});
-        DB.guilds.forEach(g => { if((g.memberIds||[]).includes(pid)){ g.memberIds=g.memberIds.filter(id=>id!==pid); fsSet('guilds',g.id||g._fsId,g); }});
         DB.tournaments.forEach(t => { if((t.players||[]).includes(pid)){ t.players=t.players.filter(id=>id!==pid); fsSet('tournaments',t.id||t._fsId,t); }});
         DB.players = DB.players.filter(p => _pid(p) !== pid);
         await Promise.all([fsDelete('players',pid), fsDelete('avatars',pid)]);
@@ -2007,7 +1995,7 @@ async function _enterApp() {
       id:S.uid, uid:uid8, name: S.email.split('@')[0], email:S.email, phone:'',
       balance: DB.config?.rules?.startingBalance || 0, wins:0, losses:0, tournaments:0,
       badges:[], gameProfiles:[], role: S.email===ADMIN_EMAIL ? 'admin' : 'player',
-      teamIds:[], guildId:'', joinedDate:new Date().toISOString(),
+      teamIds:[], joinedDate:new Date().toISOString(),
       lastNameChange:null, _emojiIdx:0, _svgIdx:null, avatarCustom:'', banned:false
     };
     DB.players.push(DB.me);
@@ -2173,7 +2161,6 @@ function renderPage(name) {
     dashboard:  renderDash,
     tournaments:renderArena,
     teams:      renderTeams,
-    guilds:     renderGuilds,
     leaderboard:renderLB,
     search:     renderSearch,
     store:      renderStore,
@@ -2200,8 +2187,6 @@ function renderDash() {
   const me = DB.me; if (!me) return;
   _refreshUI();
   const wr = (me.wins && me.tournaments) ? Math.round((me.wins / me.tournaments) * 100) : 0;
-  const myGuild = DB.guilds.find(g => (g.memberIds||[]).includes(me.id));
-
   document.getElementById('hero-name').textContent    = me.name || 'Player';
   document.getElementById('hero-uid').textContent     = me.uid  || '—';
   document.getElementById('hero-balance').textContent = (me.balance||0).toLocaleString();
@@ -2220,7 +2205,7 @@ function renderDash() {
     <div class="stat-card"><div class="stat-value">${wr}%</div><div class="stat-label">Win Rate</div></div>
     <div class="stat-card"><div class="stat-value text-gold">${me.tournaments||0}</div><div class="stat-label">Events</div></div>
     <div class="stat-card"><div class="stat-value">${(me.badges||[]).length}</div><div class="stat-label">Badges</div></div>
-    <div class="stat-card"><div class="stat-value" style="font-size:14px">${myGuild ? (myGuild.tag||myGuild.name) : '—'}</div><div class="stat-label">Guild</div></div>
+
   `;
 }
 
@@ -3033,148 +3018,6 @@ async function kickFromTeam(tid, kickPid) {
 // ================================================================
 // GUILDS
 // ================================================================
-function renderGuilds() {
-  const me = DB.me;
-  const el = document.getElementById('guilds-list');
-  if (!DB.guilds.length) { el.innerHTML = '<div class="empty-state"><div class="empty-icon">🛡️</div><p>No guilds yet</p></div>'; return; }
-  el.innerHTML = DB.guilds.map(g => {
-    const gid      = g.id || g._fsId;
-    const isLeader = g.leaderId === me?.id;
-    const isMember = (g.memberIds||[]).includes(me?.id);
-    return `
-    <div class="team-card" onclick="viewGuild('${gid}')">
-      <div class="team-logo">${(g.logo||'').startsWith('data:')||(g.logo||'').startsWith('http')?`<img src="${g.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`:g.logo||'🛡️'}</div>
-      <div class="team-info">
-        <div class="team-name">${g.name} ${isMember ? `<span class="my-badge">${isLeader?'Leader':'Member'}</span>` : ''}</div>
-        <div class="team-tag">[${g.tag||'???'}]</div>
-        <div class="team-members">${g.description||''}</div>
-        <div class="team-members" style="margin-top:2px">${(g.memberIds||[]).length} members</div>
-      </div>
-      ${isMember && !isLeader ? `<button class="admin-btn danger" onclick="event.stopPropagation();leaveGuild('${gid}')">Leave</button>` : ''}
-    </div>`;
-  }).join('');
-}
-
-function openCreateGuild() {
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">🛡️ Create Guild</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Guild Name *</label><input class="form-input" id="cg-name" placeholder="Guild name"></div>
-    <div class="form-group"><label class="form-label">Tag (2-6 chars) *</label><input class="form-input" id="cg-tag" placeholder="e.g. ALPHA" maxlength="6"></div>
-    <div class="form-group"><label class="form-label">Description</label><input class="form-input" id="cg-desc" placeholder="Short description"></div>
-    <div class="form-group">
-      <label class="form-label">Logo</label>
-      <div style="display:flex;align-items:center;gap:10px">
-        <div id="cg-logo-preview" style="width:52px;height:52px;border-radius:12px;background:var(--panel2);border:2px dashed var(--border2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;flex-shrink:0">🛡️</div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
-          <button class="btn-secondary" style="font-size:12px;padding:7px 12px" onclick="document.getElementById('cg-logo-file').click()">📷 Upload Image / GIF</button>
-          <input type="file" id="cg-logo-file" accept="image/*,.gif" style="display:none" onchange="handleTeamLogoUpload(this,'cg-logo-preview','cg-logo-data')">
-          <input class="form-input" id="cg-logo-emoji" placeholder="Or type emoji e.g. 🔥" maxlength="4" style="font-size:18px" oninput="document.getElementById('cg-logo-preview').innerHTML=this.value||'🛡️'">
-          <input type="hidden" id="cg-logo-data">
-        </div>
-      </div>
-    </div>
-    <button class="btn-primary" id="btn-cg" onclick="createGuild()">Create Guild</button>
-  `);
-}
-
-async function createGuild() {
-  const name = _v('cg-name').trim();
-  const tag  = _v('cg-tag').trim().toUpperCase();
-  const desc = _v('cg-desc').trim();
-  const logoData  = document.getElementById('cg-logo-data')?.value;
-  const logoEmoji = _v('cg-logo-emoji').trim() || '🛡️';
-  const logo = logoData || logoEmoji;
-  if (!name || !tag) { toast('Fill name and tag','error'); return; }
-  const me = DB.me;
-  if (me.guildId) { toast('You are already in a guild','error'); return; }
-  _btn('btn-cg', true);
-  const id    = 'guild_' + Date.now();
-  const guild = { id, name, tag, logo, description:desc, leaderId:me.id, memberIds:[me.id], createdAt:new Date().toISOString() };
-  me.guildId  = id;
-  DB.guilds.push(guild);
-  await Promise.all([fsSet('guilds', id, guild), fsSet('players', me.id, me)]);
-  toast('Guild created! 🛡️','success'); _cacheDB(); closeModal(); renderGuilds();
-}
-
-function openJoinGuild() {
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">🔑 Join Guild</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-    <div class="form-group"><label class="form-label">Guild ID</label><input class="form-input" id="jg-id" placeholder="Paste guild ID..."></div>
-    <button class="btn-primary" id="btn-jg" onclick="joinGuildById()">Join Guild</button>
-  `);
-}
-
-async function joinGuildById() {
-  const gid = _v('jg-id').trim();
-  const g   = DB.guilds.find(g => (g.id||g._fsId) === gid);
-  if (!g) { toast('Guild not found','error'); return; }
-  const me = DB.me;
-  if (me.guildId) { toast('Already in a guild','error'); return; }
-  _btn('btn-jg', true);
-  g.memberIds = [...(g.memberIds||[]), me.id];
-  me.guildId  = g.id || g._fsId;
-  await Promise.all([fsSet('guilds', g.id||g._fsId, g), fsSet('players', me.id, me)]);
-  toast('Joined guild!','success'); _cacheDB(); closeModal(); renderGuilds();
-}
-
-async function leaveGuild(gid) {
-  const g  = DB.guilds.find(g => (g.id||g._fsId) === gid);
-  const me = DB.me; if (!g) return;
-  g.memberIds = (g.memberIds||[]).filter(id => id !== me.id);
-  me.guildId  = '';
-  await Promise.all([fsSet('guilds', gid, g), fsSet('players', me.id, me)]);
-  toast('Left guild','info'); _cacheDB(); renderGuilds();
-}
-
-function viewGuild(gid) {
-  const g = DB.guilds.find(g => (g.id||g._fsId) === gid); if (!g) return;
-  const me = DB.me;
-  const isLeader = g.leaderId === me?.id;
-  const isAdmin  = me?.role === 'admin';
-  const canEdit  = isLeader || isAdmin;
-  const leader   = DB.players.find(p => _pid(p) === g.leaderId);
-
-  const logoHtml = (g.logo||'').startsWith('data:')||(g.logo||'').startsWith('http')
-    ? `<img src="${g.logo}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`
-    : g.logo||'🛡️';
-
-  const members = (g.memberIds||[]).map(mid => {
-    const p = DB.players.find(pp => _pid(pp) === mid);
-    return p ? `<div class="lb-row" style="cursor:default">
-      <div style="position:relative;display:inline-flex;flex-shrink:0"><div class="lb-avatar">${_avatarInner(p)}</div>${_badgePinHTML(p,'sm-badge-pin')}</div>
-      <div class="lb-info"><div class="lb-name">${p.name}${_pid(p)===g.leaderId?' 👑':''}</div><div class="lb-guild">${p.uid||''}</div></div>
-    </div>` : '';
-  }).join('');
-
-  openModal(`
-    <div class="modal-close-row"><div class="modal-title">🛡️ ${g.name}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
-
-    <!-- Logo + upload -->
-    <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px;padding:12px;background:var(--panel2);border-radius:var(--radius);border:1px solid var(--border)">
-      <div id="vg-logo-box" style="width:64px;height:64px;border-radius:12px;background:var(--panel);border:2px solid var(--border2);display:flex;align-items:center;justify-content:center;font-size:30px;overflow:hidden;flex-shrink:0">${logoHtml}</div>
-      <div style="flex:1">
-        <div style="font-size:16px;font-weight:800">${g.name} <span style="font-size:12px;color:var(--dim)">[${g.tag}]</span></div>
-        <div style="font-size:12px;color:var(--dim);margin-top:2px">Leader: ${leader?.name||'—'} · ${(g.memberIds||[]).length} members</div>
-        ${canEdit ? `
-        <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-          <button class="admin-btn" style="font-size:11px" onclick="document.getElementById('vg-img-file').click()">🖼️ Change Logo (Image)</button>
-          <input type="file" id="vg-img-file" accept="image/png,image/jpg,image/jpeg,image/webp" style="display:none" onchange="uploadEntityLogo('guild','${gid}',this,false)">
-          ${isAdmin ? `<button class="admin-btn gold" style="font-size:11px" onclick="document.getElementById('vg-gif-file').click()">✨ Upload GIF (Admin)</button>
-          <input type="file" id="vg-gif-file" accept="image/gif,image/*" style="display:none" onchange="uploadEntityLogo('guild','${gid}',this,true)">` : ''}
-        </div>` : ''}
-      </div>
-    </div>
-
-    ${g.description ? `<p style="font-size:13px;color:var(--dim);margin-bottom:12px">${g.description}</p>` : ''}
-    <div style="font-size:11px;color:var(--dim2);font-family:monospace;margin-bottom:12px;cursor:pointer" onclick="navigator.clipboard.writeText('${gid}');toast('Copied!','success')">ID: ${gid} 📋</div>
-    <div style="display:flex;flex-direction:column;gap:6px">${members}</div>
-  `);
-}
-
-// ================================================================
-// SHARED: Upload logo for team or guild
-// type: 'team'|'guild', id: entity id, input: file input, allowGif: bool (admin only)
-// ================================================================
 async function uploadEntityLogo(type, id, input, allowGif) {
   const file = input.files[0]; if (!file) return;
   const isGif = file.type === 'image/gif';
@@ -3184,8 +3027,8 @@ async function uploadEntityLogo(type, id, input, allowGif) {
   const reader = new FileReader();
   reader.onload = async e => {
     const data = e.target.result;
-    const collection = type === 'team' ? 'teams' : 'guilds';
-    const arr = type === 'team' ? DB.teams : DB.guilds;
+    const collection = 'teams';
+    const arr = DB.teams;
     const entity = arr.find(x => (x.id||x._fsId) === id);
     if (!entity) return;
     entity.logo = data;
@@ -3193,12 +3036,12 @@ async function uploadEntityLogo(type, id, input, allowGif) {
     if (ok) {
       _cacheDB();
       // Update preview box inside the open modal
-      const boxId = type === 'team' ? 'vt-logo-box' : 'vg-logo-box';
+      const boxId = 'vt-logo-box';
       const box = document.getElementById(boxId);
       if (box) box.innerHTML = `<img src="${data}" style="width:100%;height:100%;object-fit:cover;border-radius:10px">`;
       // Refresh the list behind
-      if (type === 'team') renderTeams(); else renderGuilds();
-      toast(`${type === 'team' ? 'Team' : 'Guild'} logo updated! ✅`,'success');
+      renderTeams();
+      toast('Team logo updated! ✅','success');
     } else { toast('Upload failed','error'); }
     input.value = '';
   };
@@ -3246,7 +3089,7 @@ function renderLB() {
   const podiumHtml = `<div class="podium">
     ${podiumSlots.map(({p,rank,color,h,col}) => {
       if (!p) return '<div class="podium-slot"></div>';
-      const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+      const guild = null;
       const isMe  = _pid(p) === me?.id;
       const rankLabel = rank===1?'🥇 1st':rank===2?'🥈 2nd':'🥉 3rd';
       const sz = rank===1?68:rank===2?56:52;
@@ -3270,7 +3113,7 @@ function renderLB() {
     </div>` : '';
 
   const listHtml = rest.map((p, i) => {
-    const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+    const guild = null;
     const isMe  = _pid(p) === me?.id;
     const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
     return `
@@ -3305,7 +3148,7 @@ function doSearch() {
   );
   if (!results.length) { el.innerHTML = '<div class="empty-state"><p>No players found</p></div>'; return; }
   el.innerHTML = results.map(p => {
-    const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+    const guild = null;
     const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
     return `
     <div class="lb-row" onclick="viewPlayerModal('${_pid(p)}')" style="margin-bottom:6px">
@@ -3736,7 +3579,7 @@ async function submitWithdraw() {
 function renderProfile() {
   const me = DB.me; if (!me) return;
   const wr       = (me.wins && me.tournaments) ? Math.round((me.wins/me.tournaments)*100) : 0;
-  const myGuild  = DB.guilds.find(g => (g.memberIds||[]).includes(me.id));
+  const myGuild  = null;
   const myTeams  = DB.teams.filter(t => (t.memberIds||[]).includes(me.id));
   const canName  = !me.lastNameChange || (Date.now() - new Date(me.lastNameChange).getTime()) > 30*24*60*60*1000;
   const badgeDefs= {
@@ -4205,7 +4048,7 @@ function showNotifications() {
 // ================================================================
 function viewPlayerModal(pid) {
   const p = DB.players.find(pp => _pid(pp) === pid); if (!p) return;
-  const guild = DB.guilds.find(g => (g.memberIds||[]).includes(_pid(p)));
+  const guild = null;
   const teams = DB.teams.filter(t => (t.memberIds||[]).includes(_pid(p)));
   const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
   const badgeDefs = {
