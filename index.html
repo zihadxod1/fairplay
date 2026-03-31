@@ -500,6 +500,8 @@ img{display:block;max-width:100%}
 .tc-status-badge.open{background:rgba(74,222,128,.2);color:var(--g1);border:1px solid var(--border3)}
 .tc-status-badge.closed{background:rgba(248,113,113,.2);color:var(--red);border:1px solid rgba(248,113,113,.3)}
 .tc-status-badge.upcoming{background:rgba(251,191,36,.2);color:var(--gold);border:1px solid rgba(251,191,36,.3)}
+.tc-status-badge.live{background:rgba(239,68,68,.9);color:#fff;border:1px solid #ef4444;animation:live-pulse 1.2s ease-in-out infinite}
+@keyframes live-pulse{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.5)}50%{box-shadow:0 0 0 5px rgba(239,68,68,0)}}
 .tc-prize-badge{
   position:absolute;bottom:10px;right:10px;
   font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;
@@ -1362,6 +1364,7 @@ img{display:block;max-width:100%}
         <!-- Status filters -->
         <div class="filter-tabs" id="t-filter-tabs" style="margin-bottom:8px">
           <div class="filter-tab active" onclick="setTFilter('all',this)">All</div>
+          <div class="filter-tab" onclick="setTFilter('live',this)" style="color:#ef4444">🔴 Live</div>
           <div class="filter-tab" onclick="setTFilter('open',this)">🟢 Open</div>
           <div class="filter-tab" onclick="setTFilter('upcoming',this)">⏳ Upcoming</div>
           <div class="filter-tab" onclick="setTFilter('my',this)">✅ Joined</div>
@@ -2277,6 +2280,7 @@ function renderTournaments() {
   let ts = [...DB.tournaments];
 
   // Status filter
+  if (_tFilter === 'live')     ts = ts.filter(t => t.status === 'live');
   if (_tFilter === 'open')     ts = ts.filter(t => t.status === 'open');
   if (_tFilter === 'upcoming') ts = ts.filter(t => t.status === 'upcoming');
   if (_tFilter === 'my')       ts = ts.filter(t => (t.players||[]).includes(me?.id));
@@ -2317,7 +2321,7 @@ function _tCard(t) {
   const tid      = t.id || t._fsId;
   const isJoined = (t.players||[]).includes(me?.id);
   const isFull   = (t.players||[]).length >= (t.maxPlayers || 0);
-  const statusCls = { open:'open', closed:'closed', upcoming:'upcoming' }[t.status] || 'upcoming';
+  const statusCls = { open:'open', closed:'closed', upcoming:'upcoming', live:'live' }[t.status] || 'upcoming';
   const slots    = t.maxPlayers || 16;
   const joined   = (t.players||[]).length;
   const pct      = Math.min(100, Math.round((joined/slots)*100));
@@ -2440,7 +2444,7 @@ function _tCard(t) {
       ${heroIconHtml}
       <div class="tc-hero-overlay"></div>
       <div class="tc-game-badge">${gameBadgeIcon}${t.game||'Unknown'}</div>
-      <div class="tc-status-badge ${statusCls}">${(t.status||'upcoming').toUpperCase()}</div>
+      <div class="tc-status-badge ${statusCls}">${t.status==='live'?'🔴 LIVE':(t.status||'upcoming').toUpperCase()}</div>
       ${t.prize ? `<div class="tc-prize-badge">🏆 ${t.prize}</div>` : ''}
       ${t.results?.length ? `<div style="position:absolute;bottom:10px;left:10px;font-size:10px;font-weight:700;padding:3px 8px;border-radius:10px;background:rgba(251,191,36,.2);color:var(--gold);border:1px solid rgba(251,191,36,.3);z-index:1">📊 Results Posted</div>` : ''}
     </div>
@@ -4199,7 +4203,7 @@ function _renderAdminOverview() {
   if (!el) return;
   const pending  = DB.transactions.filter(t=>t.status==='pending').length;
   const totalAC  = DB.players.reduce((s,p)=>(s+(p.balance||0)),0);
-  const openT    = DB.tournaments.filter(t=>t.status==='open').length;
+  const openT    = DB.tournaments.filter(t=>t.status==='open'||t.status==='live').length;
   const bannedN  = DB.players.filter(p=>p.banned).length;
   el.innerHTML = `
     <div style="background:rgba(74,222,128,.06);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 12px;display:flex;align-items:center;gap:10px">
@@ -4598,11 +4602,12 @@ function renderAdminTournaments() {
             <div style="font-weight:700;font-size:14px">${t.name}</div>
             <div style="font-size:11px;color:var(--dim)">${t.game||'—'} · ${(t.players||[]).length}/${t.maxPlayers||16} players · ${t.entryFee?t.entryFee+' AC':'Free'}</div>
           </div>
-          <span class="tc-status-badge ${t.status||'upcoming'}" style="position:static;flex-shrink:0">${(t.status||'upcoming').toUpperCase()}</span>
+          <span class="tc-status-badge ${t.status||'upcoming'}" style="position:static;flex-shrink:0">${t.status==='live'?'🔴 LIVE':(t.status||'upcoming').toUpperCase()}</span>
         </div>
         <div class="admin-actions">
           <button class="admin-btn success" onclick="adminSetTStatus('${tid}','open')">✅ Open</button>
           <button class="admin-btn gold"    onclick="adminSetTStatus('${tid}','upcoming')">⏳ Soon</button>
+          <button class="admin-btn"         onclick="adminSetTStatus('${tid}','live')" style="background:rgba(239,68,68,.15);color:#ef4444;border-color:rgba(239,68,68,.4)">🔴 Live</button>
           <button class="admin-btn danger"  onclick="adminSetTStatus('${tid}','closed')">🔒 Close</button>
           <button class="admin-btn"         onclick="adminEditT('${tid}')">✏️ Edit</button>
           <button class="admin-btn"         onclick="adminEditTLogo('${tid}')">🖼️ Logo</button>
