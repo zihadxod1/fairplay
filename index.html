@@ -2626,6 +2626,33 @@ function viewTournament(tid) {
       <div class="tc-stat"><div class="tc-stat-label">Players</div><div class="tc-stat-value">${(t.players||[]).length}/${t.maxPlayers||16}</div></div>
     </div>
     ${t.description ? `<p style="font-size:13px;color:var(--dim);line-height:1.6;margin-bottom:12px">${t.description}</p>` : ''}
+    ${(() => {
+      const me2 = DB.me;
+      const isJoined2 = (t.players||[]).includes(me2?.id);
+      const isAdmin2  = me2?.role === 'admin';
+      if (!(isJoined2 || isAdmin2) || (!t.roomId && !t.roomPass)) return '';
+      return `
+      <div style="background:linear-gradient(135deg,rgba(251,191,36,.1),rgba(251,191,36,.04));border:1px solid rgba(251,191,36,.3);border-radius:var(--radius);padding:14px;margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+          🔐 Custom Room Info
+          <span style="font-size:9px;background:rgba(74,222,128,.15);color:var(--g1);padding:1px 7px;border-radius:10px;border:1px solid var(--border2)">Only joined players can see this</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${t.roomId ? `
+          <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:10px 12px;cursor:pointer" onclick="copyText('${t.roomId}');toast('Room ID copied!','success')">
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Room ID</div>
+            <div style="font-size:16px;font-weight:900;font-family:'JetBrains Mono',monospace;color:var(--gold);letter-spacing:2px">${t.roomId}</div>
+            <div style="font-size:9px;color:var(--dim);margin-top:4px">Tap to copy 📋</div>
+          </div>` : ''}
+          ${t.roomPass ? `
+          <div style="background:rgba(0,0,0,.3);border-radius:8px;padding:10px 12px;cursor:pointer" onclick="copyText('${t.roomPass}');toast('Password copied!','success')">
+            <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px">Password</div>
+            <div style="font-size:16px;font-weight:900;font-family:'JetBrains Mono',monospace;color:var(--g1);letter-spacing:2px">${t.roomPass}</div>
+            <div style="font-size:9px;color:var(--dim);margin-top:4px">Tap to copy 📋</div>
+          </div>` : ''}
+        </div>
+      </div>`;
+    })()}
     ${resultsHtml}
     <div class="divider"></div>
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
@@ -4621,6 +4648,13 @@ function adminCreateT() {
     </div>
     <div class="form-group"><label class="form-label">Modes (comma-separated)</label><input class="form-input" id="nt-modes" placeholder="e.g. Solo, TPP, Ranked"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="nt-desc" rows="3" style="resize:vertical" placeholder="Tournament details..."></textarea></div>
+    <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🔐 Custom Room (visible to joined players only)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Room ID</label><input class="form-input" id="nt-room-id" placeholder="e.g. 12345678" style="font-family:monospace"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Room Password</label><input class="form-input" id="nt-room-pass" placeholder="e.g. ff2026" style="font-family:monospace"></div>
+      </div>
+    </div>
     <button class="btn-primary" id="btn-nt" onclick="saveCreateT()">Create Tournament</button>
   `);
 }
@@ -4649,6 +4683,7 @@ async function saveCreateT() {
     id, name, game:_v('nt-game'), date:_v('nt-date'), time:_v('nt-time'),
     format:_v('nt-format')||'Solo', maxPlayers:Number(_v('nt-max'))||16,
     entryFee:Number(_v('nt-fee'))||0, prize:_v('nt-prize'), description:_v('nt-desc'),
+    roomId:_v('nt-room-id').trim(), roomPass:_v('nt-room-pass').trim(),
     modes: modesRaw ? modesRaw.split(',').map(s=>s.trim()).filter(Boolean) : [_v('nt-format')||'Solo'],
     logo: logoData||logoEmoji, logoIsImg:!!logoData,
     status:'upcoming', players:[], createdAt:new Date().toISOString()
@@ -4678,6 +4713,13 @@ function adminEditT(tid) {
     </div>
     <div class="form-group"><label class="form-label">Modes (comma-separated)</label><input class="form-input" id="et-modes" value="${(t.modes||[]).join(', ')}"></div>
     <div class="form-group"><label class="form-label">Description</label><textarea class="form-input" id="et-desc" rows="3" style="resize:vertical">${t.description||''}</textarea></div>
+    <div style="background:rgba(251,191,36,.06);border:1px solid rgba(251,191,36,.2);border-radius:var(--radius);padding:12px;margin-bottom:12px">
+      <div style="font-size:11px;font-weight:700;color:var(--gold);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">🔐 Custom Room (visible to joined players only)</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Room ID</label><input class="form-input" id="et-room-id" value="${t.roomId||''}" placeholder="e.g. 12345678" style="font-family:monospace"></div>
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Room Password</label><input class="form-input" id="et-room-pass" value="${t.roomPass||''}" placeholder="e.g. ff2026" style="font-family:monospace"></div>
+      </div>
+    </div>
     <button class="btn-primary" id="btn-et" onclick="saveTEdit('${tid}')">Save Changes</button>
   `);
 }
@@ -4694,6 +4736,8 @@ async function saveTEdit(tid) {
   t.entryFee   = Number(_v('et-fee'))||0;
   t.prize      = _v('et-prize');
   t.description= _v('et-desc');
+  t.roomId     = _v('et-room-id').trim();
+  t.roomPass   = _v('et-room-pass').trim();
   const modesRaw = _v('et-modes').trim();
   if (modesRaw) t.modes = modesRaw.split(',').map(s=>s.trim()).filter(Boolean);
   await fsSet('tournaments', tid, t);
