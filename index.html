@@ -3028,9 +3028,10 @@ function viewTeam(tid) {
     </div>
 
     <!-- Actions -->
-    <div style="display:flex;gap:8px">
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${isMember && !isLeader ? `<button class="btn-secondary" style="flex:1;color:var(--red);border-color:rgba(248,113,113,.3)" onclick="closeModal();leaveTeam('${tid}')">🚪 Leave Team</button>` : ''}
       ${!isMember ? `<button class="btn-primary" style="flex:1" onclick="joinExistingTeam('${tid}')">⚔️ Join Team</button>` : ''}
+      ${isLeader || isAdmin ? `<button class="btn-secondary" style="color:var(--red);border-color:rgba(248,113,113,.3);flex:1" onclick="deleteTeam('${tid}')">🗑️ Delete Team</button>` : ''}
     </div>
   `);
 }
@@ -3053,6 +3054,22 @@ async function kickFromTeam(tid, kickPid) {
   p.teamIds   = (p.teamIds||[]).filter(id=>id!==tid);
   await Promise.all([fsSet('teams',tid,t), fsSet('players',kickPid,p)]);
   toast(`${p.name} removed`,'info'); _cacheDB(); closeModal(); renderTeams();
+}
+
+async function deleteTeam(tid) {
+  const t = DB.teams.find(t=>(t.id||t._fsId)===tid);
+  if (!t) return;
+  if (!confirm(`Delete "${t.name}" permanently? All members will be removed.`)) return;
+  // Remove teamId from every member's record
+  const updates = (t.memberIds||[]).map(mid => {
+    const p = DB.players.find(pp=>_pid(pp)===mid);
+    if (!p) return Promise.resolve();
+    p.teamIds = (p.teamIds||[]).filter(id=>id!==tid);
+    return fsSet('players', mid, p);
+  });
+  await Promise.all([...updates, fsDelete('teams', tid)]);
+  DB.teams = DB.teams.filter(tt=>(tt.id||tt._fsId)!==tid);
+  toast(`${t.name} deleted`,'info'); _cacheDB(); closeModal(); renderTeams();
 }
 
 // ================================================================
