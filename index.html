@@ -1260,6 +1260,14 @@ img{display:block;max-width:100%}
 </div>
 
 <!-- ==================== APP ==================== -->
+<div id="ban-screen" style="display:none;position:fixed;inset:0;z-index:99999;background:#000;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center">
+  <div style="font-size:64px;margin-bottom:16px">🚫</div>
+  <div style="font-size:22px;font-weight:900;color:#ef4444;margin-bottom:8px;letter-spacing:.5px">ACCOUNT BANNED</div>
+  <div style="font-size:13px;color:rgba(255,255,255,.5);max-width:300px;line-height:1.7;margin-bottom:24px">Your account has been permanently banned from FF BOOYAH Esports Arena. You no longer have access to any features of this platform.</div>
+  <div style="background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);border-radius:12px;padding:16px 24px;margin-bottom:24px;font-size:12px;color:rgba(255,255,255,.4)">If you believe this is an error, contact the administrator.</div>
+  <button onclick="doLogout()" style="background:rgba(248,113,113,.15);border:1px solid rgba(248,113,113,.4);color:#ef4444;padding:12px 28px;border-radius:30px;font-size:13px;font-weight:700;cursor:pointer">Sign Out</button>
+</div>
+
 <div id="app-screen">
 
   <!-- NAV -->
@@ -1982,6 +1990,23 @@ function _friendlyAuthErr(msg) {
 // ================================================================
 // ENTER APP
 // ================================================================
+// ================================================================
+// BAN SYSTEM — complete lockout for banned players
+// ================================================================
+function _checkBanned() {
+  const me = DB.me;
+  // Admin can never be banned
+  if (!me || me.role === 'admin') return false;
+  if (!me.banned) return false;
+
+  // Show ban wall, hide app entirely
+  document.getElementById('ban-screen').style.display = 'flex';
+  document.getElementById('app-screen').classList.remove('active');
+  // Kill the sync timer so banned user can't get live updates
+  if (_syncTimer) { clearInterval(_syncTimer); _syncTimer = null; }
+  return true;
+}
+
 async function _enterApp() {
   _showLoading('Loading arena data...');
   await fbLoadAll();
@@ -2017,18 +2042,22 @@ async function _enterApp() {
   // Always enforce admin role by email
   if (S.email === ADMIN_EMAIL) DB.me.role = 'admin';
 
+  // ⛔ BAN CHECK — if banned, show ban wall and stop here
+  if (_checkBanned()) { _hideLoading(); return; }
+
   _hideLoading();
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app-screen').classList.add('active');
   _refreshUI();
   showPage('dashboard');
 
-  // Auto-refresh data every 60s
+  // Auto-refresh data every 60s — re-check ban on every sync
   if (_syncTimer) clearInterval(_syncTimer);
   _syncTimer = setInterval(async () => {
     await fbLoadAll();
+    // Re-check ban status on every sync (in case admin bans mid-session)
+    if (_checkBanned()) return;
     _refreshUI();
-    // Re-render current page
     const activePg = document.querySelector('.page.active');
     if (activePg) renderPage(activePg.id.replace('page-',''));
   }, 60000);
@@ -2156,6 +2185,8 @@ function _refreshUI() {
 // NAVIGATION
 // ================================================================
 function showPage(name) {
+  // Banned players cannot navigate anywhere
+  if (DB.me?.banned && DB.me?.role !== 'admin') { _checkBanned(); return; }
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const pg = document.getElementById(`page-${name}`);
   if (pg) pg.classList.add('active');
@@ -4370,8 +4401,30 @@ async function saveAdminEdit(pid) {
 async function adminToggleBan(pid) {
   const p = _findPlayer(pid); if (!p) return;
   p.banned = !p.banned;
+
+  if (p.banned) {
+    // Remove from all tournaments
+    DB.tournaments.forEach(t => {
+      if ((t.players||[]).includes(pid)) {
+        t.players = t.players.filter(id => id !== pid);
+        fsSet('tournaments', t.id||t._fsId, t);
+      }
+    });
+    // Remove from all teams
+    DB.teams.forEach(t => {
+      if ((t.memberIds||[]).includes(pid)) {
+        t.memberIds = t.memberIds.filter(id => id !== pid);
+        fsSet('teams', t.id||t._fsId, t);
+      }
+    });
+    // Clear balance
+    p.bannedAt = new Date().toISOString();
+  } else {
+    p.bannedAt = null;
+  }
+
   await fsSet('players', pid, p);
-  toast(p.banned ? `🚫 ${p.name} banned` : `✅ ${p.name} unbanned`, p.banned ? 'error' : 'success');
+  toast(p.banned ? `🚫 ${p.name} has been BANNED` : `✅ ${p.name} unbanned`, p.banned ? 'error' : 'success');
   _cacheDB(); renderAdminPlayers();
 }
 
