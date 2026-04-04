@@ -3231,7 +3231,10 @@ const DEFAULT_GAMES = [
   { id:'ml',        name:'Mobile Legends',       icon:'⚔️', topup:{ currency:'Diamonds',packages:[{amount:86,price:25,label:'Small'},{amount:172,price:50,label:'Medium'},{amount:257,price:75,label:'Regular'},{amount:706,price:200,label:'Large'},{amount:2195,price:600,label:'Mega'}] }},
 ];
 
-function _getGames() { return DB.games.length ? DB.games : DEFAULT_GAMES; }
+function _getGames() {
+  const g = DB.games.length ? [...DB.games] : [...DEFAULT_GAMES];
+  return g.sort((a,b) => (a.sortOrder??999) - (b.sortOrder??999));
+}
 
 function setStoreCat(cat, el) {
   _storeCat = cat;
@@ -6319,11 +6322,16 @@ function renderAdminGames() {
   const games = _getGames();
   el.innerHTML = `
     <button class="btn-create" onclick="adminAddGame()" style="border-style:solid;color:var(--gold);margin-bottom:12px">➕ Add New Game</button>
-    ${games.map(g => {
+    ${games.map((g, idx) => {
       const gid = g.id;
       return `
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <!-- Move buttons -->
+          <div style="display:flex;flex-direction:column;gap:3px;flex-shrink:0">
+            <button class="admin-btn" style="padding:3px 8px;font-size:13px;line-height:1" onclick="moveGame(${idx},-1)" ${idx===0?'disabled style="opacity:.3;padding:3px 8px;font-size:13px;line-height:1"':''}>↑</button>
+            <button class="admin-btn" style="padding:3px 8px;font-size:13px;line-height:1" onclick="moveGame(${idx},1)" ${idx===games.length-1?'disabled style="opacity:.3;padding:3px 8px;font-size:13px;line-height:1"':''}>↓</button>
+          </div>
           <div style="width:48px;height:48px;border-radius:10px;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:26px;overflow:hidden;border:1px solid var(--border2)">
             ${(g.logoIsImg && g.icon) ? `<img src="${g.icon}" style="width:100%;height:100%;object-fit:cover;border-radius:8px">` : `<span>${g.icon||'🎮'}</span>`}
           </div>
@@ -6348,6 +6356,21 @@ function renderAdminGames() {
       </div>`;
     }).join('')||'<div class="empty-state"><p>No games yet. Add your first game!</p></div>'}
   `;
+}
+
+async function moveGame(idx, dir) {
+  const games = DB.games;
+  const newIdx = idx + dir;
+  if (newIdx < 0 || newIdx >= games.length) return;
+  // Swap
+  [games[idx], games[newIdx]] = [games[newIdx], games[idx]];
+  // Save both swapped games to Firestore with updated sortOrder field
+  games.forEach((g, i) => { g.sortOrder = i; });
+  await Promise.all([
+    fsSet('games', games[idx].id||games[idx]._fsId, games[idx]),
+    fsSet('games', games[newIdx].id||games[newIdx]._fsId, games[newIdx])
+  ]);
+  _cacheDB(); renderAdminGames();
 }
 
 // ================================================================
