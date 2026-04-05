@@ -3061,20 +3061,10 @@ function viewTeam(tid) {
     <!-- Actions -->
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       ${isMember && !isLeader ? `<button class="btn-secondary" style="flex:1;color:var(--red);border-color:rgba(248,113,113,.3)" onclick="closeModal();leaveTeam('${tid}')">🚪 Leave Team</button>` : ''}
-      ${!isMember ? `<button class="btn-primary" style="flex:1" onclick="joinExistingTeam('${tid}')">⚔️ Join Team</button>` : ''}
+      ${!isMember ? `<div style="background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:10px 14px;flex:1;display:flex;align-items:center;gap:8px;font-size:12px;color:var(--dim)"><span style="font-size:16px">🔒</span> Ask a member for the Team ID to join</div>` : ''}
       ${isLeader || isAdmin ? `<button class="btn-secondary" style="color:var(--red);border-color:rgba(248,113,113,.3);flex:1" onclick="deleteTeam('${tid}')">🗑️ Delete Team</button>` : ''}
     </div>
   `);
-}
-
-async function joinExistingTeam(tid) {
-  const t  = DB.teams.find(t=>(t.id||t._fsId)===tid);
-  const me = DB.me; if (!t||!me) return;
-  if ((t.memberIds||[]).includes(me.id)) { toast('Already a member','info'); return; }
-  t.memberIds = [...(t.memberIds||[]), me.id];
-  me.teamIds  = [...(me.teamIds||[]), tid];
-  await Promise.all([fsSet('teams', tid, t), fsSet('players', me.id, me)]);
-  toast(`Joined ${t.name}! ⚔️`,'success'); _cacheDB(); closeModal(); renderTeams();
 }
 
 async function kickFromTeam(tid, kickPid) {
