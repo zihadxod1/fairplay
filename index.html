@@ -1688,6 +1688,126 @@ function _assertSession() {
 }
 
 // ================================================================
+// ANTI-CHEAT ENGINE — Coin & Tournament Integrity
+// ================================================================
+const _ANTICHEAT = {
+  // Max balance a player can legitimately have (sanity cap)
+  MAX_BALANCE: 999999,
+  // Max balance change in one operation
+  MAX_SINGLE_CHANGE: 10000,
+  // Track operation history for pattern detection
+  _opHistory: [],
+
+  // Verify a balance change is legitimate
+  verifyBalanceChange(current, proposed, reason) {
+    // NaN / Infinity protection
+    if (!isFinite(proposed) || isNaN(proposed)) {
+      this._flag('BALANCE_NAN', `NaN/Infinity balance attempt: ${proposed}`);
+      return false;
+    }
+    // Negative balance protection
+    if (proposed < 0) {
+      this._flag('NEGATIVE_BALANCE', `Negative balance attempt: ${proposed}`);
+      return false;
+    }
+    // Max cap protection
+    if (proposed > this.MAX_BALANCE) {
+      this._flag('BALANCE_CAP', `Balance exceeds max: ${proposed}`);
+      return false;
+    }
+    // Sudden large gain protection (not from admin)
+    const delta = proposed - current;
+    if (delta > this.MAX_SINGLE_CHANGE) {
+      this._flag('LARGE_GAIN', `Suspicious large gain: +${delta} AC (${reason})`);
+      return false;
+    }
+    // Rapid fire operations (>5 balance changes in 10s)
+    const now = Date.now();
+    this._opHistory = this._opHistory.filter(t => now - t < 10000);
+    this._opHistory.push(now);
+    if (this._opHistory.length > 5) {
+      this._flag('RAPID_FIRE', `Too many balance operations: ${this._opHistory.length} in 10s`);
+      return false;
+    }
+    return true;
+  },
+
+  // Verify a player can afford an entry fee
+  verifyCanAfford(balance, cost, name) {
+    if (typeof cost !== 'number' || cost < 0) return false;
+    if (balance < cost) return false;
+    if (!isFinite(balance) || !isFinite(cost)) return false;
+    return true;
+  },
+
+  // Verify tournament join is valid
+  verifyTournamentJoin(player, tournament) {
+    const pid = player.id || player._fsId;
+    // Already joined?
+    if ((tournament.players||[]).includes(pid)) {
+      this._flag('DOUBLE_JOIN', `Already in tournament: ${tournament.name}`);
+      return false;
+    }
+    // Tournament not open?
+    if (tournament.status !== 'open' && tournament.status !== 'live') {
+      this._flag('JOIN_CLOSED', `Tournament not open: ${tournament.name} (${tournament.status})`);
+      return false;
+    }
+    // Tournament full?
+    if ((tournament.players||[]).length >= (tournament.maxPlayers||16)) {
+      this._flag('JOIN_FULL', `Tournament full: ${tournament.name}`);
+      return false;
+    }
+    // Banned player?
+    if (player.banned) {
+      this._flag('BANNED_JOIN', `Banned player tried to join: ${player.name}`);
+      return false;
+    }
+    return true;
+  },
+
+  // Verify data hasn't been tampered client-side
+  verifyDataIntegrity(playerFromServer, playerLocal) {
+    if (!playerFromServer || !playerLocal) return true;
+    // Check if local balance is higher than server balance by > allowed delta
+    const serverBal = playerFromServer.balance || 0;
+    const localBal  = playerLocal.balance || 0;
+    if (localBal > serverBal + this.MAX_SINGLE_CHANGE) {
+      this._flag('BALANCE_TAMPER', `Local balance (${localBal}) > server (${serverBal}) by suspicious amount`);
+      return false;
+    }
+    return true;
+  },
+
+  // Flag a cheat attempt — log it and notify admin
+  _flag(code, detail) {
+    const me = DB.me;
+    console.warn(`[ANTICHEAT] ${code}: ${detail}`);
+    // Log to Firestore for admin review
+    const entry = {
+      id: `cheat_${Date.now()}`,
+      uid: me?.id || 'unknown',
+      playerName: me?.name || 'unknown',
+      code, detail,
+      timestamp: new Date().toISOString(),
+    };
+    fsSet('cheat_flags', entry.id, entry).catch(()=>{});
+    _logActivity(me?.id, 'CHEAT_DETECTED', `[${code}] ${detail}`);
+  },
+};
+
+// Safe balance setter — always goes through anti-cheat
+function _setBalance(player, newBalance, reason = 'unknown') {
+  const current = player.balance || 0;
+  if (!_ANTICHEAT.verifyBalanceChange(current, newBalance, reason)) {
+    toast('⛔ Action blocked by anti-cheat system', 'error');
+    return false;
+  }
+  player.balance = Math.max(0, Math.min(_ANTICHEAT.MAX_BALANCE, Math.round(newBalance)));
+  return true;
+}
+
+// ================================================================
 // CONFIG
 // ================================================================
 const FB_API_KEY   = 'AIzaSyANPvViVTkZpJMxx27bdSpPYoJMHVKtTBw';
@@ -2221,6 +2341,24 @@ async function _enterApp() {
   // Always enforce admin role by email
   if (S.email === ADMIN_EMAIL) DB.me.role = 'admin';
 
+  // ⛔ INTEGRITY CHECK — fetch fresh player data from server and verify local cache matches
+  if (DB.me && DB.me.role !== 'admin') {
+    try {
+      const freshPlayer = await fsGet('players', S.uid);
+      if (freshPlayer) {
+        // Server is always authoritative for balance
+        DB.me.balance = freshPlayer.balance || 0;
+        DB.me.banned  = freshPlayer.banned  || false;
+        DB.me.role    = freshPlayer.role    || 'player';
+        // Check if someone tampered with local storage
+        if (!_ANTICHEAT.verifyDataIntegrity(freshPlayer, DB.me)) {
+          _logActivity(S.uid, 'INTEGRITY_FAIL', 'Local data mismatch with server');
+          DB.me.balance = freshPlayer.balance || 0; // force server value
+        }
+      }
+    } catch(e) {}
+  }
+
   // ⛔ BAN CHECK — if banned, show ban wall and stop here
   if (_checkBanned()) { _hideLoading(); return; }
 
@@ -2726,7 +2864,13 @@ async function joinTSolo(tid) {
   }
 
   t.players = [...(t.players||[]), me.id];
-  if (t.entryFee) me.balance = Math.max(0, (me.balance||0) - t.entryFee);
+  if (t.entryFee) {
+    if (!_ANTICHEAT.verifyTournamentJoin(me, t)) { toast('⛔ Anti-cheat: join blocked','error'); return; }
+    if (!_ANTICHEAT.verifyCanAfford(me.balance||0, t.entryFee, t.name)) { toast('Insufficient balance','error'); return; }
+    if (!_setBalance(me, (me.balance||0) - t.entryFee, `Tournament entry: ${t.name}`)) return;
+  } else {
+    if (!_ANTICHEAT.verifyTournamentJoin(me, t)) { toast('⛔ Anti-cheat: join blocked','error'); return; }
+  }
   me.tournaments = (me.tournaments||0) + 1;
 
   const [ok1, ok2] = await Promise.all([fsSet('tournaments', tid, t), fsSet('players', me.id, me)]);
@@ -3641,7 +3785,7 @@ async function confirmTopup(gameId, amount, price) {
     return;
   }
   _btn('btn-topup', true);
-  me.balance = (me.balance||0) - Number(price);
+  if (!_setBalance(me, (me.balance||0) - Number(price), `Store topup purchase`)) return;
   me.gameProfiles = me.gameProfiles || [];
   const idx = me.gameProfiles.findIndex(p => p.game === gameId);
   if (idx >= 0) me.gameProfiles[idx].username = uid;
@@ -3695,7 +3839,7 @@ async function buyStoreItem(iid) {
   const gameUid = document.getElementById('buy-game-uid')?.value.trim();
   if (item.instructions && !gameUid) { toast('Please fill in the required field','error'); return; }
   _btn('btn-buy', true);
-  me.balance -= item.price;
+  if (!_setBalance(me, (me.balance||0) - item.price, `Store item: ${item.name}`)) return;
   // Save game profile if applicable
   if (item.game && gameUid) {
     me.gameProfiles = me.gameProfiles||[];
@@ -4647,7 +4791,8 @@ async function saveAdminEdit(pid) {
   _btn('btn-aep', true);
   p.name       = name;
   p.uid        = _v('aep-uid').trim() || p.uid;
-  p.balance    = Math.max(0, Number(_v('aep-balance'))||0);
+  const _newBal = Math.max(0, Number(_v('aep-balance'))||0);
+  if (!_setBalance(p, _newBal, 'Admin balance edit')) { toast('Balance value rejected by anti-cheat','error'); return; }
   p.wins       = Math.max(0, Number(_v('aep-wins'))||0);
   p.losses     = Math.max(0, Number(_v('aep-losses'))||0);
   p.tournaments= Math.max(0, Number(_v('aep-events'))||0);
@@ -4737,7 +4882,7 @@ async function saveGiveCoins(pid) {
   const amount = Number(_v('gc-amount'));
   if (isNaN(amount) || amount === 0) { toast('Enter a valid amount','error'); return; }
   _btn('btn-gc', true);
-  p.balance = Math.max(0, (p.balance||0) + amount);
+  if (!_setBalance(p, (p.balance||0) + amount, `Admin AC add: ${amount}`)) { toast('Anti-cheat blocked this amount','error'); _btn('btn-give-ac',false); return; }
   await fsSet('players', pid, p);
   if (pid === DB.me?.id) { DB.me.balance = p.balance; renderDash(); }
   toast(`${amount>0?'Gave':'Deducted'} ${Math.abs(amount)} AC ${amount>0?'to':'from'} ${p.name}`,'success');
@@ -6831,6 +6976,8 @@ async function renderAdminActivityLog() {
           <option value="DEPOSIT_REQUEST">💰 Deposit Request</option>
           <option value="BANNED">🚫 Banned</option>
           <option value="UNBANNED">✅ Unbanned</option>
+          <option value="CHEAT_DETECTED">⚠️ Cheat Detected</option>
+          <option value="INTEGRITY_FAIL">🔴 Integrity Fail</option>
         </select>
         <button class="admin-btn danger" onclick="adminClearAllLogs()">🗑️ Clear All</button>
       </div>
@@ -6844,8 +6991,10 @@ async function loadActivityLogs() {
   _btn('btn-load-logs', true);
   document.getElementById('log-count').textContent = 'Loading...';
   try {
-    const logs = await fsList('activity_logs');
-    _cachedLogs = logs.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+    const [logs, cheatLogs] = await Promise.all([fsList('activity_logs'), fsList('cheat_flags')]);
+    // Merge cheat flags into activity log
+    const merged = [...logs, ...cheatLogs].map(l => ({ ...l, action: l.action || (l.code ? 'CHEAT_DETECTED' : 'LOG'), details: l.details || l.detail || '' }));
+    _cachedLogs = merged.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
     filterActivityLog();
   } catch(e) {
     document.getElementById('log-count').textContent = 'Failed to load logs.';
@@ -6874,7 +7023,7 @@ function filterActivityLog() {
     TEAM_CREATE:'#60a5fa', TEAM_JOIN:'#60a5fa', TEAM_LEAVE:'var(--red)',
     NAME_CHANGE:'var(--gold)', GAME_PROFILE_ADD:'var(--g1)', GAME_PROFILE_EDIT:'var(--gold)',
     GAME_PROFILE_DELETE:'var(--red)', DEPOSIT_REQUEST:'var(--gold)',
-    BANNED:'var(--red)', UNBANNED:'var(--g1)',
+    BANNED:'var(--red)', UNBANNED:'var(--g1)', CHEAT_DETECTED:'#f97316', INTEGRITY_FAIL:'var(--red)',
   };
 
   const el = document.getElementById('log-list');
