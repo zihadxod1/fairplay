@@ -3782,18 +3782,22 @@ function renderProfile() {
               // Normalize & deduplicate: resolve old hardcoded IDs to DB IDs, keep last entry per game
               const allGames = _getGames();
               const normalize = id => {
-                // Try exact match first, then fuzzy match by name
                 if (allGames.find(g => g.id === id)) return id;
                 const fuzzy = allGames.find(g => g.id.replace(/_/g,'') === id.replace(/_/g,'') ||
                   g.name.toLowerCase().replace(/\s+/g,'_') === id);
-                return fuzzy ? fuzzy.id : id;
+                return fuzzy ? fuzzy.id : null; // return null if game not found
               };
               const seen = {};
-              (me.gameProfiles||[]).forEach(gp => { seen[normalize(gp.game)] = {...gp, game: normalize(gp.game)}; });
+              (me.gameProfiles||[]).forEach(gp => {
+                const nid = normalize(gp.game);
+                if (nid) seen[nid] = {...gp, game: nid}; // skip deleted games
+              });
               const unique = Object.values(seen);
+              if (!unique.length) return '<div style="font-size:12px;color:var(--dim)">No game profiles linked yet</div>';
               return unique.map(gp => {
                 const dbGame = _getGames().find(g => g.id === gp.game);
-                const displayName = dbGame?.name || gp.game;
+                if (!dbGame) return ''; // skip if game deleted
+                const displayName = dbGame.name;
                 return `<div class="game-profile-item">
                   <div style="display:flex;align-items:center;gap:10px;flex:1;min-width:0">
                     ${_gameIconHtml(gp.game, 22)}
@@ -4161,7 +4165,6 @@ function showNotifications() {
 // ================================================================
 function viewPlayerModal(pid) {
   const p = DB.players.find(pp => _pid(pp) === pid); if (!p) return;
-  const guild = null;
   const teams = DB.teams.filter(t => (t.memberIds||[]).includes(_pid(p)));
   const wr    = (p.wins && p.tournaments) ? Math.round((p.wins/p.tournaments)*100) : 0;
   const badgeDefs = {
@@ -4169,6 +4172,56 @@ function viewPlayerModal(pid) {
     winner:{emoji:'🥇',name:'Champion'}, veteran:{emoji:'⚔️',name:'Veteran'},
     legend:{emoji:'🌟',name:'Legend'}, newbie:{emoji:'🌱',name:'Newcomer'}
   };
+
+  // Game profiles section — filter out profiles for deleted games
+  const activeProfiles = (p.gameProfiles||[]).filter(gp => {
+    const gid = gp.game || gp.gameId; // support both field names
+    return _getGames().some(g => g.id === gid || g.name?.toLowerCase() === (gid||'').toLowerCase());
+  });
+
+  const gameProfilesHtml = activeProfiles.length
+    ? `<div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">🎮 Game Profiles</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${activeProfiles.map(gp => {
+            const gid     = gp.game || gp.gameId;
+            const gameObj = _getGames().find(g => g.id === gid || g.name?.toLowerCase() === (gid||'').toLowerCase());
+            return `<div style="display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:8px 12px">
+              <div style="width:32px;height:32px;border-radius:8px;overflow:hidden;background:var(--panel);display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                ${_gameIconHtml(gameObj.id, 22)}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:700">${gameObj.name}</div>
+                <div style="font-size:11px;color:var(--g1);font-family:monospace">${gp.username||'—'}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`
+    : '';
+
+  // Teams section
+  const teamsHtml = teams.length
+    ? `<div style="margin-bottom:14px">
+        <div style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">👥 My Teams</div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${teams.map(t => {
+            const logoIsImg = (t.logo||'').startsWith('data:') || (t.logo||'').startsWith('http');
+            const isLeader  = t.leaderId === _pid(p);
+            return `<div style="display:flex;align-items:center;gap:10px;background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:8px 12px">
+              <div style="width:32px;height:32px;border-radius:8px;overflow:hidden;background:var(--panel);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">
+                ${logoIsImg ? `<img src="${t.logo}" style="width:100%;height:100%;object-fit:cover">` : (t.logo||'👥')}
+              </div>
+              <div style="flex:1;min-width:0">
+                <div style="font-size:12px;font-weight:700">${t.name}</div>
+                <div style="font-size:10px;color:var(--dim);font-family:monospace">[${t.tag||'???'}] · ${(t.memberIds||[]).length} members${isLeader?' · <span style="color:var(--gold)">👑 Leader</span>':''}</div>
+              </div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>`
+    : '';
+
   openModal(`
     <div class="modal-close-row">
       <div style="display:flex;align-items:center;gap:12px">
@@ -4190,9 +4243,9 @@ function viewPlayerModal(pid) {
       <div class="profile-stat"><div class="profile-stat-val text-gold">${p.tournaments||0}</div><div class="profile-stat-lbl">Events</div></div>
       <div class="profile-stat"><div class="profile-stat-val">${p.balance||0}</div><div class="profile-stat-lbl">AC</div></div>
     </div>
-    ${guild ? `<div style="font-size:13px;margin-bottom:8px">🛡️ <b>${guild.name}</b> [${guild.tag}]</div>` : ''}
-    ${teams.length ? `<div style="font-size:13px;margin-bottom:8px">👥 ${teams.map(t=>t.name).join(', ')}</div>` : ''}
-    <div class="badges-grid" style="margin-bottom:10px">
+    <!-- Badges -->
+    <div style="font-size:11px;font-weight:700;color:var(--dim);text-transform:uppercase;letter-spacing:.8px;margin-bottom:8px">🏅 Badges</div>
+    <div class="badges-grid" style="margin-bottom:14px">
       ${(p.badges||[]).length
         ? (p.badges||[]).map(rawBid => {
             const bid = _normBid(rawBid);
@@ -4209,7 +4262,7 @@ function viewPlayerModal(pid) {
             }
             const hardcoded2 = {owner:{emoji:'👑',name:'Owner'},tournament:{emoji:'🏆',name:'Winner'},winner:{emoji:'🥇',name:'Champion'},veteran:{emoji:'⚔️',name:'Veteran'},legend:{emoji:'🌟',name:'Legend'},newbie:{emoji:'🌱',name:'Newcomer'}};
             const bd = badgeDefs[bid] || hardcoded2[bid];
-            if (!bd) return ''; // skip unknown badges cleanly
+            if (!bd) return '';
             return `<div class="badge-item" style="display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px;border-radius:8px;background:var(--panel2);min-width:50px;max-width:64px">
               <span style="font-size:22px">${bd.emoji}</span>
               <span style="font-size:9px;font-weight:700;text-align:center;line-height:1.2">${bd.name}</span>
@@ -4217,6 +4270,8 @@ function viewPlayerModal(pid) {
           }).join('')
         : '<span style="font-size:12px;color:var(--dim)">No badges</span>'}
     </div>
+    ${gameProfilesHtml}
+    ${teamsHtml}
     ${p.joinedDate ? `<div style="font-size:11px;color:var(--dim2)">Joined: ${p.joinedDate.split('T')[0]}</div>` : ''}
   `);
 }
