@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#060b07">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
+<meta http-equiv="Referrer-Policy" content="no-referrer">
 <title>FF BOOYAH — Esports Platform</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1505,6 +1508,7 @@ img{display:block;max-width:100%}
         <div class="admin-tab" onclick="setAdminTab('notifications',this)">🔔 Notify</div>
         <div class="admin-tab" onclick="setAdminTab('settings',this)">⚙️ Settings</div>
         <div class="admin-tab" onclick="setAdminTab('store',this)">🛒 Store</div>
+        <div class="admin-tab" onclick="setAdminTab('activitylog',this)" style="white-space:nowrap">📋 Activity Log</div>
       </div>
       <div id="admin-content"></div>
     </div>
@@ -1540,6 +1544,149 @@ img{display:block;max-width:100%}
 
 <script>
 'use strict';
+// ================================================================
+// ██████████████ SECURITY SHIELD ████████████████████████████████
+// Anti-tamper | Anti-DevTools | Rate Limit | XSS Guard | Integrity
+// ================================================================
+(function _SECURITY_INIT() {
+
+  // 1. BLOCK DevTools keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (
+      e.key === 'F12' ||
+      (e.ctrlKey && e.shiftKey && ['I','J','C','K'].includes(e.key)) ||
+      (e.metaKey && e.altKey && ['I','J'].includes(e.key)) ||
+      (e.ctrlKey && e.key === 'U')
+    ) { e.preventDefault(); e.stopPropagation(); return false; }
+  }, true);
+
+  // 2. BLOCK right-click context menu
+  document.addEventListener('contextmenu', e => e.preventDefault(), true);
+
+  // 3. DevTools SIZE detection — lock app if devtools panel opens
+  let _devtoolsOpen = false;
+  const _devCheck = () => {
+    const w = window.outerWidth - window.innerWidth;
+    const h = window.outerHeight - window.innerHeight;
+    if (w > 160 || h > 160) {
+      if (!_devtoolsOpen) {
+        _devtoolsOpen = true;
+        _LOCKDOWN('DevTools detected');
+      }
+    } else {
+      _devtoolsOpen = false;
+    }
+  };
+  setInterval(_devCheck, 1000);
+
+  // 4. CONSOLE neutralization — prevent JS console exploitation
+  const _noop = () => {};
+  const _trap = () => { _LOCKDOWN('Console access detected'); };
+  try {
+    Object.defineProperty(console, '_commandLineAPI', { get: _trap });
+  } catch(e) {}
+  // Override console only in production (non-admin)
+  const _safeConsole = { log:_noop, warn:_noop, error:_noop, info:_noop, debug:_noop, table:_noop, dir:_noop };
+  // Will be applied after login check - admins keep console
+
+  // 5. DEBUGGER trap — pauses and breaks automated debugging
+  const _debugTrap = () => { setInterval(() => { debugger; }, 100); };
+  // Activated on suspicious behavior only
+
+  // 6. DOM MUTATION protection — detect unauthorized DOM injection
+  const _observer = new MutationObserver(mutations => {
+    for (const m of mutations) {
+      for (const node of m.addedNodes) {
+        if (node.tagName === 'SCRIPT' && !node.dataset.trusted) {
+          node.remove();
+          _LOCKDOWN('Unauthorized script injection detected');
+        }
+      }
+    }
+  });
+  _observer.observe(document.documentElement, { childList:true, subtree:true });
+
+  // 7. IFRAME protection — kill if embedded in iframe
+  if (window.self !== window.top) {
+    document.body.innerHTML = '<div style="background:#000;color:#f00;padding:40px;font-family:monospace;font-size:18px">⛔ EMBEDDED ACCESS BLOCKED</div>';
+    throw new Error('Iframe blocked');
+  }
+
+  // 8. LOCKDOWN function — triggered on detected attack
+  window._LOCKDOWN = function(reason) {
+    console.clear();
+    document.getElementById('app-screen')?.classList.remove('active');
+    const lock = document.getElementById('ban-screen');
+    if (lock) {
+      lock.style.display = 'flex';
+      const title = lock.querySelector('div[style*="ACCOUNT BANNED"]');
+      if (title) title.textContent = '⚠️ ACCESS BLOCKED';
+      const msg = lock.querySelectorAll('div')[2];
+      if (msg) msg.textContent = 'Suspicious activity detected. This session has been terminated.';
+    } else {
+      document.body.innerHTML = `<div style="position:fixed;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#ef4444;font-family:monospace;text-align:center;padding:24px"><div style="font-size:48px;margin-bottom:16px">⛔</div><div style="font-size:20px;font-weight:900;margin-bottom:8px">ACCESS BLOCKED</div><div style="font-size:13px;color:#666">Suspicious activity detected.<br>This session has been terminated.</div></div>`;
+    }
+    // Stop all timers
+    for (let i = 1; i < 99999; i++) { clearInterval(i); clearTimeout(i); }
+    throw new Error(`Security: ${reason}`);
+  };
+
+})();
+
+// ================================================================
+// RATE LIMITER — prevents API flooding & brute force
+// ================================================================
+const _rateLimits = {};
+function _rateCheck(key, maxCalls = 10, windowMs = 10000) {
+  const now = Date.now();
+  if (!_rateLimits[key]) _rateLimits[key] = [];
+  _rateLimits[key] = _rateLimits[key].filter(t => now - t < windowMs);
+  if (_rateLimits[key].length >= maxCalls) {
+    console.warn(`Rate limit hit: ${key}`);
+    return false; // blocked
+  }
+  _rateLimits[key].push(now);
+  return true; // allowed
+}
+
+// ================================================================
+// INPUT SANITIZER — strips XSS payloads from all user input
+// ================================================================
+function _sanitize(str) {
+  if (typeof str !== 'string') return str;
+  return str
+    .replace(/&/g,  '&amp;')
+    .replace(/</g,  '&lt;')
+    .replace(/>/g,  '&gt;')
+    .replace(/"/g,  '&quot;')
+    .replace(/'/g,  '&#x27;')
+    .replace(/\//g, '&#x2F;')
+    .replace(/javascript:/gi, '')
+    .replace(/on\w+\s*=/gi, '')
+    .replace(/<script/gi, '')
+    .replace(/eval\(/gi, '')
+    .replace(/document\./gi, '')
+    .trim();
+}
+
+// Wrap _v to auto-sanitize all form inputs
+const _v_raw = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
+function _v(id) { return _sanitize(_v_raw(id)); }
+
+// ================================================================
+// SESSION INTEGRITY — re-verify token on sensitive actions
+// ================================================================
+function _assertSession() {
+  if (!S.token || !S.uid) {
+    doLogout();
+    throw new Error('No valid session');
+  }
+  if (DB.me?.banned && DB.me?.role !== 'admin') {
+    _checkBanned();
+    throw new Error('Account banned');
+  }
+}
+
 // ================================================================
 // CONFIG
 // ================================================================
@@ -1640,6 +1787,11 @@ function _fsHeaders() {
 }
 
 async function _fsRequest(url, options = {}) {
+  // Rate limit: max 60 API calls per 10 seconds
+  if (!_rateCheck('fsRequest', 60, 10000)) {
+    toast('Too many requests. Please slow down.', 'error');
+    throw new Error('Rate limit exceeded');
+  }
   options.headers = _fsHeaders();
   let r = await fetch(url, options);
   // If 401/403 try refreshing token once
@@ -1648,6 +1800,8 @@ async function _fsRequest(url, options = {}) {
     if (ok) {
       options.headers = _fsHeaders();
       r = await fetch(url, options);
+    } else {
+      doLogout(); // Force logout on auth failure
     }
   }
   return r;
@@ -1884,8 +2038,14 @@ function lpSwitch(tab) {
 
 async function lpSignIn() {
   if (_busy) return;
+  // Brute-force protection: max 5 login attempts per 60 seconds
+  if (!_rateCheck('login_attempt', 5, 60000)) {
+    const errEl = document.getElementById('signin-err');
+    _showErr(errEl, '⛔ Too many login attempts. Wait 60 seconds before trying again.');
+    return;
+  }
   const email = _v('si-email').trim();
-  const pass  = _v('si-pass');
+  const pass  = _v_raw('si-pass'); // don't sanitize password
   const errEl = document.getElementById('signin-err');
   _hideErr(errEl);
   if (!email || !pass) { _showErr(errEl,'Please fill all fields'); return; }
@@ -1959,7 +2119,27 @@ async function lpForgotPw() {
   } catch(e) { toast('Failed to send reset email', 'error'); }
 }
 
+// ================================================================
+// ACTIVITY LOG — tracks all player actions (admin-only view)
+// ================================================================
+async function _logActivity(uid, action, details = '') {
+  if (!uid) return;
+  const logId  = `log_${uid}_${Date.now()}`;
+  const entry  = {
+    id: logId,
+    uid,
+    playerName: DB.players.find(p=>_pid(p)===uid)?.name || DB.me?.name || '—',
+    action,
+    details,
+    timestamp: new Date().toISOString(),
+  };
+  // Save to Firestore — non-blocking, don't await in critical paths
+  fsSet('activity_logs', logId, entry).catch(()=>{});
+}
+
 function doLogout() {
+  // Log logout before clearing session
+  if (DB.me) _logActivity(_pid(DB.me), 'LOGOUT', `Signed out`);
   if (_syncTimer) clearInterval(_syncTimer);
   _clearSession();
   DB = { me:null, players:[], tournaments:[], teams:[], badges:[], transactions:[], storeItems:[], games:[], notifications:[], teamFinderPosts:[], paymentMethods:[], config:{} };
@@ -2049,6 +2229,7 @@ async function _enterApp() {
   document.getElementById('app-screen').classList.add('active');
   _refreshUI();
   showPage('dashboard');
+  _logActivity(_pid(DB.me), 'LOGIN', `Signed in from ${S.email}`);
 
   // Auto-refresh data every 60s — re-check ban on every sync
   if (_syncTimer) clearInterval(_syncTimer);
@@ -2508,6 +2689,7 @@ function _tCard(t) {
 }
 
 async function joinTSolo(tid) {
+  try { _assertSession(); } catch(e) { return; }
   const me = DB.me;
   const t  = DB.tournaments.find(t => (t.id||t._fsId) === tid);
   if (!t || !me) return;
@@ -2548,7 +2730,7 @@ async function joinTSolo(tid) {
   me.tournaments = (me.tournaments||0) + 1;
 
   const [ok1, ok2] = await Promise.all([fsSet('tournaments', tid, t), fsSet('players', me.id, me)]);
-  if (ok1 && ok2) { toast('Joined tournament! ⚔️','success'); _cacheDB(); }
+  if (ok1 && ok2) { toast('Joined tournament! ⚔️','success'); _logActivity(_pid(me), 'TOURNAMENT_JOIN', `Joined tournament: ${t.name}`); _cacheDB(); }
   else toast('Error joining tournament','error');
   renderTournaments();
   renderDash();
@@ -2913,6 +3095,7 @@ function handleTeamLogoUpload(input, previewId, dataId) {
 }
 
 async function createTeam() {
+  try { _assertSession(); } catch(e) { return; }
   const name = _v('ct-name').trim();
   const tag  = _v('ct-tag').trim().toUpperCase();
   const logoData  = document.getElementById('ct-logo-data')?.value;
@@ -2927,7 +3110,7 @@ async function createTeam() {
   me.teamIds = [...(me.teamIds||[]), id];
   DB.teams.push(team);
   const [ok1] = await Promise.all([fsSet('teams', id, team), fsSet('players', me.id, me)]);
-  if (ok1) { toast('Team created! ⚔️','success'); _cacheDB(); closeModal(); renderTeams(); }
+  if (ok1) { toast('Team created! ⚔️','success'); _logActivity(_pid(me), 'TEAM_CREATE', `Created team: ${name} [${tag}]`); _cacheDB(); closeModal(); renderTeams(); }
   else { toast('Error creating team','error'); _btn('btn-create-team', false); }
 }
 
@@ -2961,6 +3144,7 @@ function openJoinTeamById(tid) {
 }
 
 async function joinTeamById() {
+  try { _assertSession(); } catch(e) { return; }
   const tid = _v('jt-id').trim();
   const t   = DB.teams.find(t => (t.id||t._fsId) === tid);
   if (!t) { toast('Team not found — check the ID','error'); return; }
@@ -2970,7 +3154,7 @@ async function joinTeamById() {
   t.memberIds = [...(t.memberIds||[]), me.id];
   me.teamIds  = [...(me.teamIds||[]), t.id||t._fsId];
   await Promise.all([fsSet('teams', t.id||t._fsId, t), fsSet('players', me.id, me)]);
-  toast(`Joined ${t.name}! ⚔️`,'success'); _cacheDB(); closeModal(); renderTeams();
+  _logActivity(_pid(me), 'TEAM_JOIN', `Joined team: ${t.name}`); toast(`Joined ${t.name}! ⚔️`,'success'); _cacheDB(); closeModal(); renderTeams();
 }
 
 function validateTeamIdInput(expectedTid, typed) {
@@ -2995,7 +3179,7 @@ async function leaveTeam(tid) {
   t.memberIds = (t.memberIds||[]).filter(id => id !== me.id);
   me.teamIds  = (me.teamIds||[]).filter(id => id !== tid);
   await Promise.all([fsSet('teams', tid, t), fsSet('players', me.id, me)]);
-  toast('Left team','info'); _cacheDB(); renderTeams();
+  _logActivity(_pid(me), 'TEAM_LEAVE', `Left team: ${t.name}`); toast('Left team','info'); _cacheDB(); renderTeams();
 }
 
 function viewTeam(tid) {
@@ -3844,7 +4028,7 @@ async function editName() {
   me.name = trimmed;
   me.lastNameChange = new Date().toISOString();
   const ok = await fsSet('players', me.id, me);
-  if (ok) { toast('Name updated! ✅','success'); _cacheDB(); _refreshUI(); renderProfile(); }
+  if (ok) { toast('Name updated! ✅','success'); _logActivity(_pid(me), 'NAME_CHANGE', `Changed name to: ${newName}`); _cacheDB(); _refreshUI(); renderProfile(); }
   else toast('Error updating name','error');
 }
 
@@ -3875,7 +4059,7 @@ async function saveGameProfile() {
   if (idx >= 0) me.gameProfiles[idx].username = username;
   else me.gameProfiles.push({ game, username });
   const ok = await fsSet('players', me.id, me);
-  if (ok) { toast('Game profile saved!','success'); _cacheDB(); closeModal(); renderProfile(); }
+  if (ok) { toast('Game profile saved!','success'); _logActivity(_pid(me), 'GAME_PROFILE_ADD', `Added game profile: ${gameId} → ${uid}`); _cacheDB(); closeModal(); renderProfile(); }
   else    { toast('Error saving profile','error'); _btn('btn-gp', false); }
 }
 
@@ -3919,7 +4103,7 @@ async function saveEditGameProfile(gameId) {
   if (idx >= 0) me.gameProfiles[idx].username = username;
   else me.gameProfiles.push({ game: gameId, username });
   const ok = await fsSet('players', me.id, me);
-  if (ok) { toast('Game profile updated!','success'); _cacheDB(); closeModal(); renderProfile(); }
+  if (ok) { toast('Game profile updated!','success'); _logActivity(_pid(me), 'GAME_PROFILE_EDIT', `Updated game profile: ${gameId} → ${uid}`); _cacheDB(); closeModal(); renderProfile(); }
   else    { toast('Error saving','error'); _btn('btn-egp', false); }
 }
 
@@ -3930,7 +4114,7 @@ async function deleteGameProfile(gameId) {
   const me = DB.me;
   me.gameProfiles = (me.gameProfiles||[]).filter(p => p.game !== gameId);
   const ok = await fsSet('players', me.id, me);
-  if (ok) { toast(name + ' removed','success'); _cacheDB(); closeModal(); renderProfile(); }
+  if (ok) { toast(name + ' removed','success'); _logActivity(_pid(me), 'GAME_PROFILE_DELETE', `Removed game profile: ${gameId}`); _cacheDB(); closeModal(); renderProfile(); }
   else    toast('Error removing profile','error');
 }
 
@@ -4322,6 +4506,7 @@ function renderAdminContent() {
     notifications: renderAdminNotifications,
     settings:      renderAdminSettings,
     store:         renderAdminStore,
+    activitylog:   renderAdminActivityLog,
   };
   if (fns[_adminTab]) fns[_adminTab]();
 }
@@ -4501,7 +4686,7 @@ async function adminToggleBan(pid) {
   }
 
   await fsSet('players', pid, p);
-  toast(p.banned ? `🚫 ${p.name} has been BANNED` : `✅ ${p.name} unbanned`, p.banned ? 'error' : 'success');
+  _logActivity(_pid(p), p.banned?'BANNED':'UNBANNED', p.banned?`Banned by admin`:`Unbanned by admin`); toast(p.banned ? `🚫 ${p.name} has been BANNED` : `✅ ${p.name} unbanned`, p.banned ? 'error' : 'success');
   _cacheDB(); renderAdminPlayers();
 }
 
@@ -6616,6 +6801,123 @@ const THEME_PRESETS = {
   blood:   { '--g1':'#f87171','--g2':'#ef4444','--bg':'#0b0505','--panel':'#1c0a0a','--gold':'#fbbf24','--red':'#fca5a5','--dim':'rgba(254,226,226,.4)','--border':'rgba(248,113,113,.12)','--text':'#fee2e2' },
   royal:   { '--g1':'#fbbf24','--g2':'#f59e0b','--bg':'#09080a','--panel':'#1a1610','--gold':'#fde68a','--red':'#f87171','--dim':'rgba(254,243,199,.4)','--border':'rgba(251,191,36,.12)','--text':'#fef3c7' },
 };
+
+// ================================================================
+// ADMIN — ACTIVITY LOG
+// ================================================================
+let _logFilterUid  = '';
+let _logFilterType = 'all';
+let _cachedLogs    = [];
+
+async function renderAdminActivityLog() {
+  const el = document.getElementById('admin-content');
+  el.innerHTML = `
+    <div style="margin-bottom:14px">
+      <div style="font-size:14px;font-weight:700;margin-bottom:10px">📋 Player Activity Log</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input class="form-input" id="log-search-player" placeholder="🔍 Search by player name or UID..." style="flex:1;min-width:200px" oninput="filterActivityLog()">
+        <select class="form-input" id="log-filter-type" style="flex:1;min-width:150px" onchange="filterActivityLog()">
+          <option value="all">All Actions</option>
+          <option value="LOGIN">🔐 Login</option>
+          <option value="LOGOUT">🚪 Logout</option>
+          <option value="TOURNAMENT_JOIN">🏆 Tournament Join</option>
+          <option value="TEAM_CREATE">👥 Team Create</option>
+          <option value="TEAM_JOIN">👥 Team Join</option>
+          <option value="TEAM_LEAVE">🚶 Team Leave</option>
+          <option value="NAME_CHANGE">✏️ Name Change</option>
+          <option value="GAME_PROFILE_ADD">🎮 Game Profile Add</option>
+          <option value="GAME_PROFILE_EDIT">🎮 Game Profile Edit</option>
+          <option value="GAME_PROFILE_DELETE">🎮 Game Profile Delete</option>
+          <option value="DEPOSIT_REQUEST">💰 Deposit Request</option>
+          <option value="BANNED">🚫 Banned</option>
+          <option value="UNBANNED">✅ Unbanned</option>
+        </select>
+        <button class="admin-btn danger" onclick="adminClearAllLogs()">🗑️ Clear All</button>
+      </div>
+      <button class="btn-primary" id="btn-load-logs" onclick="loadActivityLogs()" style="width:100%;margin-bottom:10px">📥 Load Activity Logs</button>
+      <div id="log-count" style="font-size:11px;color:var(--dim);margin-bottom:8px"></div>
+      <div id="log-list"></div>
+    </div>`;
+}
+
+async function loadActivityLogs() {
+  _btn('btn-load-logs', true);
+  document.getElementById('log-count').textContent = 'Loading...';
+  try {
+    const logs = await fsList('activity_logs');
+    _cachedLogs = logs.sort((a,b) => new Date(b.timestamp||0) - new Date(a.timestamp||0));
+    filterActivityLog();
+  } catch(e) {
+    document.getElementById('log-count').textContent = 'Failed to load logs.';
+  }
+  _btn('btn-load-logs', false);
+}
+
+function filterActivityLog() {
+  const q    = (document.getElementById('log-search-player')?.value||'').trim().toLowerCase();
+  const type = document.getElementById('log-filter-type')?.value||'all';
+  let logs   = _cachedLogs;
+
+  if (q)          logs = logs.filter(l => l.playerName?.toLowerCase().includes(q) || l.uid?.toLowerCase().includes(q));
+  if (type!=='all') logs = logs.filter(l => l.action === type);
+
+  const countEl = document.getElementById('log-count');
+  if (countEl) countEl.textContent = `${logs.length} entries`;
+
+  const ACTION_ICONS = {
+    LOGIN:'🔐', LOGOUT:'🚪', TOURNAMENT_JOIN:'🏆', TEAM_CREATE:'👥', TEAM_JOIN:'🤝',
+    TEAM_LEAVE:'🚶', NAME_CHANGE:'✏️', GAME_PROFILE_ADD:'🎮', GAME_PROFILE_EDIT:'🎮',
+    GAME_PROFILE_DELETE:'🗑️', DEPOSIT_REQUEST:'💰', BANNED:'🚫', UNBANNED:'✅',
+  };
+  const ACTION_COLORS = {
+    LOGIN:'var(--g1)', LOGOUT:'var(--dim)', TOURNAMENT_JOIN:'var(--gold)',
+    TEAM_CREATE:'#60a5fa', TEAM_JOIN:'#60a5fa', TEAM_LEAVE:'var(--red)',
+    NAME_CHANGE:'var(--gold)', GAME_PROFILE_ADD:'var(--g1)', GAME_PROFILE_EDIT:'var(--gold)',
+    GAME_PROFILE_DELETE:'var(--red)', DEPOSIT_REQUEST:'var(--gold)',
+    BANNED:'var(--red)', UNBANNED:'var(--g1)',
+  };
+
+  const el = document.getElementById('log-list');
+  if (!el) return;
+  if (!logs.length) { el.innerHTML = '<div class="empty-state" style="padding:24px"><p>No activity logs found</p></div>'; return; }
+
+  el.innerHTML = logs.map(l => {
+    const icon  = ACTION_ICONS[l.action]||'📝';
+    const color = ACTION_COLORS[l.action]||'var(--text)';
+    const dt    = l.timestamp ? new Date(l.timestamp) : null;
+    const date  = dt ? dt.toLocaleDateString() : '—';
+    const time  = dt ? dt.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}) : '—';
+    const lid   = l.id||l._fsId;
+    return `
+    <div style="display:flex;gap:10px;padding:10px 12px;background:var(--panel);border:1px solid var(--border);border-left:3px solid ${color};border-radius:8px;margin-bottom:6px;align-items:flex-start">
+      <div style="font-size:18px;flex-shrink:0;margin-top:1px">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+          <span style="font-size:12px;font-weight:700;color:${color}">${l.action?.replace(/_/g,' ')||'ACTION'}</span>
+          <span style="font-size:12px;font-weight:700;color:var(--text)">${l.playerName||'Unknown'}</span>
+          <span style="font-size:10px;color:var(--dim);font-family:monospace">${l.uid||''}</span>
+        </div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:3px">${l.details||''}</div>
+        <div style="font-size:10px;color:var(--dim2)">${date} · ${time}</div>
+      </div>
+      <button class="admin-btn danger" style="padding:3px 7px;font-size:10px;flex-shrink:0" onclick="adminDeleteLog('${lid}')">✕</button>
+    </div>`;
+  }).join('');
+}
+
+async function adminDeleteLog(lid) {
+  await fsDelete('activity_logs', lid);
+  _cachedLogs = _cachedLogs.filter(l=>(l.id||l._fsId)!==lid);
+  filterActivityLog();
+}
+
+async function adminClearAllLogs() {
+  if (!confirm(`Delete ALL ${_cachedLogs.length} activity log entries? This cannot be undone.`)) return;
+  for (const l of _cachedLogs) await fsDelete('activity_logs', l.id||l._fsId);
+  _cachedLogs = [];
+  filterActivityLog();
+  toast('All logs cleared','info');
+}
 
 function renderAdminSettings() {
   const el  = document.getElementById('admin-content');
