@@ -2858,6 +2858,7 @@ function renderTeams() {
         <div class="squad-avatars" style="margin-left:6px">${avatars}${extra}</div>
         <div style="display:flex;gap:6px;align-items:center">
           ${isMember && !isLeader ? `<button class="admin-btn danger" style="font-size:11px;padding:4px 10px" onclick="event.stopPropagation();leaveTeam('${tid}')">Leave</button>` : ''}
+          ${!isMember ? `<button class="admin-btn" style="font-size:11px;padding:4px 12px;color:var(--g1);border-color:var(--border2)" onclick="event.stopPropagation();openJoinTeamById('${tid}')">🔑 Join</button>` : ''}
           <span style="font-size:11px;color:var(--dim)">View →</span>
         </div>
       </div>
@@ -2944,6 +2945,22 @@ function openJoinTeam() {
   `);
 }
 
+function openJoinTeamById(tid) {
+  const t = DB.teams.find(t => (t.id||t._fsId) === tid);
+  openModal(`
+    <div class="modal-close-row"><div class="modal-title">🔑 Join ${t?.name||'Team'}</div><span class="modal-close-btn" onclick="closeModal()">✕</span></div>
+    <div style="text-align:center;font-size:36px;margin:16px 0 8px">🔐</div>
+    <p style="text-align:center;font-size:13px;color:var(--dim);margin-bottom:6px">This team is <strong style="color:var(--text)">private</strong>.</p>
+    <p style="text-align:center;font-size:12px;color:var(--dim);margin-bottom:16px">Enter the Team ID shared by a member to join.</p>
+    <div class="form-group">
+      <label class="form-label">Team ID *</label>
+      <input class="form-input" id="jt-id" placeholder="Paste team ID here..." style="font-family:monospace" oninput="validateTeamIdInput('${tid}',this.value)">
+    </div>
+    <div id="jt-id-status" style="font-size:11px;margin-bottom:12px;min-height:16px;text-align:center"></div>
+    <button class="btn-primary" id="btn-join-team" onclick="joinTeamById()" style="width:100%" disabled>🔑 Join Team</button>
+  `);
+}
+
 async function joinTeamById() {
   const tid = _v('jt-id').trim();
   const t   = DB.teams.find(t => (t.id||t._fsId) === tid);
@@ -2955,6 +2972,22 @@ async function joinTeamById() {
   me.teamIds  = [...(me.teamIds||[]), t.id||t._fsId];
   await Promise.all([fsSet('teams', t.id||t._fsId, t), fsSet('players', me.id, me)]);
   toast(`Joined ${t.name}! ⚔️`,'success'); _cacheDB(); closeModal(); renderTeams();
+}
+
+function validateTeamIdInput(expectedTid, typed) {
+  const status = document.getElementById('jt-id-status');
+  const btn    = document.getElementById('btn-join-team');
+  const match  = typed.trim() === expectedTid;
+  if (!typed.trim()) {
+    status.innerHTML = '';
+    if (btn) btn.disabled = true;
+  } else if (match) {
+    status.innerHTML = `<span style="color:var(--g1)">✅ Team ID verified</span>`;
+    if (btn) btn.disabled = false;
+  } else {
+    status.innerHTML = `<span style="color:var(--red)">❌ Incorrect ID</span>`;
+    if (btn) btn.disabled = true;
+  }
 }
 
 async function leaveTeam(tid) {
